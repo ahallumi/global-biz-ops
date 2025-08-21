@@ -19,6 +19,7 @@ interface UnitsPerBoxStepProps {
 export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: UnitsPerBoxStepProps) {
   const [displayValue, setDisplayValue] = useState(data.unitsPerBox.toString());
   const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   const { toast } = useToast();
   const createProduct = useCreateProduct();
@@ -42,18 +43,23 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
     if (isProcessing) return;
     
     setIsProcessing(true);
+    setError(null);
     
     try {
       let productId = data.productId;
       
       // Create product if it doesn't exist
       if (!productId && data.barcode) {
-        const product = await createProduct.mutateAsync({
-          name: data.productName || `Product ${data.barcode}`,
-          upc: data.barcode,
-          sku: data.barcode,
-        });
-        productId = product.id;
+        try {
+          const product = await createProduct.mutateAsync({
+            name: data.productName || `Product ${data.barcode}`,
+            upc: data.barcode,
+            sku: data.barcode,
+          });
+          productId = product.id;
+        } catch (err) {
+          throw new Error(`Failed to create product: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
       }
 
       if (!productId) {
@@ -63,48 +69,70 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
       // Upload photo if provided
       let photoUrl = null;
       if (data.photoFile) {
-        const fileExt = data.photoFile.name.split('.').pop();
-        const fileName = `${Date.now()}.${fileExt}`;
-        const filePath = `intake-photos/${fileName}`;
+        try {
+          const fileExt = data.photoFile.name.split('.').pop();
+          const fileName = `${Date.now()}.${fileExt}`;
+          const filePath = `intake-photos/${fileName}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from('intake-photos')
-          .upload(filePath, data.photoFile);
-
-        if (uploadError) {
-          console.error('Photo upload error:', uploadError);
-        } else {
-          const { data: { publicUrl } } = supabase.storage
+          const { error: uploadError } = await supabase.storage
             .from('intake-photos')
-            .getPublicUrl(filePath);
-          photoUrl = publicUrl;
+            .upload(filePath, data.photoFile);
+
+          if (uploadError) {
+            console.error('Photo upload error:', uploadError);
+            throw new Error(`Photo upload failed: ${uploadError.message}`);
+          } else {
+            const { data: { publicUrl } } = supabase.storage
+              .from('intake-photos')
+              .getPublicUrl(filePath);
+            photoUrl = publicUrl;
+          }
+        } catch (err) {
+          console.error('Photo processing error:', err);
+          // Continue without photo if upload fails
+          toast({
+            title: 'Photo Upload Warning',
+            description: 'Photo upload failed, but product will be saved without image.',
+            variant: 'default',
+          });
         }
       }
 
       // Create intake item
-      await createIntakeItem.mutateAsync({
-        intake_id: intakeId,
-        product_id: productId,
-        quantity: data.totalUnits,
-        quantity_boxes: data.boxCount,
-        units_per_box: data.unitsPerBox,
-        unit_cost_cents: 0, // Default cost
-        line_total_cents: 0,
-        photo_url: photoUrl,
-        upc: data.barcode,
-      });
+      try {
+        await createIntakeItem.mutateAsync({
+          intake_id: intakeId,
+          product_id: productId,
+          quantity: data.totalUnits,
+          quantity_boxes: data.boxCount,
+          units_per_box: data.unitsPerBox,
+          unit_cost_cents: 0, // Default cost
+          line_total_cents: 0,
+          photo_url: photoUrl,
+          upc: data.barcode,
+        });
 
-      onNext();
+        onNext();
+      } catch (err) {
+        throw new Error(`Failed to save intake item: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
     } catch (error) {
       console.error('Error saving product:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to add product. Please try again.';
+      setError(errorMessage);
       toast({
-        title: 'Error',
-        description: 'Failed to add product. Please try again.',
+        title: 'Error Adding Product',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleRetry = () => {
+    setError(null);
+    handleEnter();
   };
 
   return (
@@ -150,16 +178,44 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
 
       {/* Navigation */}
       <div className="p-4 border-t">
-        <Button 
-          variant="outline" 
-          onClick={onBack} 
-          size="lg" 
-          className="w-full"
-          disabled={isProcessing}
-        >
-          <ChevronLeft className="mr-2 w-5 h-5" />
-          Back
-        </Button>
+        {error ? (
+          <div className="space-y-2">
+            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg">
+              {error}
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={onBack} 
+                size="lg" 
+                className="flex-1"
+                disabled={isProcessing}
+              >
+                <ChevronLeft className="mr-2 w-5 h-5" />
+                Back
+              </Button>
+              <Button 
+                onClick={handleRetry} 
+                size="lg" 
+                className="flex-1"
+                disabled={isProcessing}
+              >
+                Try Again
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button 
+            variant="outline" 
+            onClick={onBack} 
+            size="lg" 
+            className="w-full"
+            disabled={isProcessing}
+          >
+            <ChevronLeft className="mr-2 w-5 h-5" />
+            Back
+          </Button>
+        )}
       </div>
       
       {/* Processing Indicator */}

@@ -23,6 +23,10 @@ export function PhotoStep({ data, onUpdate, onNext, onBack }: PhotoStepProps) {
       const reader = new FileReader();
       reader.onload = (e) => {
         setPreview(e.target?.result as string);
+        // Auto-advance to next step after photo is loaded
+        setTimeout(() => {
+          onNext();
+        }, 500);
       };
       reader.readAsDataURL(file);
     }
