@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useIntakes } from '@/hooks/useIntakes';
 import { useAuth } from '@/hooks/useAuth';
-import { Layout } from '@/components/layout/Layout';
+import { SimpleLayout } from '@/components/layout/SimpleLayout';
 import { DataTable } from '@/components/data-table/DataTable';
 import { intakeColumns } from '@/components/intakes/intakeColumns';
 import { MobileIntakeList } from '@/components/intakes/MobileIntakeList';
@@ -63,7 +63,7 @@ export default function IntakesPage() {
 
   if (isLoading) {
     return (
-      <Layout>
+      <SimpleLayout>
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <Skeleton className="h-8 w-48" />
@@ -74,12 +74,12 @@ export default function IntakesPage() {
             <Skeleton className="h-64 w-full" />
           </div>
         </div>
-      </Layout>
+      </SimpleLayout>
     );
   }
 
   return (
-    <Layout>
+    <SimpleLayout>
       <div className="space-y-6">
         {/* Header */}
         <div className={cn("flex gap-4", isMobile ? "flex-col" : "flex-col sm:flex-row sm:items-center sm:justify-between")}>
@@ -234,6 +234,6 @@ export default function IntakesPage() {
           </CardContent>
         </Card>
       </div>
-    </Layout>
+    </SimpleLayout>
   );
 }

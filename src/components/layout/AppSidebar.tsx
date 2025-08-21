@@ -51,12 +51,6 @@ const navigation = [
     roles: ['staff'],
   },
   {
-    name: 'Suppliers',
-    href: '/suppliers',
-    icon: Truck,
-    roles: ['admin', 'manager', 'staff'],
-  },
-  {
     name: 'Users',
     href: '/users',
     icon: Users,
@@ -67,12 +61,6 @@ const navigation = [
     href: '/reports',
     icon: BarChart3,
     roles: ['admin', 'manager'],
-  },
-  {
-    name: 'Settings',
-    href: '/settings',
-    icon: Settings,
-    roles: ['admin', 'manager', 'staff'],
   },
 ]
 
