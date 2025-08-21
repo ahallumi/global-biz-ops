@@ -143,3 +143,102 @@ export function useUpdateIntake() {
     }
   });
 }
+
+export function useCreateIntakeItem() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (item: Database['public']['Tables']['product_intake_items']['Insert']) => {
+      const { data, error } = await supabase
+        .from('product_intake_items')
+        .insert(item)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['intake', data.intake_id] });
+      queryClient.invalidateQueries({ queryKey: ['intakes'] });
+      toast({
+        title: 'Success',
+        description: 'Product added to intake successfully',
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  });
+}
+
+export function useUpdateIntakeItem() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, intake_id, ...updates }: Database['public']['Tables']['product_intake_items']['Update'] & { id: string; intake_id: string }) => {
+      const { data, error } = await supabase
+        .from('product_intake_items')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['intake', data.intake_id] });
+      queryClient.invalidateQueries({ queryKey: ['intakes'] });
+      toast({
+        title: 'Success',
+        description: 'Product updated successfully',
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  });
+}
+
+export function useDeleteIntakeItem() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, intake_id }: { id: string; intake_id: string }) => {
+      const { error } = await supabase
+        .from('product_intake_items')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+      return { id, intake_id };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['intake', data.intake_id] });
+      queryClient.invalidateQueries({ queryKey: ['intakes'] });
+      toast({
+        title: 'Success',
+        description: 'Product removed from intake successfully',
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  });
+}
