@@ -7,15 +7,20 @@ import { Badge } from '@/components/ui/badge';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import { IntakeStatusBadge } from '@/components/intakes/IntakeStatusBadge';
 import { AddProductWizard } from '@/components/intakes/AddProductWizard';
+import { ResponsiveProductImage } from '@/components/intakes/ResponsiveProductImage';
+import { MobileProductItem } from '@/components/intakes/MobileProductItem';
 import { ArrowLeft, Edit, Package, Calendar, User, FileText, MapPin, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 export default function IntakeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: intake, isLoading } = useIntake(id!);
   const deleteIntakeItem = useDeleteIntakeItem();
+  const isMobile = useIsMobile();
 
   if (isLoading) {
     return (
@@ -57,45 +62,134 @@ export default function IntakeDetailPage() {
   return (
     <Layout>
       <div className="space-y-6">
-        {/* Breadcrumb */}
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink href="/intakes">Intakes</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>{intakeId}</BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
+        {/* Breadcrumb - Hidden on mobile */}
+        {!isMobile && (
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink href="/intakes">Intakes</BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>{intakeId}</BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        )}
 
         {/* Header */}
-        <div className="flex items-center gap-4">
-          <Button 
-            variant="outline" 
-            size="icon"
-            onClick={() => navigate('/intakes')}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div className="flex-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-foreground">Intake {intakeId}</h1>
-              <IntakeStatusBadge status={intake.status} />
+        <div className={cn("flex gap-4", isMobile ? "flex-col" : "items-center")}>
+          <div className="flex items-center gap-4">
+            <Button 
+              variant="outline" 
+              size="icon"
+              onClick={() => navigate('/intakes')}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex-1">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className={cn("font-bold text-foreground", isMobile ? "text-xl" : "text-2xl")}>
+                  Intake {intakeId}
+                </h1>
+                <IntakeStatusBadge status={intake.status} />
+              </div>
+              {!isMobile && (
+                <p className="text-muted-foreground">
+                  Product intake submission details and management
+                </p>
+              )}
             </div>
-            <p className="text-muted-foreground">
-              Product intake submission details and management
-            </p>
           </div>
-          <Button onClick={() => navigate(`/intakes/${intake.id}/edit`)}>
+          <Button 
+            onClick={() => navigate(`/intakes/${intake.id}/edit`)}
+            className={cn(isMobile && "w-full")}
+          >
             <Edit className="mr-2 h-4 w-4" />
             Edit Intake
           </Button>
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className={cn("grid gap-6", isMobile ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-3")}>
+          {/* Mobile: Show sidebar content first on mobile */}
+          {isMobile && (
+            <div className="space-y-6">
+              {/* Submission Details */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Submission Details</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Submitted by</p>
+                      <p className="text-sm text-muted-foreground">Staff User</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Created</p>
+                      <p className="text-sm text-muted-foreground">
+                        {format(new Date(intake.created_at), 'MMM dd, yyyy • h:mm a')}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {intake.updated_at && intake.updated_at !== intake.created_at && (
+                    <div className="flex items-center gap-3">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Last Updated</p>
+                        <p className="text-sm text-muted-foreground">
+                          {format(new Date(intake.updated_at), 'MMM dd, yyyy • h:mm a')}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Supplier Information */}
+              {intake.suppliers && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Supplier Information</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <p className="font-medium text-foreground">{intake.suppliers.name}</p>
+                      <p className="text-sm text-muted-foreground">{intake.suppliers.code}</p>
+                    </div>
+                    
+                    {intake.suppliers.contact_name && (
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Contact</p>
+                        <p className="text-sm text-muted-foreground">{intake.suppliers.contact_name}</p>
+                      </div>
+                    )}
+                    
+                    {intake.suppliers.contact_email && (
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Email</p>
+                        <p className="text-sm text-muted-foreground">{intake.suppliers.contact_email}</p>
+                      </div>
+                    )}
+                    
+                    {intake.suppliers.contact_phone && (
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Phone</p>
+                        <p className="text-sm text-muted-foreground">{intake.suppliers.contact_phone}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
           {/* Main Content */}
-          <div className="space-y-6 lg:col-span-2">
+          <div className={cn("space-y-6", !isMobile && "lg:col-span-2")}>
             {/* Intake Overview */}
             <Card>
               <CardHeader>
@@ -160,53 +254,67 @@ export default function IntakeDetailPage() {
                 {intake.product_intake_items && intake.product_intake_items.length > 0 ? (
                   <div className="space-y-4">
                     {intake.product_intake_items.map((item) => (
-                      <div key={item.id} className="border border-border rounded-lg p-4">
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-2 flex-1">
-                            <div className="flex items-center justify-between">
-                              <h4 className="font-medium text-foreground">
-                                {item.products?.name || 'Unknown Product'}
-                              </h4>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => deleteIntakeItem.mutate({ id: item.id, intake_id: intake.id })}
-                                disabled={deleteIntakeItem.isPending}
-                                className="text-destructive hover:text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                              <div>
-                                <span className="text-muted-foreground">Quantity: </span>
-                                <span className="text-foreground">{item.quantity} ({item.quantity_boxes} boxes)</span>
+                      isMobile ? (
+                        <MobileProductItem
+                          key={item.id}
+                          item={item}
+                          onDelete={() => deleteIntakeItem.mutate({ id: item.id, intake_id: intake.id })}
+                          isDeleting={deleteIntakeItem.isPending}
+                        />
+                      ) : (
+                        <div key={item.id} className="border border-border rounded-lg p-4">
+                          <div className="flex items-start gap-4">
+                            <ResponsiveProductImage
+                              productName={item.products?.name || 'Unknown Product'}
+                              photoUrl={item.photo_url}
+                              size="lg"
+                            />
+                            <div className="space-y-2 flex-1">
+                              <div className="flex items-center justify-between">
+                                <h4 className="font-medium text-foreground">
+                                  {item.products?.name || 'Unknown Product'}
+                                </h4>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => deleteIntakeItem.mutate({ id: item.id, intake_id: intake.id })}
+                                  disabled={deleteIntakeItem.isPending}
+                                  className="text-destructive hover:text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
                               </div>
-                              <div>
-                                <span className="text-muted-foreground">Unit Cost: </span>
-                                <span className="text-foreground">${(item.unit_cost_cents / 100).toFixed(2)}</span>
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <span className="text-muted-foreground">Quantity: </span>
+                                  <span className="text-foreground">{item.quantity} ({item.quantity_boxes} boxes)</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Unit Cost: </span>
+                                  <span className="text-foreground">${(item.unit_cost_cents / 100).toFixed(2)}</span>
+                                </div>
+                                {item.lot_number && (
+                                  <div>
+                                    <span className="text-muted-foreground">Lot: </span>
+                                    <span className="text-foreground font-mono">{item.lot_number}</span>
+                                  </div>
+                                )}
+                                {item.expiry_date && (
+                                  <div>
+                                    <span className="text-muted-foreground">Expiry: </span>
+                                    <span className="text-foreground">{format(new Date(item.expiry_date), 'MMM dd, yyyy')}</span>
+                                  </div>
+                                )}
                               </div>
-                              {item.lot_number && (
-                                <div>
-                                  <span className="text-muted-foreground">Lot: </span>
-                                  <span className="text-foreground font-mono">{item.lot_number}</span>
-                                </div>
-                              )}
-                              {item.expiry_date && (
-                                <div>
-                                  <span className="text-muted-foreground">Expiry: </span>
-                                  <span className="text-foreground">{format(new Date(item.expiry_date), 'MMM dd, yyyy')}</span>
-                                </div>
-                              )}
                             </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-medium text-foreground">
-                              ${((item.line_total_cents || 0) / 100).toFixed(2)}
-                            </p>
+                            <div className="text-right">
+                              <p className="font-medium text-foreground">
+                                ${((item.line_total_cents || 0) / 100).toFixed(2)}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )
                     ))}
                   </div>
                 ) : (
@@ -260,8 +368,9 @@ export default function IntakeDetailPage() {
             </Card>
           </div>
 
-          {/* Sidebar */}
-          <div className="space-y-6">
+          {/* Sidebar - Hidden on mobile */}
+          {!isMobile && (
+            <div className="space-y-6">
             {/* Submission Details */}
             <Card>
               <CardHeader>
@@ -345,7 +454,8 @@ export default function IntakeDetailPage() {
                 </CardContent>
               </Card>
             )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </Layout>
