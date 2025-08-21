@@ -3,10 +3,11 @@ import { Button } from '@/components/ui/button';
 import { ChevronLeft, PackageCheck } from 'lucide-react';
 import { WizardData } from '../AddProductWizard';
 import { CustomNumericKeyboard } from './CustomNumericKeyboard';
-import { useCreateIntakeItem } from '@/hooks/useIntakes';
+import { useCreateIntakeItem, useUpdateIntakeItem } from '@/hooks/useIntakes';
 import { useCreateProduct } from '@/hooks/useProducts';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { DuplicateProductDialog } from '../DuplicateProductDialog';
 
 interface UnitsPerBoxStepProps {
   intakeId: string;
@@ -20,10 +21,16 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
   const [displayValue, setDisplayValue] = useState(data.unitsPerBox.toString());
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [duplicateDialog, setDuplicateDialog] = useState<{
+    open: boolean;
+    existingItem: any;
+    productName: string;
+  }>({ open: false, existingItem: null, productName: '' });
   
   const { toast } = useToast();
   const createProduct = useCreateProduct();
   const createIntakeItem = useCreateIntakeItem();
+  const updateIntakeItem = useUpdateIntakeItem();
 
   const handleNumber = (num: string) => {
     const newValue = displayValue === '0' ? num : displayValue + num;
@@ -124,7 +131,54 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
         }
       }
 
-      // Create intake item
+      // Check for existing product in this intake
+      const { data: existingItems, error: checkError } = await supabase
+        .from('product_intake_items')
+        .select('*, products!inner(name)')
+        .eq('intake_id', intakeId)
+        .eq('product_id', productId);
+
+      if (checkError) {
+        console.error('Error checking for duplicates:', checkError);
+      }
+
+      const existingItem = existingItems?.[0];
+
+      if (existingItem) {
+        // Product already exists in this intake
+        if (existingItem.units_per_box === data.unitsPerBox) {
+          // Same units per box - merge quantities
+          const newQuantityBoxes = existingItem.quantity_boxes + data.boxCount;
+          const newTotalQuantity = newQuantityBoxes * data.unitsPerBox;
+
+          await updateIntakeItem.mutateAsync({
+            id: existingItem.id,
+            intake_id: intakeId,
+            quantity_boxes: newQuantityBoxes,
+            quantity: newTotalQuantity,
+            ...(photoUrl && { photo_url: photoUrl }), // Update photo if new one provided
+          });
+
+          toast({
+            title: 'Quantities Merged',
+            description: `Added ${data.boxCount} boxes to existing ${existingItem.products.name} (Total: ${newQuantityBoxes} boxes)`,
+            variant: 'default',
+          });
+
+          onNext();
+          return;
+        } else {
+          // Different units per box - show conflict dialog
+          setDuplicateDialog({
+            open: true,
+            existingItem,
+            productName: existingItem.products.name,
+          });
+          return;
+        }
+      }
+
+      // No duplicate found - create new intake item
       try {
         await createIntakeItem.mutateAsync({
           intake_id: intakeId,
@@ -163,6 +217,115 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
   const handleRetry = () => {
     setError(null);
     handleEnter();
+  };
+
+  const handleKeepSeparate = async () => {
+    setDuplicateDialog({ open: false, existingItem: null, productName: '' });
+    
+    // Create new intake item as separate entry
+    try {
+      setIsProcessing(true);
+      const productId = data.productId;
+      
+      // Upload photo if provided (reuse photo logic from handleEnter)
+      let photoUrl = null;
+      if (data.photoFile) {
+        try {
+          const fileExt = data.photoFile.name.split('.').pop();
+          const fileName = `${Date.now()}.${fileExt}`;
+          const filePath = `intake-photos/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('intake-photos')
+            .upload(filePath, data.photoFile);
+
+          if (!uploadError) {
+            const { data: { publicUrl } } = supabase.storage
+              .from('intake-photos')
+              .getPublicUrl(filePath);
+            photoUrl = publicUrl;
+          }
+        } catch (err) {
+          console.error('Photo processing error:', err);
+        }
+      }
+
+      await createIntakeItem.mutateAsync({
+        intake_id: intakeId,
+        product_id: productId!,
+        quantity: data.totalUnits,
+        quantity_boxes: data.boxCount,
+        units_per_box: data.unitsPerBox,
+        unit_cost_cents: 0,
+        upc: data.barcode,
+        photo_url: photoUrl,
+      });
+
+      toast({
+        title: 'Product Added',
+        description: 'Product saved as separate entry',
+        variant: 'default',
+      });
+
+      onNext();
+    } catch (error: any) {
+      setError(error?.message || 'Failed to save product');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleReplace = async () => {
+    setDuplicateDialog({ open: false, existingItem: null, productName: '' });
+    
+    try {
+      setIsProcessing(true);
+      const existingItem = duplicateDialog.existingItem;
+      
+      // Upload photo if provided
+      let photoUrl = existingItem.photo_url;
+      if (data.photoFile) {
+        try {
+          const fileExt = data.photoFile.name.split('.').pop();
+          const fileName = `${Date.now()}.${fileExt}`;
+          const filePath = `intake-photos/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('intake-photos')
+            .upload(filePath, data.photoFile);
+
+          if (!uploadError) {
+            const { data: { publicUrl } } = supabase.storage
+              .from('intake-photos')
+              .getPublicUrl(filePath);
+            photoUrl = publicUrl;
+          }
+        } catch (err) {
+          console.error('Photo processing error:', err);
+        }
+      }
+
+      await updateIntakeItem.mutateAsync({
+        id: existingItem.id,
+        intake_id: intakeId,
+        quantity_boxes: data.boxCount,
+        units_per_box: data.unitsPerBox,
+        quantity: data.totalUnits,
+        photo_url: photoUrl,
+      });
+
+      toast({
+        title: 'Product Updated',
+        description: 'Previous entry has been replaced with new data',
+        variant: 'default',
+      });
+
+      onNext();
+    } catch (error: any) {
+      setError(error?.message || 'Failed to update product');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -257,6 +420,17 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
           </div>
         </div>
       )}
+
+      {/* Duplicate Product Dialog */}
+      <DuplicateProductDialog
+        open={duplicateDialog.open}
+        onOpenChange={(open) => setDuplicateDialog(prev => ({ ...prev, open }))}
+        productName={duplicateDialog.productName}
+        existingUnitsPerBox={duplicateDialog.existingItem?.units_per_box || 0}
+        newUnitsPerBox={data.unitsPerBox}
+        onKeepSeparate={handleKeepSeparate}
+        onReplace={handleReplace}
+      />
     </div>
   );
 }
