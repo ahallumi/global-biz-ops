@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import { IntakeStatusBadge } from '@/components/intakes/IntakeStatusBadge';
-import { AddProductDialog } from '@/components/intakes/AddProductDialog';
+import { AddProductWizard } from '@/components/intakes/AddProductWizard';
 import { ArrowLeft, Edit, Package, Calendar, User, FileText, MapPin, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -150,7 +150,7 @@ export default function IntakeDetailPage() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>Product Items</CardTitle>
-                  <AddProductDialog intakeId={intake.id} />
+                  <AddProductWizard intakeId={intake.id} />
                 </div>
                 <CardDescription>
                   Products included in this intake submission
