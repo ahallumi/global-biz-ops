@@ -53,7 +53,7 @@ export function Sidebar() {
   );
 
   return (
-    <div className="w-64 bg-card border-r border-border h-screen">
+    <div className="hidden md:flex w-64 bg-card border-r border-border h-screen flex-col">
       <div className="p-6">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center">
