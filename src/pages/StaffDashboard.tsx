@@ -57,39 +57,39 @@ export default function StaffDashboard() {
 
         {/* Main Dashboard */}
         <div className="max-w-2xl mx-auto">
-          {/* Quick Actions Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-              <CardDescription>Access common tasks</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {actionCards.map((card) => {
-                const IconComponent = card.icon;
-                return (
-                  <Card 
-                    key={card.title}
-                    className="border-border/50 cursor-pointer hover:shadow-md transition-all duration-200 hover:scale-105"
-                    onClick={card.onClick}
-                  >
-                    <CardContent className="flex items-center p-4 space-x-4">
-                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <IconComponent className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="flex-1">
-                        <CardTitle className="text-base font-medium text-foreground">
-                          {card.title}
-                        </CardTitle>
-                        <CardDescription className="text-sm text-muted-foreground">
-                          {card.description}
-                        </CardDescription>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </CardContent>
-          </Card>
+          {/* Quick Actions Header */}
+          <div className="text-center space-y-2 mb-6">
+            <h3 className="text-xl font-semibold text-foreground">Quick Actions</h3>
+            <p className="text-muted-foreground">Access common tasks</p>
+          </div>
+
+          {/* Separated Action Cards */}
+          <div className="space-y-4">
+            {actionCards.map((card) => {
+              const IconComponent = card.icon;
+              return (
+                <Card 
+                  key={card.title}
+                  className="cursor-pointer hover:shadow-md transition-all duration-200 hover:scale-105"
+                  onClick={card.onClick}
+                >
+                  <CardContent className="flex items-center p-6 space-x-4">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                      <IconComponent className="h-6 w-6 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <CardTitle className="text-lg font-medium text-foreground">
+                        {card.title}
+                      </CardTitle>
+                      <CardDescription className="text-sm text-muted-foreground">
+                        {card.description}
+                      </CardDescription>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </div>
       </div>
     </Layout>
