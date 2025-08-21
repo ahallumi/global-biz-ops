@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 
 export default function AdminLogin() {
   const navigate = useNavigate();
-  const { signIn, signUp, signOut, user, employee } = useAuth();
+  const { signIn, signUp, signOut, user, employee, exitStaffMode } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [signInData, setSignInData] = useState({ email: '', password: '' });
   const [signUpData, setSignUpData] = useState({ email: '', password: '', fullName: '' });
@@ -34,6 +34,8 @@ export default function AdminLogin() {
         toast.error(error.message || 'Failed to sign in');
       } else if (userEmployee) {
         if (userEmployee.role === 'admin' || userEmployee.role === 'manager') {
+          // Exit staff mode when using admin login
+          exitStaffMode();
           navigate('/dashboard');
         } else {
           // Staff users should use staff login - sign them out

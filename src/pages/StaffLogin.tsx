@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 
 export default function StaffLogin() {
   const navigate = useNavigate();
-  const { signIn, signUp, signOut, user, employee } = useAuth();
+  const { signIn, signUp, signOut, user, employee, enterStaffMode } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [signInData, setSignInData] = useState({ email: '', password: '' });
   const [signUpData, setSignUpData] = useState({ email: '', password: '', fullName: '' });
@@ -35,9 +35,14 @@ export default function StaffLogin() {
       } else if (userEmployee) {
         if (userEmployee.role === 'staff') {
           navigate('/staff-dashboard');
+        } else if (userEmployee.role === 'admin' || userEmployee.role === 'manager') {
+          // Allow admins to use staff portal by enabling staff mode
+          enterStaffMode();
+          toast.success('Acting as Staff');
+          navigate('/staff-dashboard');
         } else {
-          // Non-staff users should use admin login - sign them out
-          toast.error('Please use the admin login for your role');
+          // Other roles not allowed
+          toast.error('Your role is not allowed on the staff portal');
           await signOut();
           setSignInData({ email: '', password: '' });
           return;

@@ -17,6 +17,13 @@ export function useAuth() {
   const [session, setSession] = useState<Session | null>(null);
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
+  const [actingAsStaff, setActingAsStaff] = useState(() => {
+    try {
+      return localStorage.getItem('gf:acting_as_staff') === '1';
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     // Set up auth state listener FIRST
@@ -162,11 +169,30 @@ export function useAuth() {
         variant: "destructive"
       });
     } else {
+      // Clear staff mode on sign out
+      setActingAsStaff(false);
+      try {
+        localStorage.removeItem('gf:acting_as_staff');
+      } catch {}
       toast({
         title: "Signed out successfully",
         description: "You have been signed out.",
       });
     }
+  };
+
+  const enterStaffMode = () => {
+    setActingAsStaff(true);
+    try {
+      localStorage.setItem('gf:acting_as_staff', '1');
+    } catch {}
+  };
+
+  const exitStaffMode = () => {
+    setActingAsStaff(false);
+    try {
+      localStorage.removeItem('gf:acting_as_staff');
+    } catch {}
   };
 
   const isAdmin = () => employee?.role === 'admin';
@@ -178,9 +204,12 @@ export function useAuth() {
     session,
     employee,
     loading,
+    actingAsStaff,
     signUp,
     signIn,
     signOut,
+    enterStaffMode,
+    exitStaffMode,
     isAdmin,
     isStaff,
     isManager

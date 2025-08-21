@@ -2,6 +2,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Package, Plus, Clock, CheckCircle, User } from 'lucide-react';
+import { StaffModeBanner } from '@/components/StaffModeBanner';
 
 export default function StaffDashboard() {
   const { employee } = useAuth();
@@ -43,6 +44,9 @@ export default function StaffDashboard() {
           </div>
         </div>
       </header>
+
+      {/* Staff Mode Banner */}
+      <StaffModeBanner />
 
       <main className="container mx-auto px-6 py-8">
         <div className="space-y-8">
