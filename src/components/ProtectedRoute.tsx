@@ -26,11 +26,13 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
   }
 
   if (requiredRoles && employee && !requiredRoles.includes(employee.role)) {
-    // Redirect based on user role
-    if (employee.role === 'staff') {
-      return <Navigate to="/staff-dashboard" replace />;
+    // Redirect to appropriate login based on required role
+    if (requiredRoles.includes('staff')) {
+      return <Navigate to="/staff-login" replace />;
+    } else if (requiredRoles.includes('admin') || requiredRoles.includes('manager')) {
+      return <Navigate to="/admin-login" replace />;
     } else {
-      return <Navigate to="/dashboard" replace />;
+      return <Navigate to="/auth" replace />;
     }
   }
 

@@ -11,19 +11,15 @@ import { toast } from 'sonner';
 
 export default function StaffLogin() {
   const navigate = useNavigate();
-  const { signIn, signUp, user, employee } = useAuth();
+  const { signIn, signUp, signOut, user, employee } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [signInData, setSignInData] = useState({ email: '', password: '' });
   const [signUpData, setSignUpData] = useState({ email: '', password: '', fullName: '' });
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated as staff
   useEffect(() => {
-    if (user && employee) {
-      if (employee.role === 'staff') {
-        navigate('/staff-dashboard');
-      } else {
-        navigate('/dashboard');
-      }
+    if (user && employee && employee.role === 'staff') {
+      navigate('/staff-dashboard');
     }
   }, [user, employee, navigate]);
 
@@ -40,8 +36,10 @@ export default function StaffLogin() {
         if (userEmployee.role === 'staff') {
           navigate('/staff-dashboard');
         } else {
-          // Non-staff users should use admin login
+          // Non-staff users should use admin login - sign them out
           toast.error('Please use the admin login for your role');
+          await signOut();
+          setSignInData({ email: '', password: '' });
           return;
         }
       }
