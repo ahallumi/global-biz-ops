@@ -3,9 +3,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Package, Plus, Clock, CheckCircle, User } from 'lucide-react';
 import { StaffModeBanner } from '@/components/StaffModeBanner';
+import { useNavigate } from 'react-router-dom';
 
 export default function StaffDashboard() {
   const { employee } = useAuth();
+  const navigate = useNavigate();
 
   if (!employee) {
     return (
@@ -105,11 +107,11 @@ export default function StaffDashboard() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-col sm:flex-row gap-4">
-                <Button className="flex-1">
+                <Button className="flex-1" onClick={() => navigate('/intakes/new')}>
                   <Plus className="h-4 w-4 mr-2" />
                   New Product Intake
                 </Button>
-                <Button variant="outline" className="flex-1">
+                <Button variant="outline" className="flex-1" onClick={() => navigate('/intakes')}>
                   <Package className="h-4 w-4 mr-2" />
                   View My Submissions
                 </Button>

@@ -11,6 +11,9 @@ import StaffLogin from "./pages/StaffLogin";
 import AdminLogin from "./pages/AdminLogin";
 import Dashboard from "./pages/Dashboard";
 import StaffDashboard from "./pages/StaffDashboard";
+import IntakesPage from "./pages/IntakesPage";
+import NewIntakePage from "./pages/NewIntakePage";
+import IntakeDetailPage from "./pages/IntakeDetailPage";
 import SuppliersPage from "./pages/SuppliersPage";
 import NotFound from "./pages/NotFound";
 
@@ -41,6 +44,30 @@ const App = () => (
               element={
                 <ProtectedRoute requiredRoles={['staff']}>
                   <StaffDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/intakes" 
+              element={
+                <ProtectedRoute requiredRoles={['admin', 'staff', 'manager']}>
+                  <IntakesPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/intakes/new" 
+              element={
+                <ProtectedRoute requiredRoles={['admin', 'staff', 'manager']}>
+                  <NewIntakePage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/intakes/:id" 
+              element={
+                <ProtectedRoute requiredRoles={['admin', 'staff', 'manager']}>
+                  <IntakeDetailPage />
                 </ProtectedRoute>
               } 
             />
