@@ -26,7 +26,12 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
   }
 
   if (requiredRoles && employee && !requiredRoles.includes(employee.role)) {
-    return <Navigate to="/dashboard" replace />;
+    // Redirect based on user role
+    if (employee.role === 'staff') {
+      return <Navigate to="/staff-dashboard" replace />;
+    } else {
+      return <Navigate to="/dashboard" replace />;
+    }
   }
 
   return <>{children}</>;

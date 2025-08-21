@@ -126,10 +126,21 @@ export function useAuth() {
         return { error };
       }
 
-      toast({
-        title: "Welcome back!",
-        description: "You have successfully signed in.",
-      });
+      // Fetch employee data immediately after successful login
+      if (data?.user) {
+        const { data: employeeData } = await supabase
+          .from('employees')
+          .select('*')
+          .eq('user_id', data.user.id)
+          .single();
+
+        toast({
+          title: "Welcome back!",
+          description: "You have successfully signed in.",
+        });
+
+        return { data, employee: employeeData };
+      }
 
       return { data };
     } catch (error: any) {

@@ -15,14 +15,19 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const Index = () => {
-  const { user, loading } = useAuth();
+  const { user, employee, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && user) {
-      navigate('/dashboard');
+    if (!loading && user && employee) {
+      // Redirect based on role
+      if (employee.role === 'staff') {
+        navigate('/staff-dashboard');
+      } else {
+        navigate('/dashboard');
+      }
     }
-  }, [user, loading, navigate]);
+  }, [user, employee, loading, navigate]);
 
   if (loading) {
     return (
@@ -50,8 +55,8 @@ const Index = () => {
             </div>
             <h1 className="text-xl font-bold">Global Staff Hub</h1>
           </div>
-          <Link to="/auth">
-            <Button>Sign In</Button>
+          <Link to="/staff-login">
+            <Button>Staff Login</Button>
           </Link>
         </div>
       </header>
@@ -75,16 +80,19 @@ const Index = () => {
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link to="/auth">
-              <Button size="lg" className="gap-2">
-                Get Started
-                <ArrowRight className="w-4 h-4" />
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link to="/staff-login">
+              <Button size="lg" className="gap-2 w-full sm:w-auto">
+                <Users className="w-4 h-4" />
+                Staff Login
               </Button>
             </Link>
-            <Button size="lg" variant="outline">
-              Learn More
-            </Button>
+            <Link to="/admin-login">
+              <Button size="lg" variant="outline" className="gap-2 w-full sm:w-auto">
+                <Shield className="w-4 h-4" />
+                Admin Login
+              </Button>
+            </Link>
           </div>
         </div>
 
@@ -185,12 +193,20 @@ const Index = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Link to="/auth">
-                <Button size="lg" className="gap-2">
-                  Start Your Journey
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </Link>
+              <div className="flex gap-3 justify-center">
+                <Link to="/staff-login">
+                  <Button size="lg" className="gap-2">
+                    <Users className="w-4 h-4" />
+                    Staff Access
+                  </Button>
+                </Link>
+                <Link to="/admin-login">
+                  <Button size="lg" variant="outline" className="gap-2">
+                    <Shield className="w-4 h-4" />
+                    Admin Access
+                  </Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         </div>
