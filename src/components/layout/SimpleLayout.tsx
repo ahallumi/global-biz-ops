@@ -1,6 +1,8 @@
+
 import { ReactNode } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { EnhancedHeader } from './EnhancedHeader';
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface SimpleLayoutProps {
@@ -23,11 +25,13 @@ export function SimpleLayout({ children }: SimpleLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen w-full bg-background">
-      <EnhancedHeader />
-      <main className="flex-1 p-6 space-y-4">
-        {children}
-      </main>
-    </div>
+    <SidebarProvider>
+      <div className="min-h-screen w-full bg-background">
+        <EnhancedHeader />
+        <main className="flex-1 p-6 space-y-4">
+          {children}
+        </main>
+      </div>
+    </SidebarProvider>
   );
 }
