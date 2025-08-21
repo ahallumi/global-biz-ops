@@ -4,10 +4,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { DataTableColumnHeader } from '@/components/data-table/DataTableColumnHeader';
-import { MoreHorizontal, Edit, Eye, Package } from 'lucide-react';
+import { MoreHorizontal, Edit, Eye, Package, Trash } from 'lucide-react';
 import { useState } from 'react';
 import { SupplierDialog } from './SupplierDialog';
 import { useAuth } from '@/hooks/useAuth';
+import { useDeleteSupplier } from '@/hooks/useSuppliers';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 type Supplier = Database['public']['Tables']['suppliers']['Row'];
 
@@ -80,9 +82,17 @@ export const supplierColumns: ColumnDef<Supplier>[] = [
     cell: ({ row }) => {
       const supplier = row.original;
       const [showEditDialog, setShowEditDialog] = useState(false);
+      const [showDeleteDialog, setShowDeleteDialog] = useState(false);
       const { employee } = useAuth();
+      const deleteSupplier = useDeleteSupplier();
       
       const canEdit = employee?.role === 'admin' || employee?.role === 'manager';
+      const canDelete = employee?.role === 'admin';
+
+      const handleDelete = () => {
+        deleteSupplier.mutate(supplier.id);
+        setShowDeleteDialog(false);
+      };
 
       return (
         <>
@@ -108,6 +118,15 @@ export const supplierColumns: ColumnDef<Supplier>[] = [
                 <Package className="mr-2 h-4 w-4" />
                 Create Intake
               </DropdownMenuItem>
+              {canDelete && (
+                <DropdownMenuItem 
+                  onClick={() => setShowDeleteDialog(true)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash className="mr-2 h-4 w-4" />
+                  Delete Supplier
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -116,6 +135,27 @@ export const supplierColumns: ColumnDef<Supplier>[] = [
             onClose={() => setShowEditDialog(false)}
             supplier={supplier}
           />
+
+          <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Supplier</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete supplier "{supplier.name}"? This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={handleDelete}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  disabled={deleteSupplier.isPending}
+                >
+                  {deleteSupplier.isPending ? 'Deleting...' : 'Delete'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </>
       );
     },
