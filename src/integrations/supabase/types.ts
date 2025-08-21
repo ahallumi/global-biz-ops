@@ -41,33 +41,95 @@ export type Database = {
         }
         Relationships: []
       }
-      product_intake_items: {
+      intake_files: {
         Row: {
+          byte_size: number | null
           created_at: string | null
           id: string
           intake_id: string
-          photo_url: string | null
-          product_id: string
-          quantity_boxes: number
-          units_per_box: number
+          kind: string
+          mime_type: string | null
+          url: string
         }
         Insert: {
+          byte_size?: number | null
           created_at?: string | null
           id?: string
           intake_id: string
-          photo_url?: string | null
-          product_id: string
-          quantity_boxes: number
-          units_per_box: number
+          kind: string
+          mime_type?: string | null
+          url: string
         }
         Update: {
+          byte_size?: number | null
           created_at?: string | null
           id?: string
           intake_id?: string
+          kind?: string
+          mime_type?: string | null
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intake_files_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "product_intakes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_intake_items: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          expiry_date: string | null
+          id: string
+          intake_id: string
+          line_total_cents: number | null
+          lot_number: string | null
+          photo_url: string | null
+          product_id: string
+          quantity: number
+          quantity_boxes: number
+          unit_cost_cents: number
+          units_per_box: number
+          upc: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          expiry_date?: string | null
+          id?: string
+          intake_id: string
+          line_total_cents?: number | null
+          lot_number?: string | null
+          photo_url?: string | null
+          product_id: string
+          quantity?: number
+          quantity_boxes: number
+          unit_cost_cents?: number
+          units_per_box: number
+          upc?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          expiry_date?: string | null
+          id?: string
+          intake_id?: string
+          line_total_cents?: number | null
+          lot_number?: string | null
           photo_url?: string | null
           product_id?: string
+          quantity?: number
           quantity_boxes?: number
+          unit_cost_cents?: number
           units_per_box?: number
+          upc?: string | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -89,8 +151,11 @@ export type Database = {
       product_intakes: {
         Row: {
           created_at: string | null
+          date_received: string
           id: string
+          invoice_number: string | null
           invoice_url: string | null
+          location_id: string | null
           notes: string | null
           status: Database["public"]["Enums"]["intake_status"]
           submitted_by: string
@@ -99,8 +164,11 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          date_received?: string
           id?: string
+          invoice_number?: string | null
           invoice_url?: string | null
+          location_id?: string | null
           notes?: string | null
           status?: Database["public"]["Enums"]["intake_status"]
           submitted_by: string
@@ -109,8 +177,11 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          date_received?: string
           id?: string
+          invoice_number?: string | null
           invoice_url?: string | null
+          location_id?: string | null
           notes?: string | null
           status?: Database["public"]["Enums"]["intake_status"]
           submitted_by?: string
@@ -130,45 +201,99 @@ export type Database = {
       products: {
         Row: {
           barcode: string | null
+          category: string | null
           created_at: string | null
+          default_cost_cents: number | null
           id: string
           image_url: string | null
           name: string
+          size: string | null
+          sku: string | null
+          upc: string | null
+          updated_at: string | null
         }
         Insert: {
           barcode?: string | null
+          category?: string | null
           created_at?: string | null
+          default_cost_cents?: number | null
           id?: string
           image_url?: string | null
           name: string
+          size?: string | null
+          sku?: string | null
+          upc?: string | null
+          updated_at?: string | null
         }
         Update: {
           barcode?: string | null
+          category?: string | null
           created_at?: string | null
+          default_cost_cents?: number | null
           id?: string
           image_url?: string | null
           name?: string
+          size?: string | null
+          sku?: string | null
+          upc?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }
       suppliers: {
         Row: {
+          active: boolean
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
           code: string
+          contact_email: string | null
+          contact_name: string | null
+          contact_phone: string | null
+          country: string | null
           created_at: string | null
           id: string
           name: string
+          postal_code: string | null
+          state: string | null
+          terms: string
+          updated_at: string | null
         }
         Insert: {
+          active?: boolean
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
           code: string
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          country?: string | null
           created_at?: string | null
           id?: string
           name: string
+          postal_code?: string | null
+          state?: string | null
+          terms?: string
+          updated_at?: string | null
         }
         Update: {
+          active?: boolean
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
           code?: string
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          country?: string | null
           created_at?: string | null
           id?: string
           name?: string
+          postal_code?: string | null
+          state?: string | null
+          terms?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
