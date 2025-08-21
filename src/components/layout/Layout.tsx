@@ -1,7 +1,9 @@
 import { ReactNode } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { Sidebar } from './Sidebar';
-import { Header } from './Header';
+import { AppSidebar } from './AppSidebar';
+import { EnhancedHeader } from './EnhancedHeader';
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface LayoutProps {
   children: ReactNode;
@@ -13,25 +15,26 @@ export function Layout({ children }: LayoutProps) {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-pulse">
-          <div className="h-8 w-32 bg-muted rounded mb-4"></div>
-          <div className="h-4 w-48 bg-muted rounded"></div>
+        <div className="space-y-4">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-4 w-48" />
+          <Skeleton className="h-4 w-40" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="flex">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header />
-          <main className="flex-1 p-6">
+    <SidebarProvider>
+      <div className="min-h-screen flex w-full bg-background">
+        <AppSidebar />
+        <SidebarInset className="flex-1">
+          <EnhancedHeader />
+          <main className="flex-1 p-6 space-y-4">
             {children}
           </main>
-        </div>
+        </SidebarInset>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }

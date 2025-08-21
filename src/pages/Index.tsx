@@ -3,13 +3,17 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Link } from 'react-router-dom';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { 
   Package, 
   Users, 
   TrendingUp, 
   Shield,
   ArrowRight,
-  CheckCircle
+  CheckCircle,
+  Sparkles,
+  Building2
 } from 'lucide-react';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -32,9 +36,12 @@ const Index = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-pulse">
-          <div className="h-8 w-32 bg-muted rounded mb-4"></div>
-          <div className="h-4 w-48 bg-muted rounded"></div>
+        <div className="space-y-4 text-center">
+          <Skeleton className="h-12 w-48 mx-auto" />
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-64 mx-auto" />
+            <Skeleton className="h-4 w-48 mx-auto" />
+          </div>
         </div>
       </div>
     );
@@ -45,38 +52,46 @@ const Index = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
       {/* Header */}
-      <header className="border-b border-border bg-background/95 backdrop-blur">
+      <header className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center">
-              <Package className="w-4 h-4 text-primary-foreground" />
+            <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary/80 rounded-lg flex items-center justify-center shadow-lg">
+              <Building2 className="w-4 h-4 text-primary-foreground" />
             </div>
-            <h1 className="text-xl font-bold">Global Staff Hub</h1>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text">
+              Global Staff Hub
+            </h1>
           </div>
-          <Link to="/staff-login">
-            <Button>Staff Login</Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Link to="/staff-login">
+              <Button className="gap-2">
+                <Users className="w-4 h-4" />
+                Staff Login
+              </Button>
+            </Link>
+          </div>
         </div>
       </header>
 
       {/* Hero Section */}
       <main className="container mx-auto px-4 py-16">
-        <div className="max-w-4xl mx-auto text-center space-y-8">
+        <div className="max-w-4xl mx-auto text-center space-y-8 animate-fade-in">
           <div className="space-y-4">
-            <Badge variant="outline" className="px-3 py-1">
-              <Shield className="w-3 h-3 mr-1" />
+            <Badge variant="outline" className="px-4 py-2 gap-2 bg-background/50 backdrop-blur border-primary/20">
+              <Sparkles className="w-3 h-3 text-primary" />
               Enterprise-Grade Security
             </Badge>
-            <h2 className="text-5xl font-bold text-foreground leading-tight">
+            <h2 className="text-4xl md:text-6xl font-bold text-foreground leading-tight">
               Streamline Your 
-              <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-primary via-primary/90 to-primary/70 bg-clip-text text-transparent">
                 {" "}Business Operations
               </span>
             </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Manage product intake, inventory, and employee operations with our comprehensive business management platform.
+            <p className="text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+              Manage product intake, inventory, and employee operations with our comprehensive business management platform designed for modern enterprises.
             </p>
           </div>
 

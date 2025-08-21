@@ -4,15 +4,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
+import { EnhancedDashboardStats } from '@/components/enhanced-dashboard/EnhancedDashboardStats';
+import { ActivityFeed } from '@/components/enhanced-dashboard/ActivityFeed';
 import { 
   Package, 
   ClipboardCheck, 
   Users, 
-  Warehouse,
   Plus,
-  TrendingUp,
   CheckCircle,
-  Clock
+  Clock,
+  BarChart3
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -24,76 +25,35 @@ export default function Dashboard() {
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground mt-2">
-            Welcome to your business operations center
-          </p>
+      <div className="space-y-6 animate-fade-in">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+            <p className="text-muted-foreground mt-2">
+              Welcome back, {employee.full_name}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="capitalize">
+              {employee.role}
+            </Badge>
+            <Link to="/product-intake">
+              <Button className="gap-2">
+                <Plus className="w-4 h-4" />
+                New Intake
+              </Button>
+            </Link>
+          </div>
         </div>
 
-        {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Intakes</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">12</div>
-              <p className="text-xs text-muted-foreground">
-                +2 from yesterday
-              </p>
-            </CardContent>
-          </Card>
+        {/* Enhanced Stats */}
+        <EnhancedDashboardStats isAdmin={isAdmin} />
 
-          {isAdmin && (
-            <>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Pending Reviews</CardTitle>
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">8</div>
-                  <p className="text-xs text-muted-foreground">
-                    Awaiting approval
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Products</CardTitle>
-                  <Warehouse className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">156</div>
-                  <p className="text-xs text-muted-foreground">
-                    Across all suppliers
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Team Members</CardTitle>
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">24</div>
-                  <p className="text-xs text-muted-foreground">
-                    Active employees
-                  </p>
-                </CardContent>
-              </Card>
-            </>
-          )}
-        </div>
-
-        {/* Quick Actions */}
+        {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
+          {/* Quick Actions */}
+          <Card className="hover:shadow-md transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Plus className="w-5 h-5 text-primary" />
@@ -104,8 +64,8 @@ export default function Dashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Link to="/product-intake">
-                <Button variant="outline" className="w-full justify-start gap-2">
+              <Link to="/product-intake" className="block">
+                <Button variant="outline" className="w-full justify-start gap-2 hover:bg-primary/5">
                   <Package className="w-4 h-4" />
                   New Product Intake
                 </Button>
@@ -113,17 +73,24 @@ export default function Dashboard() {
               
               {isAdmin && (
                 <>
-                  <Link to="/review">
-                    <Button variant="outline" className="w-full justify-start gap-2">
+                  <Link to="/review" className="block">
+                    <Button variant="outline" className="w-full justify-start gap-2 hover:bg-primary/5">
                       <ClipboardCheck className="w-4 h-4" />
                       Review Pending Intakes
                     </Button>
                   </Link>
                   
-                  <Link to="/employees">
-                    <Button variant="outline" className="w-full justify-start gap-2">
+                  <Link to="/employees" className="block">
+                    <Button variant="outline" className="w-full justify-start gap-2 hover:bg-primary/5">
                       <Users className="w-4 h-4" />
                       Manage Employees
+                    </Button>
+                  </Link>
+
+                  <Link to="/analytics" className="block">
+                    <Button variant="outline" className="w-full justify-start gap-2 hover:bg-primary/5">
+                      <BarChart3 className="w-4 h-4" />
+                      View Analytics
                     </Button>
                   </Link>
                 </>
@@ -131,42 +98,8 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-success" />
-                Recent Activity
-              </CardTitle>
-              <CardDescription>
-                Latest updates and notifications
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="w-2 h-2 bg-success rounded-full mt-2"></div>
-                <div className="flex-1 space-y-1">
-                  <p className="text-sm font-medium">Intake #INK-2024-001 approved</p>
-                  <p className="text-xs text-muted-foreground">2 hours ago</p>
-                </div>
-              </div>
-              
-              <div className="flex items-start gap-3">
-                <div className="w-2 h-2 bg-primary rounded-full mt-2"></div>
-                <div className="flex-1 space-y-1">
-                  <p className="text-sm font-medium">New employee Sarah added</p>
-                  <p className="text-xs text-muted-foreground">1 day ago</p>
-                </div>
-              </div>
-              
-              <div className="flex items-start gap-3">
-                <div className="w-2 h-2 bg-warning rounded-full mt-2"></div>
-                <div className="flex-1 space-y-1">
-                  <p className="text-sm font-medium">Supplier CED updated products</p>
-                  <p className="text-xs text-muted-foreground">2 days ago</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Activity Feed */}
+          <ActivityFeed />
         </div>
 
         {/* Role-specific content */}

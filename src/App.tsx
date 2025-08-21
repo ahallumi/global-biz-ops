@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { ThemeProvider } from "@/components/theme/theme-provider";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import StaffLogin from "./pages/StaffLogin";
@@ -16,38 +17,40 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/auth" element={<Auth />} />
-          <Route path="/staff-login" element={<StaffLogin />} />
-          <Route path="/admin-login" element={<AdminLogin />} />
-          <Route 
-            path="/dashboard" 
-            element={
-              <ProtectedRoute requiredRoles={['admin', 'manager']}>
-                <Dashboard />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/staff-dashboard" 
-            element={
-              <ProtectedRoute requiredRoles={['staff']}>
-                <StaffDashboard />
-              </ProtectedRoute>
-            } 
-          />
-          {/* Redirect to dashboard for authenticated users */}
-          <Route path="/app" element={<Navigate to="/dashboard" replace />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
+    <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/staff-login" element={<StaffLogin />} />
+            <Route path="/admin-login" element={<AdminLogin />} />
+            <Route 
+              path="/dashboard" 
+              element={
+                <ProtectedRoute requiredRoles={['admin', 'manager']}>
+                  <Dashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/staff-dashboard" 
+              element={
+                <ProtectedRoute requiredRoles={['staff']}>
+                  <StaffDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            {/* Redirect to dashboard for authenticated users */}
+            <Route path="/app" element={<Navigate to="/dashboard" replace />} />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 
