@@ -48,7 +48,7 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
     try {
       let productId = data.productId;
       
-      // Create product if it doesn't exist
+      // Create product if it doesn't exist, or find existing one
       if (!productId && data.barcode) {
         try {
           const product = await createProduct.mutateAsync({
@@ -57,8 +57,34 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
             sku: data.barcode,
           });
           productId = product.id;
-        } catch (err) {
-          throw new Error(`Failed to create product: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        } catch (err: any) {
+          // Check if it's a duplicate UPC error
+          if (err?.message?.includes('duplicate key value violates unique constraint "products_upc_key"') || 
+              err?.code === '23505') {
+            // Product already exists, try to find it
+            try {
+              const { data: existingProducts } = await supabase
+                .from('products')
+                .select('id, name')
+                .eq('upc', data.barcode)
+                .limit(1);
+              
+              if (existingProducts && existingProducts.length > 0) {
+                productId = existingProducts[0].id;
+                toast({
+                  title: 'Product Found',
+                  description: `Using existing product: ${existingProducts[0].name}`,
+                  variant: 'default',
+                });
+              } else {
+                throw new Error('Product with this UPC already exists but could not be found');
+              }
+            } catch (findError) {
+              throw new Error(`Product with UPC ${data.barcode} already exists`);
+            }
+          } else {
+            throw new Error(`Failed to create product: ${err?.message || 'Unknown error'}`);
+          }
         }
       }
 
@@ -107,18 +133,22 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
           quantity_boxes: data.boxCount,
           units_per_box: data.unitsPerBox,
           unit_cost_cents: 0, // Default cost
-          line_total_cents: 0,
-          photo_url: photoUrl,
           upc: data.barcode,
+          photo_url: photoUrl,
         });
 
         onNext();
-      } catch (err) {
-        throw new Error(`Failed to save intake item: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      } catch (err: any) {
+        console.error('Intake item creation error:', err);
+        if (err?.message?.includes('cannot insert a non-DEFAULT value into column "line_total_cents"')) {
+          throw new Error('Database configuration error: please contact support');
+        } else {
+          throw new Error(`Failed to save intake item: ${err?.message || 'Unknown error'}`);
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving product:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to add product. Please try again.';
+      const errorMessage = error?.message || 'Failed to add product. Please try again.';
       setError(errorMessage);
       toast({
         title: 'Error Adding Product',
