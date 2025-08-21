@@ -14,7 +14,164 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      employees: {
+        Row: {
+          created_at: string | null
+          full_name: string
+          hourly_rate: number | null
+          id: string
+          role: Database["public"]["Enums"]["employee_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          full_name: string
+          hourly_rate?: number | null
+          id?: string
+          role?: Database["public"]["Enums"]["employee_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          full_name?: string
+          hourly_rate?: number | null
+          id?: string
+          role?: Database["public"]["Enums"]["employee_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      product_intake_items: {
+        Row: {
+          created_at: string | null
+          id: string
+          intake_id: string
+          photo_url: string | null
+          product_id: string
+          quantity_boxes: number
+          units_per_box: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          intake_id: string
+          photo_url?: string | null
+          product_id: string
+          quantity_boxes: number
+          units_per_box: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          intake_id?: string
+          photo_url?: string | null
+          product_id?: string
+          quantity_boxes?: number
+          units_per_box?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_intake_items_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "product_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_intake_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_intakes: {
+        Row: {
+          created_at: string | null
+          id: string
+          invoice_url: string | null
+          notes: string | null
+          status: Database["public"]["Enums"]["intake_status"]
+          submitted_by: string
+          supplier_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          invoice_url?: string | null
+          notes?: string | null
+          status?: Database["public"]["Enums"]["intake_status"]
+          submitted_by: string
+          supplier_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          invoice_url?: string | null
+          notes?: string | null
+          status?: Database["public"]["Enums"]["intake_status"]
+          submitted_by?: string
+          supplier_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_intakes_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          barcode: string | null
+          created_at: string | null
+          id: string
+          image_url: string | null
+          name: string
+        }
+        Insert: {
+          barcode?: string | null
+          created_at?: string | null
+          id?: string
+          image_url?: string | null
+          name: string
+        }
+        Update: {
+          barcode?: string | null
+          created_at?: string | null
+          id?: string
+          image_url?: string | null
+          name?: string
+        }
+        Relationships: []
+      }
+      suppliers: {
+        Row: {
+          code: string
+          created_at: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          code: string
+          created_at?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          code?: string
+          created_at?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +180,13 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      employee_role: "admin" | "staff" | "manager"
+      intake_status:
+        | "draft"
+        | "submitted"
+        | "approved"
+        | "rejected"
+        | "needs_correction"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +313,15 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      employee_role: ["admin", "staff", "manager"],
+      intake_status: [
+        "draft",
+        "submitted",
+        "approved",
+        "rejected",
+        "needs_correction",
+      ],
+    },
   },
 } as const
