@@ -5,12 +5,15 @@ import { useAuth } from '@/hooks/useAuth';
 import { Layout } from '@/components/layout/Layout';
 import { DataTable } from '@/components/data-table/DataTable';
 import { intakeColumns } from '@/components/intakes/intakeColumns';
+import { MobileIntakeList } from '@/components/intakes/MobileIntakeList';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Package, Filter } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 export default function IntakesPage() {
   const navigate = useNavigate();
@@ -18,6 +21,7 @@ export default function IntakesPage() {
   const { data: intakes, isLoading } = useIntakes();
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [activeTab, setActiveTab] = useState('all');
+  const isMobile = useIsMobile();
 
   const isAdmin = employee?.role === 'admin';
   const isManager = employee?.role === 'manager';
@@ -78,55 +82,76 @@ export default function IntakesPage() {
     <Layout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className={cn("flex gap-4", isMobile ? "flex-col" : "flex-col sm:flex-row sm:items-center sm:justify-between")}>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Product Intakes</h1>
+            <h1 className={cn("font-bold text-foreground", isMobile ? "text-xl" : "text-2xl")}>
+              Product Intakes
+            </h1>
             <p className="text-muted-foreground">
               Manage and track all product intake submissions
             </p>
           </div>
-          <Button onClick={() => navigate('/intakes/new')}>
+          <Button 
+            onClick={() => navigate('/intakes/new')}
+            className={cn(isMobile && "w-full")}
+          >
             <Plus className="mr-2 h-4 w-4" />
             New Intake
           </Button>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className={cn("grid gap-4", isMobile ? "grid-cols-2" : "grid-cols-1 md:grid-cols-4")}>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Intakes</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className={cn("font-medium", isMobile ? "text-xs" : "text-sm")}>
+                Total Intakes
+              </CardTitle>
+              {!isMobile && <Package className="h-4 w-4 text-muted-foreground" />}
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{counts.all}</div>
+              <div className={cn("font-bold", isMobile ? "text-xl" : "text-2xl")}>
+                {counts.all}
+              </div>
             </CardContent>
           </Card>
           
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Draft</CardTitle>
+              <CardTitle className={cn("font-medium", isMobile ? "text-xs" : "text-sm")}>
+                Draft
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{counts.draft}</div>
+              <div className={cn("font-bold", isMobile ? "text-xl" : "text-2xl")}>
+                {counts.draft}
+              </div>
             </CardContent>
           </Card>
           
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Submitted</CardTitle>
+              <CardTitle className={cn("font-medium", isMobile ? "text-xs" : "text-sm")}>
+                Submitted
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-warning">{counts.submitted}</div>
+              <div className={cn("font-bold text-warning", isMobile ? "text-xl" : "text-2xl")}>
+                {counts.submitted}
+              </div>
             </CardContent>
           </Card>
           
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Approved</CardTitle>
+              <CardTitle className={cn("font-medium", isMobile ? "text-xs" : "text-sm")}>
+                Approved
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-success">{counts.approved}</div>
+              <div className={cn("font-bold text-success", isMobile ? "text-xl" : "text-2xl")}>
+                {counts.approved}
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -134,7 +159,7 @@ export default function IntakesPage() {
         {/* Main Content */}
         <Card>
           <CardHeader>
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className={cn("flex gap-4", isMobile ? "flex-col" : "flex-col sm:flex-row sm:items-center sm:justify-between")}>
               <div>
                 <CardTitle>Intake Management</CardTitle>
                 <CardDescription>
@@ -145,7 +170,7 @@ export default function IntakesPage() {
               <div className="flex items-center gap-2">
                 <Filter className="h-4 w-4 text-muted-foreground" />
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className={cn(isMobile ? "w-full" : "w-[180px]")}>
                     <SelectValue placeholder="Filter by status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -173,22 +198,36 @@ export default function IntakesPage() {
               </TabsList>
               
               <TabsContent value="all" className="space-y-4">
-                <DataTable 
-                  columns={intakeColumns}
-                  data={filteredIntakes}
-                  searchKey="suppliers.name"
-                  searchPlaceholder="Search by supplier name..."
-                />
-              </TabsContent>
-              
-              {(isAdmin || isManager) && (
-                <TabsContent value="my" className="space-y-4">
+                {isMobile ? (
+                  <MobileIntakeList 
+                    data={filteredIntakes}
+                    searchPlaceholder="Search by supplier name..."
+                  />
+                ) : (
                   <DataTable 
                     columns={intakeColumns}
                     data={filteredIntakes}
                     searchKey="suppliers.name"
                     searchPlaceholder="Search by supplier name..."
                   />
+                )}
+              </TabsContent>
+              
+              {(isAdmin || isManager) && (
+                <TabsContent value="my" className="space-y-4">
+                  {isMobile ? (
+                    <MobileIntakeList 
+                      data={filteredIntakes}
+                      searchPlaceholder="Search by supplier name..."
+                    />
+                  ) : (
+                    <DataTable 
+                      columns={intakeColumns}
+                      data={filteredIntakes}
+                      searchKey="suppliers.name"
+                      searchPlaceholder="Search by supplier name..."
+                    />
+                  )}
                 </TabsContent>
               )}
             </Tabs>
