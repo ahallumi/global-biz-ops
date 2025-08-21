@@ -11,6 +11,7 @@ import StaffLogin from "./pages/StaffLogin";
 import AdminLogin from "./pages/AdminLogin";
 import Dashboard from "./pages/Dashboard";
 import StaffDashboard from "./pages/StaffDashboard";
+import ClockPage from "./pages/ClockPage";
 import IntakesPage from "./pages/IntakesPage";
 import NewIntakePage from "./pages/NewIntakePage";
 import IntakeDetailPage from "./pages/IntakeDetailPage";
@@ -42,8 +43,16 @@ const App = () => (
             <Route 
               path="/staff-dashboard" 
               element={
-                <ProtectedRoute requiredRoles={['staff']}>
+                <ProtectedRoute requiredRoles={['staff', 'admin', 'manager']}>
                   <StaffDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/clock" 
+              element={
+                <ProtectedRoute requiredRoles={['staff', 'admin', 'manager']}>
+                  <ClockPage />
                 </ProtectedRoute>
               } 
             />
