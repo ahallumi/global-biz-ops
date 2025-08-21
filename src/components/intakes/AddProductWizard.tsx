@@ -139,7 +139,7 @@ export function AddProductWizard({ intakeId, children }: AddProductWizardProps) 
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-md w-full h-[600px] p-0 gap-0">
+      <DialogContent className="w-full h-screen sm:max-w-md sm:h-[600px] p-0 gap-0">
         <div className="flex flex-col h-full">
           <ProgressIndicator currentStep={currentStep} totalSteps={totalSteps} />
           

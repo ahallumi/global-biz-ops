@@ -57,7 +57,7 @@ export function UnitsPerBoxStep({ data, onUpdate, onNext, onBack }: UnitsPerBoxS
         {/* Total Calculation */}
         <div className="bg-muted/50 rounded-lg p-4">
           <div className="text-sm text-muted-foreground mb-1">Total Units</div>
-          <div className="text-2xl font-bold text-primary">
+          <div className="text-lg font-semibold text-primary">
             {data.boxCount} boxes × {displayValue} units = {data.boxCount * (parseInt(displayValue) || 1)} total units
           </div>
         </div>
