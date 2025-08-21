@@ -75,7 +75,15 @@ export default function StaffDashboard() {
       <StaffModeBanner />
 
       <main className="container mx-auto px-6 py-8">
-        <div className={`grid gap-6 ${isMobile ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-3'}`}>
+        <div className="space-y-8">
+          {/* Welcome Section */}
+          <div className="text-center space-y-2">
+            <h2 className="text-2xl font-bold text-foreground">Welcome back, {employee.full_name.split(' ')[0]}!</h2>
+            <p className="text-muted-foreground">Manage your product intake submissions</p>
+          </div>
+
+          {/* Action Cards */}
+          <div className={`grid gap-6 ${isMobile ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-3'}`}>
           {actionCards.map((card) => {
             const IconComponent = card.icon;
             return (
@@ -102,6 +110,7 @@ export default function StaffDashboard() {
               </Card>
             );
           })}
+        </div>
         </div>
       </main>
     </div>
