@@ -11,6 +11,7 @@ import StaffLogin from "./pages/StaffLogin";
 import AdminLogin from "./pages/AdminLogin";
 import Dashboard from "./pages/Dashboard";
 import StaffDashboard from "./pages/StaffDashboard";
+import SuppliersPage from "./pages/SuppliersPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,30 @@ const App = () => (
               element={
                 <ProtectedRoute requiredRoles={['staff']}>
                   <StaffDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/suppliers" 
+              element={
+                <ProtectedRoute requiredRoles={['admin', 'manager', 'staff']}>
+                  <SuppliersPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/suppliers/new" 
+              element={
+                <ProtectedRoute requiredRoles={['admin', 'manager']}>
+                  <SuppliersPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/suppliers/:id/edit" 
+              element={
+                <ProtectedRoute requiredRoles={['admin', 'manager']}>
+                  <SuppliersPage />
                 </ProtectedRoute>
               } 
             />

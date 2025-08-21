@@ -7,7 +7,8 @@ import {
   BarChart3,
   Settings,
   LogOut,
-  Building2
+  Building2,
+  Truck
 } from "lucide-react"
 
 import { useAuth } from "@/hooks/useAuth"
@@ -48,6 +49,12 @@ const navigation = [
     href: '/staff-dashboard',
     icon: BarChart3,
     roles: ['staff'],
+  },
+  {
+    name: 'Suppliers',
+    href: '/suppliers',
+    icon: Truck,
+    roles: ['admin', 'manager', 'staff'],
   },
   {
     name: 'Users',

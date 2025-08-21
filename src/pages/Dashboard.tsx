@@ -80,6 +80,13 @@ export default function Dashboard() {
                     </Button>
                   </Link>
                   
+                  <Link to="/suppliers" className="block">
+                    <Button variant="outline" className="w-full justify-start gap-2 hover:bg-primary/5">
+                      <Package className="w-4 h-4" />
+                      Manage Suppliers
+                    </Button>
+                  </Link>
+                  
                   <Link to="/employees" className="block">
                     <Button variant="outline" className="w-full justify-start gap-2 hover:bg-primary/5">
                       <Users className="w-4 h-4" />
