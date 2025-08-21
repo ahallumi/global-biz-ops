@@ -3,13 +3,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Package, Plus, Clock } from 'lucide-react';
 import { StaffModeBanner } from '@/components/StaffModeBanner';
 import { useNavigate } from 'react-router-dom';
-import { useIsMobile } from '@/hooks/use-mobile';
+
 import { Layout } from '@/components/layout/Layout';
 
 export default function StaffDashboard() {
   const { employee } = useAuth();
   const navigate = useNavigate();
-  const isMobile = useIsMobile();
+  
 
   if (!employee) {
     return (
