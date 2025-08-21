@@ -5,8 +5,6 @@ import { StaffModeBanner } from '@/components/StaffModeBanner';
 import { useNavigate } from 'react-router-dom';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Layout } from '@/components/layout/Layout';
-import { ClockCard } from '@/components/clock/ClockCard';
-import { TodaySummaryCard } from '@/components/clock/TodaySummaryCard';
 
 export default function StaffDashboard() {
   const { employee } = useAuth();
@@ -36,6 +34,12 @@ export default function StaffDashboard() {
       description: "View and manage intakes",
       icon: Package,
       onClick: () => navigate('/intakes')
+    },
+    {
+      title: "Time Clock",
+      description: "Clock in/out and manage time",
+      icon: Clock,
+      onClick: () => navigate('/clock')
     }
   ];
 
@@ -48,17 +52,11 @@ export default function StaffDashboard() {
         {/* Welcome Section */}
         <div className="text-center space-y-2">
           <h2 className="text-2xl font-bold text-foreground">Welcome back, {employee.full_name.split(' ')[0]}!</h2>
-          <p className="text-muted-foreground">Manage your time and intake submissions</p>
+          <p className="text-muted-foreground">Manage your work tasks and intake orders</p>
         </div>
 
-        {/* Main Dashboard Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Clock In/Out Card */}
-          <ClockCard />
-
-          {/* Today's Summary Card */}
-          <TodaySummaryCard />
-
+        {/* Main Dashboard */}
+        <div className="max-w-2xl mx-auto">
           {/* Quick Actions Card */}
           <Card>
             <CardHeader>
