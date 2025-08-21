@@ -16,27 +16,42 @@ export type Database = {
     Tables: {
       employees: {
         Row: {
+          active: boolean | null
+          avatar_url: string | null
           created_at: string | null
           full_name: string
           hourly_rate: number | null
+          hourly_rate_cents: number | null
           id: string
           role: Database["public"]["Enums"]["employee_role"]
+          staff_code: string | null
+          staff_pin: string | null
           user_id: string
         }
         Insert: {
+          active?: boolean | null
+          avatar_url?: string | null
           created_at?: string | null
           full_name: string
           hourly_rate?: number | null
+          hourly_rate_cents?: number | null
           id?: string
           role?: Database["public"]["Enums"]["employee_role"]
+          staff_code?: string | null
+          staff_pin?: string | null
           user_id: string
         }
         Update: {
+          active?: boolean | null
+          avatar_url?: string | null
           created_at?: string | null
           full_name?: string
           hourly_rate?: number | null
+          hourly_rate_cents?: number | null
           id?: string
           role?: Database["public"]["Enums"]["employee_role"]
+          staff_code?: string | null
+          staff_pin?: string | null
           user_id?: string
         }
         Relationships: []
@@ -240,6 +255,135 @@ export type Database = {
         }
         Relationships: []
       }
+      punch_events: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          employee_id: string
+          event_at: string
+          id: string
+          ip: string | null
+          kind: string
+          note: string | null
+          shift_id: string | null
+          source: string
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          employee_id: string
+          event_at?: string
+          id?: string
+          ip?: string | null
+          kind: string
+          note?: string | null
+          shift_id?: string | null
+          source?: string
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          employee_id?: string
+          event_at?: string
+          id?: string
+          ip?: string | null
+          kind?: string
+          note?: string | null
+          shift_id?: string | null
+          source?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "punch_events_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      shift_breaks: {
+        Row: {
+          created_at: string | null
+          end_at: string | null
+          id: string
+          kind: string
+          shift_id: string
+          start_at: string
+        }
+        Insert: {
+          created_at?: string | null
+          end_at?: string | null
+          id?: string
+          kind?: string
+          shift_id: string
+          start_at: string
+        }
+        Update: {
+          created_at?: string | null
+          end_at?: string | null
+          id?: string
+          kind?: string
+          shift_id?: string
+          start_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_breaks_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shifts: {
+        Row: {
+          break_open_at: string | null
+          break_seconds: number
+          clock_in_at: string
+          clock_out_at: string | null
+          created_at: string | null
+          employee_id: string
+          id: string
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          break_open_at?: string | null
+          break_seconds?: number
+          clock_in_at: string
+          clock_out_at?: string | null
+          created_at?: string | null
+          employee_id: string
+          id?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          break_open_at?: string | null
+          break_seconds?: number
+          clock_in_at?: string
+          clock_out_at?: string | null
+          created_at?: string | null
+          employee_id?: string
+          id?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shifts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           active: boolean
@@ -297,11 +441,64 @@ export type Database = {
         }
         Relationships: []
       }
+      time_settings: {
+        Row: {
+          auto_clock_out_hours: number
+          default_break_kind: string
+          id: number
+          overtime_daily_hours: number
+          overtime_weekly_hours: number
+          rounding_minutes: number
+          timezone: string
+        }
+        Insert: {
+          auto_clock_out_hours?: number
+          default_break_kind?: string
+          id?: number
+          overtime_daily_hours?: number
+          overtime_weekly_hours?: number
+          rounding_minutes?: number
+          timezone?: string
+        }
+        Update: {
+          auto_clock_out_hours?: number
+          default_break_kind?: string
+          id?: number
+          overtime_daily_hours?: number
+          overtime_weekly_hours?: number
+          rounding_minutes?: number
+          timezone?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      v_timesheet_daily: {
+        Row: {
+          break_seconds: number | null
+          day_ct: string | null
+          employee_id: string | null
+          first_in: string | null
+          last_out: string | null
+          net_seconds: number | null
+          shifts_count: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shifts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
     }
     Functions: {
+      ct_date: {
+        Args: { ts: string }
+        Returns: string
+      }
       has_role: {
         Args: {
           p_roles: Database["public"]["Enums"]["employee_role"][]
