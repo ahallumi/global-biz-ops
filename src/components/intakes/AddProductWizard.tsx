@@ -109,6 +109,7 @@ export function AddProductWizard({ intakeId, children }: AddProductWizardProps) 
       case 4:
         return (
           <UnitsPerBoxStep
+            intakeId={intakeId}
             data={wizardData}
             onUpdate={updateWizardData}
             onNext={handleNext}

@@ -7,13 +7,15 @@ interface CustomNumericKeyboardProps {
   onBackspace: () => void;
   onEnter: () => void;
   className?: string;
+  disabled?: boolean;
 }
 
 export function CustomNumericKeyboard({ 
   onNumber, 
   onBackspace, 
   onEnter,
-  className 
+  className,
+  disabled = false
 }: CustomNumericKeyboardProps) {
   const numbers = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
 
@@ -26,6 +28,7 @@ export function CustomNumericKeyboard({
           variant="outline"
           size="lg"
           onClick={() => onNumber(num)}
+          disabled={disabled}
           className="h-14 text-xl font-semibold hover:bg-primary hover:text-primary-foreground"
         >
           {num}
@@ -37,6 +40,7 @@ export function CustomNumericKeyboard({
         variant="outline"
         size="lg"
         onClick={onBackspace}
+        disabled={disabled}
         className="h-14 hover:bg-destructive hover:text-destructive-foreground"
       >
         <Delete className="w-6 h-6" />
@@ -46,6 +50,7 @@ export function CustomNumericKeyboard({
         variant="outline"
         size="lg"
         onClick={() => onNumber('0')}
+        disabled={disabled}
         className="h-14 text-xl font-semibold hover:bg-primary hover:text-primary-foreground"
       >
         0
@@ -55,6 +60,7 @@ export function CustomNumericKeyboard({
         variant="default"
         size="lg"
         onClick={onEnter}
+        disabled={disabled}
         className="h-14 bg-primary hover:bg-primary/90"
       >
         <CornerDownLeft className="w-6 h-6" />
