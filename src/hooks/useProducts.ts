@@ -7,8 +7,9 @@ import { useToast } from '@/hooks/use-toast';
 type Product = Database['public']['Tables']['products']['Row'];
 type ProductInsert = Database['public']['Tables']['products']['Insert'];
 type ProductUpdate = Database['public']['Tables']['products']['Update'];
+type CatalogStatus = Database['public']['Enums']['catalog_status'];
 
-export function useProducts(catalogStatus: string = 'ACTIVE') {
+export function useProducts(catalogStatus: CatalogStatus = 'ACTIVE') {
   return useQuery({
     queryKey: ['products', catalogStatus],
     queryFn: async () => {
@@ -73,7 +74,7 @@ export function useCreateProduct() {
   });
 }
 
-export function useSearchProducts(query: string, catalogStatus: string = 'ACTIVE') {
+export function useSearchProducts(query: string, catalogStatus: CatalogStatus = 'ACTIVE') {
   return useQuery({
     queryKey: ['products', 'search', query, catalogStatus],
     queryFn: async () => {

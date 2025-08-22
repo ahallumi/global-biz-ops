@@ -401,11 +401,11 @@ export default function InventorySettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Button onClick={() => handleImportProducts('FULL')} disabled={importProducts.isLoading}>
+              <Button onClick={() => handleImportProducts('FULL')} disabled={importProducts.isPending}>
                 <Download className="h-4 w-4 mr-2" />
                 Full Import
               </Button>
-              <Button onClick={() => handleImportProducts('DELTA')} disabled={importProducts.isLoading} variant="outline">
+              <Button onClick={() => handleImportProducts('DELTA')} disabled={importProducts.isPending} variant="outline">
                 <Upload className="h-4 w-4 mr-2" />
                 Delta Import
               </Button>
