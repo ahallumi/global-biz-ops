@@ -24,6 +24,21 @@ serve(async (req) => {
       throw new Error('Missing required parameters')
     }
 
+    // Normalize and validate the access token
+    let normalizedToken = accessToken.trim()
+    
+    // Remove "Bearer " prefix if present
+    if (normalizedToken.startsWith('Bearer ')) {
+      normalizedToken = normalizedToken.substring(7)
+    }
+    
+    // Validate token format - Square tokens are typically 64+ characters
+    if (normalizedToken.length < 32) {
+      throw new Error('Access token appears to be invalid (too short)')
+    }
+    
+    console.log('Token validation passed, length:', normalizedToken.length)
+
     // Get the app master key for encryption
     const appCryptKey = Deno.env.get('APP_CRYPT_KEY')
     if (!appCryptKey) {
@@ -32,10 +47,10 @@ serve(async (req) => {
 
     console.log('Saving credentials for integration:', integrationId)
 
-    // Encrypt the access token using pgcrypto
+    // Encrypt the normalized access token using pgcrypto
     const { error: encryptError } = await supabase.rpc('save_encrypted_credentials', {
       p_integration_id: integrationId,
-      p_access_token: accessToken,
+      p_access_token: normalizedToken,
       p_crypt_key: appCryptKey
     })
 

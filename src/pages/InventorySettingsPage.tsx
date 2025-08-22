@@ -270,7 +270,7 @@ export default function InventorySettingsPage() {
                         />
                       </FormControl>
                       <FormDescription>
-                        Enter your Square access token. Keep it safe!
+                        Enter your Square <strong>Access Token</strong> (not Application ID). Get this from your Square Developer Dashboard → Applications → [Your App] → Production/Sandbox → Access Token.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>

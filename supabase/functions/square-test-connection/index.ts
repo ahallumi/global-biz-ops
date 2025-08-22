@@ -64,6 +64,22 @@ serve(async (req) => {
     if (!response.ok) {
       const errorData = await response.text()
       console.error('Square API error:', response.status, errorData)
+      
+      // Parse Square error response for better feedback
+      try {
+        const errorJson = JSON.parse(errorData)
+        if (errorJson.errors && errorJson.errors.length > 0) {
+          const squareError = errorJson.errors[0]
+          if (squareError.code === 'UNAUTHORIZED') {
+            throw new Error(`Authentication failed: ${squareError.detail}. Please verify your access token is correct and matches the selected environment.`)
+          } else {
+            throw new Error(`Square API error: ${squareError.category} - ${squareError.detail}`)
+          }
+        }
+      } catch (parseError) {
+        // Fall back to original error if parsing fails
+      }
+      
       throw new Error(`Square API error: ${response.status} - ${errorData}`)
     }
 
