@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useIntake, useDeleteIntakeItem } from '@/hooks/useIntakes';
+import { useIntake, useDeleteIntakeItem, useUpdateIntake } from '@/hooks/useIntakes';
+import { useProductCandidates } from '@/hooks/useProductCandidates';
 import { Layout } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +9,8 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbS
 import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { IntakeStatusBadge } from '@/components/intakes/IntakeStatusBadge';
 import { AddProductWizard } from '@/components/intakes/AddProductWizard';
+import { CandidateResolutionStep } from '@/components/intakes/CandidateResolutionStep';
+import { IntakeCandidateCard } from '@/components/intakes/IntakeCandidateCard';
 import { ResponsiveProductImage } from '@/components/intakes/ResponsiveProductImage';
 import { MobileProductItem } from '@/components/intakes/MobileProductItem';
 import { ArrowLeft, Edit, Package, Calendar, User, FileText, MapPin, Trash2, Info, X } from 'lucide-react';
@@ -21,9 +24,12 @@ export default function IntakeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: intake, isLoading } = useIntake(id!);
+  const { data: allCandidates = [] } = useProductCandidates();
   const deleteIntakeItem = useDeleteIntakeItem();
+  const updateIntake = useUpdateIntake();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showCandidateResolution, setShowCandidateResolution] = useState(false);
 
   if (isLoading) {
     return (
@@ -61,6 +67,43 @@ export default function IntakeDetailPage() {
   }
 
   const intakeId = intake.id.split('-')[0].toUpperCase();
+  
+  // Check for pending candidates in this intake
+  const pendingCandidates = allCandidates.filter(
+    candidate => candidate.intake_id === intake.id && candidate.status === 'PENDING'
+  );
+  const hasPendingCandidates = pendingCandidates.length > 0;
+  
+  const handleFinalizaIntake = async () => {
+    if (hasPendingCandidates) {
+      setShowCandidateResolution(true);
+      return;
+    }
+    
+    // Finalize intake if no pending candidates
+    try {
+      await updateIntake.mutateAsync({
+        id: intake.id,
+        status: 'submitted'
+      });
+      navigate('/intakes');
+    } catch (error) {
+      console.error('Failed to finalize intake:', error);
+    }
+  };
+  
+  const handleCandidateResolutionComplete = async () => {
+    setShowCandidateResolution(false);
+    try {
+      await updateIntake.mutateAsync({
+        id: intake.id,
+        status: 'submitted'
+      });
+      navigate('/intakes');
+    } catch (error) {
+      console.error('Failed to finalize intake:', error);
+    }
+  };
 
   return (
     <Layout>
@@ -157,6 +200,15 @@ export default function IntakeDetailPage() {
           
           {/* Main Content - Product Items (Left side on desktop, 2/3 width) */}
           <div className={cn("space-y-6", !isMobile && "lg:col-span-2")}>
+            
+            {/* Candidate Status Card */}
+            {pendingCandidates.length > 0 && !showCandidateResolution && (
+              <IntakeCandidateCard 
+                candidates={pendingCandidates}
+                onResolve={() => setShowCandidateResolution(true)}
+              />
+            )}
+            
             {/* Product Items - Now the primary focus */}
             <Card>
               <CardHeader>
@@ -247,6 +299,35 @@ export default function IntakeDetailPage() {
                     <h3 className="text-lg font-medium mb-2">No products added yet</h3>
                     <p className="text-sm mb-4">Start by adding products to this intake</p>
                     <AddProductWizard intakeId={intake.id} />
+                  </div>
+                )}
+                
+                {/* Candidate Resolution Step */}
+                {showCandidateResolution && (
+                  <div className="mt-8">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Resolve Product Candidates</CardTitle>
+                        <CardDescription>
+                          New products from this intake need approval before finalizing.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <CandidateResolutionStep 
+                          intakeId={intake.id} 
+                          onComplete={handleCandidateResolutionComplete}
+                        />
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+                
+                {/* Finalize Button */}
+                {!showCandidateResolution && intake.status === 'draft' && intake.product_intake_items && intake.product_intake_items.length > 0 && (
+                  <div className="flex justify-end mt-6">
+                    <Button onClick={handleFinalizaIntake} size="lg">
+                      {hasPendingCandidates ? 'Review Candidates & Finalize' : 'Finalize Intake'}
+                    </Button>
                   </div>
                 )}
               </CardContent>

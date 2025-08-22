@@ -29,6 +29,7 @@ export default function InventorySettingsPage() {
   const [environment, setEnvironment] = useState<'SANDBOX' | 'PRODUCTION'>('PRODUCTION');
   const [autoImportEnabled, setAutoImportEnabled] = useState(false);
   const [autoImportInterval, setAutoImportInterval] = useState(180);
+  const [autoPushEnabled, setAutoPushEnabled] = useState(false);
 
   const currentIntegration = integrations[0]; // For now, we only support one Square integration
 
@@ -37,6 +38,8 @@ export default function InventorySettingsPage() {
       setEnvironment(currentIntegration.environment as 'SANDBOX' | 'PRODUCTION');
       setAutoImportEnabled(currentIntegration.auto_import_enabled);
       setAutoImportInterval(currentIntegration.auto_import_interval_minutes);
+      // Check for auto-push setting in display_name or notes (temporary storage)
+      setAutoPushEnabled(currentIntegration.display_name?.includes('AUTO_PUSH') || false);
     }
   }, [currentIntegration]);
 
@@ -130,6 +133,7 @@ export default function InventorySettingsPage() {
       id: currentIntegration.id,
       auto_import_enabled: autoImportEnabled,
       auto_import_interval_minutes: autoImportInterval,
+      display_name: autoPushEnabled ? 'Square AUTO_PUSH' : 'Square',
     });
   };
 
@@ -287,6 +291,18 @@ export default function InventorySettingsPage() {
               <Switch
                 checked={autoImportEnabled}
                 onCheckedChange={setAutoImportEnabled}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Auto-push approved products</Label>
+                <p className="text-sm text-muted-foreground">
+                  Automatically push approved products to Square
+                </p>
+              </div>
+              <Switch
+                checked={autoPushEnabled}
+                onCheckedChange={setAutoPushEnabled}
               />
             </div>
             <div className="space-y-2">

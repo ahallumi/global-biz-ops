@@ -4,7 +4,8 @@ import { ChevronLeft, PackageCheck } from 'lucide-react';
 import { WizardData } from '../AddProductWizard';
 import { CustomNumericKeyboard } from './CustomNumericKeyboard';
 import { useCreateIntakeItem, useUpdateIntakeItem } from '@/hooks/useIntakes';
-import { useCreateProduct } from '@/hooks/useProducts';
+import { useCreateProduct, useSearchProducts } from '@/hooks/useProducts';
+import { useCreateProductCandidate } from '@/hooks/useProductCandidates';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { DuplicateProductDialog } from '../DuplicateProductDialog';
@@ -29,8 +30,10 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
   
   const { toast } = useToast();
   const createProduct = useCreateProduct();
+  const createProductCandidate = useCreateProductCandidate();
   const createIntakeItem = useCreateIntakeItem();
   const updateIntakeItem = useUpdateIntakeItem();
+  const { data: existingProducts } = useSearchProducts(data.barcode || '');
 
   const handleNumber = (num: string) => {
     const newValue = displayValue === '0' ? num : displayValue + num;
@@ -54,49 +57,44 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
     
     try {
       let productId = data.productId;
+      let candidateId = null;
       
-      // Create product if it doesn't exist, or find existing one
+      // Check if product exists or create candidate for new products
       if (!productId && data.barcode) {
-        try {
-          const product = await createProduct.mutateAsync({
+        // Check if product already exists in catalog
+        const existingProduct = existingProducts?.[0];
+        
+        if (existingProduct) {
+          // Use existing product
+          productId = existingProduct.id;
+          toast({
+            title: 'Product Found',
+            description: `Using existing product: ${existingProduct.name}`,
+            variant: 'default',
+          });
+        } else {
+          // Create product candidate for new products
+          const candidate = await createProductCandidate.mutateAsync({
             name: data.productName || `Product ${data.barcode}`,
             upc: data.barcode,
-            sku: data.barcode,
+            source: 'INTAKE',
+            intake_id: intakeId,
+            status: 'PENDING',
+            suggested_cost_cents: 0,
+            unit_of_sale: 'EACH',
           });
-          productId = product.id;
-        } catch (err: any) {
-          // Check if it's a duplicate UPC error
-          if (err?.message?.includes('duplicate key value violates unique constraint "products_upc_key"') || 
-              err?.code === '23505') {
-            // Product already exists, try to find it
-            try {
-              const { data: existingProducts } = await supabase
-                .from('products')
-                .select('id, name')
-                .eq('upc', data.barcode)
-                .limit(1);
-              
-              if (existingProducts && existingProducts.length > 0) {
-                productId = existingProducts[0].id;
-                toast({
-                  title: 'Product Found',
-                  description: `Using existing product: ${existingProducts[0].name}`,
-                  variant: 'default',
-                });
-              } else {
-                throw new Error('Product with this UPC already exists but could not be found');
-              }
-            } catch (findError) {
-              throw new Error(`Product with UPC ${data.barcode} already exists`);
-            }
-          } else {
-            throw new Error(`Failed to create product: ${err?.message || 'Unknown error'}`);
-          }
+          candidateId = candidate.id;
+          
+          toast({
+            title: 'Product Candidate Created',
+            description: 'New product will need approval before entering catalog',
+            variant: 'default',
+          });
         }
       }
 
-      if (!productId) {
-        throw new Error('Product ID is required');
+      if (!productId && !candidateId) {
+        throw new Error('Product ID or Candidate ID is required');
       }
 
       // Upload photo if provided
@@ -131,12 +129,12 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
         }
       }
 
-      // Check for existing product in this intake
+      // Check for existing product/candidate in this intake
       const { data: existingItems, error: checkError } = await supabase
         .from('product_intake_items')
-        .select('*, products!inner(name)')
+        .select('*, products(name), product_candidates(name)')
         .eq('intake_id', intakeId)
-        .eq('product_id', productId);
+        .or(productId ? `product_id.eq.${productId}` : `candidate_id.eq.${candidateId}`);
 
       if (checkError) {
         console.error('Error checking for duplicates:', checkError);
@@ -159,9 +157,10 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
             ...(photoUrl && { photo_url: photoUrl }), // Update photo if new one provided
           });
 
+          const itemName = existingItem.products?.name || existingItem.product_candidates?.name || 'Product';
           toast({
             title: 'Quantities Merged',
-            description: `Added ${data.boxCount} boxes to existing ${existingItem.products.name} (Total: ${newQuantityBoxes} boxes)`,
+            description: `Added ${data.boxCount} boxes to existing ${itemName} (Total: ${newQuantityBoxes} boxes)`,
             variant: 'default',
           });
 
@@ -169,10 +168,11 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
           return;
         } else {
           // Different units per box - show conflict dialog
+          const itemName = existingItem.products?.name || existingItem.product_candidates?.name || 'Product';
           setDuplicateDialog({
             open: true,
             existingItem,
-            productName: existingItem.products.name,
+            productName: itemName,
           });
           return;
         }
@@ -183,6 +183,7 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
         await createIntakeItem.mutateAsync({
           intake_id: intakeId,
           product_id: productId,
+          candidate_id: candidateId,
           quantity: data.totalUnits,
           quantity_boxes: data.boxCount,
           units_per_box: data.unitsPerBox,
