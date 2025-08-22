@@ -25,7 +25,7 @@ import { CheckCircle, XCircle, MapPin, MoreHorizontal, Link } from 'lucide-react
 type ProductCandidate = Database['public']['Tables']['product_candidates']['Row'];
 
 interface CandidateActionsProps {
-  candidate: ProductCandidate;
+  candidate: any; // Make it flexible to accept staging item data
 }
 
 export function CandidateActions({ candidate }: CandidateActionsProps) {

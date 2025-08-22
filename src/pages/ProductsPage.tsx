@@ -3,6 +3,7 @@ import { useProducts, useSearchProducts } from '@/hooks/useProducts';
 import { useProductCandidates } from '@/hooks/useProductCandidates';
 import { useProductSyncRuns, useProductImportRuns, usePushProductsToSquare, usePullProductsFromSquare } from '@/hooks/useProductSync';
 import { useInventoryIntegrations } from '@/hooks/useInventoryIntegrations';
+import { useStagingData, useStagingStats, StagingItem } from '@/hooks/useStagingData';
 import { Layout } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,20 +16,25 @@ import { Database } from '@/integrations/supabase/types';
 import { Search, RefreshCw, Package, Upload, Download, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CandidateActions } from '@/components/products/CandidateActions';
+import { PlaceholderActions } from '@/components/products/PlaceholderActions';
+import { StagingFilters } from '@/components/products/StagingFilters';
+import { StagingAdminActions } from '@/components/products/StagingAdminActions';
 
 type Product = Database['public']['Tables']['products']['Row'];
 
 export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('catalog');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   
   // Product hooks - now filtered by catalog status
   const { data: products, isLoading: isLoadingProducts, refetch: refetchProducts } = useProducts('ACTIVE');
-  const { data: placeholderProducts, isLoading: isLoadingPlaceholders } = useProducts('PLACEHOLDER');
   const { data: searchResults, isLoading: isSearching } = useSearchProducts(searchQuery, 'ACTIVE');
   
-  // Candidate hooks
-  const { data: candidates, isLoading: isLoadingCandidates, refetch: refetchCandidates } = useProductCandidates();
+  // Staging hooks
+  const { data: stagingData, isLoading: isLoadingStaging, refetch: refetchStaging } = useStagingData();
+  const { data: stagingStats } = useStagingStats();
   
   // Sync hooks
   const { data: syncRuns, isLoading: isLoadingSyncRuns } = useProductSyncRuns();
@@ -40,6 +46,25 @@ export default function ProductsPage() {
   const { data: integrations } = useInventoryIntegrations();
 
   const displayedProducts = searchQuery.trim() ? searchResults || [] : products || [];
+
+  // Filter staging data
+  const filteredStagingData = stagingData?.filter(item => {
+    if (sourceFilter !== 'all') {
+      if (sourceFilter === 'candidate' && item.type !== 'CANDIDATE') return false;
+      if (sourceFilter === 'placeholder' && item.type !== 'PLACEHOLDER') return false;
+    }
+    if (statusFilter !== 'all' && item.status !== statusFilter) return false;
+    return true;
+  }) || [];
+
+  // Default filter to show actionable items (pending candidates and placeholders)
+  const shouldShowDefaultFilter = sourceFilter === 'all' && statusFilter === 'all';
+  const displayedStagingData = shouldShowDefaultFilter 
+    ? stagingData?.filter(item => 
+        (item.type === 'CANDIDATE' && item.status === 'PENDING') || 
+        (item.type === 'PLACEHOLDER' && item.status === 'PLACEHOLDER')
+      ) || []
+    : filteredStagingData;
 
   // Product columns with origin and sync state
   const productColumns: ColumnDef<Product>[] = [
@@ -139,57 +164,72 @@ export default function ProductsPage() {
     },
   ];
 
-  // Candidate columns
-  const candidateColumns: ColumnDef<any>[] = [
+  // Staging columns (unified candidates and placeholders)
+  const stagingColumns: ColumnDef<StagingItem>[] = [
+    {
+      accessorKey: 'type',
+      header: 'Type',
+      cell: ({ row }) => {
+        const item = row.original;
+        const variant = item.type === 'CANDIDATE' ? 'default' : 'secondary';
+        return <Badge variant={variant}>{item.type === 'CANDIDATE' ? 'Candidate' : 'Legacy'}</Badge>;
+      },
+    },
     {
       accessorKey: 'source',
       header: 'Source',
-      cell: ({ row }) => (
-        <Badge variant="outline">{row.getValue('source')}</Badge>
-      ),
+      cell: ({ row }) => {
+        const item = row.original;
+        let sourceText = item.source;
+        if (item.type === 'PLACEHOLDER') sourceText = 'Legacy Placeholder';
+        return <Badge variant="outline">{sourceText}</Badge>;
+      },
     },
     {
       accessorKey: 'name',
       header: 'Name',
-      cell: ({ row }) => (
-        <div className="font-medium">{row.getValue('name') || 'Unnamed'}</div>
-      ),
+      cell: ({ row }) => {
+        const item = row.original;
+        return (
+          <div className="space-y-1">
+            <div className="font-medium">{item.name || 'Unnamed'}</div>
+            {item.type === 'CANDIDATE' && item.intake && (
+              <div className="text-sm text-muted-foreground">
+                From intake: {item.intake.invoice_number}
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       accessorKey: 'upc',
       header: 'UPC/PLU',
-      cell: ({ row }) => (
-        <div className="font-mono text-sm">
-          {row.original.upc || row.original.plu || 'N/A'}
-        </div>
-      ),
+      cell: ({ row }) => {
+        const item = row.original;
+        return (
+          <div className="font-mono text-sm">
+            {item.upc || item.plu || 'N/A'}
+          </div>
+        );
+      },
     },
     {
-      accessorKey: 'intake',
-      header: 'Intake',
+      accessorKey: 'unit_of_sale',
+      header: 'Unit',
       cell: ({ row }) => {
-        const intake = row.getValue('intake') as any;
-        return intake ? (
-          <div className="text-sm">
-            <div>{intake.invoice_number}</div>
-            <div className="text-muted-foreground">{new Date(intake.date_received).toLocaleDateString()}</div>
-          </div>
+        const item = row.original;
+        return item.unit_of_sale ? (
+          <Badge variant="outline">{item.unit_of_sale}</Badge>
         ) : 'N/A';
       },
     },
     {
-      accessorKey: 'supplier',
-      header: 'Supplier',
-      cell: ({ row }) => {
-        const supplier = row.getValue('supplier') as any;
-        return supplier ? supplier.name : 'N/A';
-      },
-    },
-    {
       accessorKey: 'suggested_cost_cents',
-      header: 'Suggested Cost',
+      header: 'Cost',
       cell: ({ row }) => {
-        const cents = row.getValue('suggested_cost_cents') as number;
+        const item = row.original;
+        const cents = item.suggested_cost_cents;
         return cents ? `$${(cents / 100).toFixed(2)}` : 'N/A';
       },
     },
@@ -197,24 +237,32 @@ export default function ProductsPage() {
       accessorKey: 'status',
       header: 'Status',
       cell: ({ row }) => {
-        const status = row.getValue('status') as string;
+        const item = row.original;
         const getVariant = (status: string) => {
           switch (status) {
             case 'APPROVED': return 'default';
             case 'REJECTED': return 'destructive';
             case 'MERGED': return 'secondary';
+            case 'PENDING': return 'outline';
+            case 'PLACEHOLDER': return 'secondary';
+            case 'ARCHIVED': return 'secondary';
             default: return 'outline';
           }
         };
-        return <Badge variant={getVariant(status)}>{status}</Badge>;
+        return <Badge variant={getVariant(item.status)}>{item.status}</Badge>;
       },
     },
     {
       id: 'actions',
       header: 'Actions',
       cell: ({ row }) => {
-        const candidate = row.original;
-        return <CandidateActions candidate={candidate} />;
+        const item = row.original;
+        
+        if (item.type === 'CANDIDATE') {
+          return <CandidateActions candidate={item.original_data} />;
+        } else {
+          return <PlaceholderActions product={item.original_data} />;
+        }
       },
     },
   ];
@@ -289,9 +337,14 @@ export default function ProductsPage() {
   const handleRefresh = () => {
     if (activeTab === 'catalog') {
       refetchProducts();
-    } else if (activeTab === 'candidates') {
-      refetchCandidates();
+    } else if (activeTab === 'staging') {
+      refetchStaging();
     }
+  };
+
+  const handleClearFilters = () => {
+    setSourceFilter('all');
+    setStatusFilter('all');
   };
 
   const handlePushAll = () => {
@@ -332,10 +385,10 @@ export default function ProductsPage() {
             </Button>
             <Button
               onClick={handleRefresh}
-              disabled={isLoadingProducts || isLoadingCandidates}
+              disabled={isLoadingProducts || isLoadingStaging}
               variant="outline"
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${(isLoadingProducts || isLoadingCandidates) ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-4 w-4 mr-2 ${(isLoadingProducts || isLoadingStaging) ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
           </div>
@@ -375,15 +428,12 @@ export default function ProductsPage() {
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="catalog">
               Catalog ({products?.length || 0})
             </TabsTrigger>
-            <TabsTrigger value="candidates">
-              Candidates ({candidates?.filter(c => c.status === 'PENDING').length || 0})
-            </TabsTrigger>
-            <TabsTrigger value="placeholders">
-              Hidden ({placeholderProducts?.length || 0})
+            <TabsTrigger value="staging">
+              Staging ({stagingStats?.totalStaging || 0})
             </TabsTrigger>
             <TabsTrigger value="sync">
               Sync Queue
@@ -435,54 +485,44 @@ export default function ProductsPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="candidates" className="space-y-4">
+          <TabsContent value="staging" className="space-y-4">
+            <StagingAdminActions />
+            
             <Card>
               <CardHeader>
-                <CardTitle>Product Candidates</CardTitle>
+                <CardTitle>Staging Area</CardTitle>
                 <CardDescription>
-                  Staged items discovered during intake. Approve or map them to add to the live catalog.
+                  Product candidates and legacy placeholders that need action to move into your live catalog.
+                  By default, showing actionable items (pending candidates and placeholders).
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                {isLoadingCandidates ? (
-                  <div className="space-y-3">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Skeleton key={i} className="h-12 w-full" />
-                    ))}
-                  </div>
-                ) : (
-                  <DataTable 
-                    columns={candidateColumns} 
-                    data={candidates || []}
-                    searchKey="name"
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="placeholders" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Hidden Products</CardTitle>
-                <CardDescription>
-                  Placeholder and archived products that don't appear in the live catalog.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {isLoadingPlaceholders ? (
-                  <div className="space-y-3">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Skeleton key={i} className="h-12 w-full" />
-                    ))}
-                  </div>
-                ) : (
-                  <DataTable 
-                    columns={productColumns} 
-                    data={placeholderProducts || []}
-                    searchKey="name"
-                  />
-                )}
+              <CardContent className="p-0">
+                <StagingFilters
+                  sourceFilter={sourceFilter}
+                  statusFilter={statusFilter}
+                  onSourceFilterChange={setSourceFilter}
+                  onStatusFilterChange={setStatusFilter}
+                  onClearFilters={handleClearFilters}
+                  stats={{
+                    total: stagingData?.length || 0,
+                    filtered: displayedStagingData.length
+                  }}
+                />
+                <div className="p-6">
+                  {isLoadingStaging ? (
+                    <div className="space-y-3">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Skeleton key={i} className="h-12 w-full" />
+                      ))}
+                    </div>
+                  ) : (
+                    <DataTable 
+                      columns={stagingColumns} 
+                      data={displayedStagingData}
+                      searchKey="name"
+                    />
+                  )}
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
