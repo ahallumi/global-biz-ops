@@ -238,6 +238,91 @@ export type Database = {
         }
         Relationships: []
       }
+      product_candidates: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          intake_id: string | null
+          merged_into_product_id: string | null
+          name: string | null
+          notes: string | null
+          plu: string | null
+          size: string | null
+          source: string
+          status: string
+          suggested_cost_cents: number | null
+          suggested_units_per_case: number | null
+          supplier_id: string | null
+          unit_of_sale: Database["public"]["Enums"]["unit_of_sale"] | null
+          upc: string | null
+          updated_at: string | null
+          weight_unit: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          intake_id?: string | null
+          merged_into_product_id?: string | null
+          name?: string | null
+          notes?: string | null
+          plu?: string | null
+          size?: string | null
+          source?: string
+          status?: string
+          suggested_cost_cents?: number | null
+          suggested_units_per_case?: number | null
+          supplier_id?: string | null
+          unit_of_sale?: Database["public"]["Enums"]["unit_of_sale"] | null
+          upc?: string | null
+          updated_at?: string | null
+          weight_unit?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          intake_id?: string | null
+          merged_into_product_id?: string | null
+          name?: string | null
+          notes?: string | null
+          plu?: string | null
+          size?: string | null
+          source?: string
+          status?: string
+          suggested_cost_cents?: number | null
+          suggested_units_per_case?: number | null
+          supplier_id?: string | null
+          unit_of_sale?: Database["public"]["Enums"]["unit_of_sale"] | null
+          upc?: string | null
+          updated_at?: string | null
+          weight_unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_candidates_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "product_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_candidates_merged_into_product_id_fkey"
+            columns: ["merged_into_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_candidates_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_import_runs: {
         Row: {
           created_by: string | null
@@ -290,6 +375,7 @@ export type Database = {
       }
       product_intake_items: {
         Row: {
+          candidate_id: string | null
           created_at: string | null
           description: string | null
           expiry_date: string | null
@@ -307,6 +393,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          candidate_id?: string | null
           created_at?: string | null
           description?: string | null
           expiry_date?: string | null
@@ -324,6 +411,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          candidate_id?: string | null
           created_at?: string | null
           description?: string | null
           expiry_date?: string | null
@@ -341,6 +429,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "product_intake_items_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "product_candidates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "product_intake_items_intake_id_fkey"
             columns: ["intake_id"]
@@ -448,6 +543,45 @@ export type Database = {
           },
         ]
       }
+      product_sync_runs: {
+        Row: {
+          created_by: string | null
+          created_count: number | null
+          direction: string
+          errors: Json | null
+          finished_at: string | null
+          id: string
+          processed_count: number | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["import_status"]
+          updated_count: number | null
+        }
+        Insert: {
+          created_by?: string | null
+          created_count?: number | null
+          direction?: string
+          errors?: Json | null
+          finished_at?: string | null
+          id?: string
+          processed_count?: number | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["import_status"]
+          updated_count?: number | null
+        }
+        Update: {
+          created_by?: string | null
+          created_count?: number | null
+          direction?: string
+          errors?: Json | null
+          finished_at?: string | null
+          id?: string
+          processed_count?: number | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["import_status"]
+          updated_count?: number | null
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           barcode: string | null
@@ -458,10 +592,12 @@ export type Database = {
           id: string
           image_url: string | null
           name: string
+          origin: string
           plu: string | null
           retail_price_cents: number | null
           size: string | null
           sku: string | null
+          sync_state: string
           unit_of_sale: Database["public"]["Enums"]["unit_of_sale"]
           upc: string | null
           updated_at: string | null
@@ -476,10 +612,12 @@ export type Database = {
           id?: string
           image_url?: string | null
           name: string
+          origin?: string
           plu?: string | null
           retail_price_cents?: number | null
           size?: string | null
           sku?: string | null
+          sync_state?: string
           unit_of_sale?: Database["public"]["Enums"]["unit_of_sale"]
           upc?: string | null
           updated_at?: string | null
@@ -494,10 +632,12 @@ export type Database = {
           id?: string
           image_url?: string | null
           name?: string
+          origin?: string
           plu?: string | null
           retail_price_cents?: number | null
           size?: string | null
           sku?: string | null
+          sync_state?: string
           unit_of_sale?: Database["public"]["Enums"]["unit_of_sale"]
           upc?: string | null
           updated_at?: string | null

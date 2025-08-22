@@ -67,3 +67,6 @@ verify_jwt = true
 
 [functions.square-import-products]
 verify_jwt = true
+
+[functions.square-push-products]
+verify_jwt = true
