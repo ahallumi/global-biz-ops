@@ -94,6 +94,200 @@ export type Database = {
           },
         ]
       }
+      intake_reconcile: {
+        Row: {
+          created_at: string | null
+          expected_cost_cents: number | null
+          expected_qty: number | null
+          id: string
+          intake_id: string
+          intake_item_id: string | null
+          invoice_line_id: string | null
+          note: string | null
+          product_id: string | null
+          received_cost_cents: number | null
+          received_qty: number | null
+          status: Database["public"]["Enums"]["intake_resolve"]
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          expected_cost_cents?: number | null
+          expected_qty?: number | null
+          id?: string
+          intake_id: string
+          intake_item_id?: string | null
+          invoice_line_id?: string | null
+          note?: string | null
+          product_id?: string | null
+          received_cost_cents?: number | null
+          received_qty?: number | null
+          status?: Database["public"]["Enums"]["intake_resolve"]
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          expected_cost_cents?: number | null
+          expected_qty?: number | null
+          id?: string
+          intake_id?: string
+          intake_item_id?: string | null
+          invoice_line_id?: string | null
+          note?: string | null
+          product_id?: string | null
+          received_cost_cents?: number | null
+          received_qty?: number | null
+          status?: Database["public"]["Enums"]["intake_resolve"]
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intake_reconcile_intake_id_fkey"
+            columns: ["intake_id"]
+            isOneToOne: false
+            referencedRelation: "product_intakes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intake_reconcile_intake_item_id_fkey"
+            columns: ["intake_item_id"]
+            isOneToOne: false
+            referencedRelation: "product_intake_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intake_reconcile_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integration_credentials: {
+        Row: {
+          created_at: string | null
+          id: string
+          integration_id: string
+          secret_ciphertext: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          integration_id: string
+          secret_ciphertext: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          integration_id?: string
+          secret_ciphertext?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_credentials_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: true
+            referencedRelation: "inventory_integrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_integrations: {
+        Row: {
+          auto_import_enabled: boolean
+          auto_import_interval_minutes: number
+          created_at: string | null
+          created_by: string | null
+          display_name: string | null
+          environment: string
+          id: string
+          last_error: string | null
+          last_success_at: string | null
+          provider: Database["public"]["Enums"]["pos_source"]
+          updated_at: string | null
+        }
+        Insert: {
+          auto_import_enabled?: boolean
+          auto_import_interval_minutes?: number
+          created_at?: string | null
+          created_by?: string | null
+          display_name?: string | null
+          environment?: string
+          id?: string
+          last_error?: string | null
+          last_success_at?: string | null
+          provider?: Database["public"]["Enums"]["pos_source"]
+          updated_at?: string | null
+        }
+        Update: {
+          auto_import_enabled?: boolean
+          auto_import_interval_minutes?: number
+          created_at?: string | null
+          created_by?: string | null
+          display_name?: string | null
+          environment?: string
+          id?: string
+          last_error?: string | null
+          last_success_at?: string | null
+          provider?: Database["public"]["Enums"]["pos_source"]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      product_import_runs: {
+        Row: {
+          created_by: string | null
+          created_count: number | null
+          cursor: string | null
+          errors: Json | null
+          finished_at: string | null
+          id: string
+          integration_id: string
+          processed_count: number | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["import_status"]
+          updated_count: number | null
+        }
+        Insert: {
+          created_by?: string | null
+          created_count?: number | null
+          cursor?: string | null
+          errors?: Json | null
+          finished_at?: string | null
+          id?: string
+          integration_id: string
+          processed_count?: number | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["import_status"]
+          updated_count?: number | null
+        }
+        Update: {
+          created_by?: string | null
+          created_count?: number | null
+          cursor?: string | null
+          errors?: Json | null
+          finished_at?: string | null
+          id?: string
+          integration_id?: string
+          processed_count?: number | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["import_status"]
+          updated_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_import_runs_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_integrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_intake_items: {
         Row: {
           created_at: string | null
@@ -213,45 +407,101 @@ export type Database = {
           },
         ]
       }
+      product_pos_links: {
+        Row: {
+          created_at: string | null
+          id: string
+          location_id: string | null
+          pos_item_id: string
+          pos_variation_id: string | null
+          product_id: string
+          source: Database["public"]["Enums"]["pos_source"]
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          location_id?: string | null
+          pos_item_id: string
+          pos_variation_id?: string | null
+          product_id: string
+          source?: Database["public"]["Enums"]["pos_source"]
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          location_id?: string | null
+          pos_item_id?: string
+          pos_variation_id?: string | null
+          product_id?: string
+          source?: Database["public"]["Enums"]["pos_source"]
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_pos_links_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           barcode: string | null
+          brand: string | null
           category: string | null
           created_at: string | null
           default_cost_cents: number | null
           id: string
           image_url: string | null
           name: string
+          plu: string | null
+          retail_price_cents: number | null
           size: string | null
           sku: string | null
+          unit_of_sale: Database["public"]["Enums"]["unit_of_sale"]
           upc: string | null
           updated_at: string | null
+          weight_unit: string | null
         }
         Insert: {
           barcode?: string | null
+          brand?: string | null
           category?: string | null
           created_at?: string | null
           default_cost_cents?: number | null
           id?: string
           image_url?: string | null
           name: string
+          plu?: string | null
+          retail_price_cents?: number | null
           size?: string | null
           sku?: string | null
+          unit_of_sale?: Database["public"]["Enums"]["unit_of_sale"]
           upc?: string | null
           updated_at?: string | null
+          weight_unit?: string | null
         }
         Update: {
           barcode?: string | null
+          brand?: string | null
           category?: string | null
           created_at?: string | null
           default_cost_cents?: number | null
           id?: string
           image_url?: string | null
           name?: string
+          plu?: string | null
+          retail_price_cents?: number | null
           size?: string | null
           sku?: string | null
+          unit_of_sale?: Database["public"]["Enums"]["unit_of_sale"]
           upc?: string | null
           updated_at?: string | null
+          weight_unit?: string | null
         }
         Relationships: []
       }
@@ -384,6 +634,54 @@ export type Database = {
           },
         ]
       }
+      supplier_products: {
+        Row: {
+          created_at: string | null
+          id: string
+          last_cost_cents: number | null
+          last_received_at: string | null
+          product_id: string
+          supplier_id: string
+          units_per_case: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          last_cost_cents?: number | null
+          last_received_at?: string | null
+          product_id: string
+          supplier_id: string
+          units_per_case?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          last_cost_cents?: number | null
+          last_received_at?: string | null
+          product_id?: string
+          supplier_id?: string
+          units_per_case?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_products_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_products_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           active: boolean
@@ -513,12 +811,21 @@ export type Database = {
     }
     Enums: {
       employee_role: "admin" | "staff" | "manager"
+      import_status: "PENDING" | "RUNNING" | "SUCCESS" | "FAILED" | "PARTIAL"
+      intake_resolve:
+        | "OK"
+        | "QTY_MISMATCH"
+        | "PRICE_MISMATCH"
+        | "NEW_PRODUCT"
+        | "MISSING"
       intake_status:
         | "draft"
         | "submitted"
         | "approved"
         | "rejected"
         | "needs_correction"
+      pos_source: "SQUARE"
+      unit_of_sale: "EACH" | "WEIGHT"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -647,6 +954,14 @@ export const Constants = {
   public: {
     Enums: {
       employee_role: ["admin", "staff", "manager"],
+      import_status: ["PENDING", "RUNNING", "SUCCESS", "FAILED", "PARTIAL"],
+      intake_resolve: [
+        "OK",
+        "QTY_MISMATCH",
+        "PRICE_MISMATCH",
+        "NEW_PRODUCT",
+        "MISSING",
+      ],
       intake_status: [
         "draft",
         "submitted",
@@ -654,6 +969,8 @@ export const Constants = {
         "rejected",
         "needs_correction",
       ],
+      pos_source: ["SQUARE"],
+      unit_of_sale: ["EACH", "WEIGHT"],
     },
   },
 } as const
