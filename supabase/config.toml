@@ -58,3 +58,12 @@ verify_jwt = true
 
 [functions.time-now]
 verify_jwt = false
+
+[functions.inventory-save-credentials]
+verify_jwt = true
+
+[functions.square-test-connection]
+verify_jwt = true
+
+[functions.square-import-products]
+verify_jwt = true

@@ -8,7 +8,10 @@ import {
   Settings,
   LogOut,
   Building2,
-  Truck
+  Truck,
+  Package,
+  History,
+  Cog
 } from "lucide-react"
 
 import { useAuth } from "@/hooks/useAuth"
@@ -49,6 +52,36 @@ const navigation = [
     href: '/staff-dashboard',
     icon: BarChart3,
     roles: ['staff'],
+  },
+  {
+    name: 'Clock In/Out',
+    href: '/clock',
+    icon: BarChart3,
+    roles: ['staff', 'admin', 'manager'],
+  },
+  {
+    name: 'Intakes',
+    href: '/intakes',
+    icon: Truck,
+    roles: ['admin', 'staff', 'manager'],
+  },
+  {
+    name: 'Suppliers',
+    href: '/suppliers',
+    icon: Building2,
+    roles: ['admin', 'manager', 'staff'],
+  },
+  {
+    name: 'Products',
+    href: '/products',
+    icon: Package,
+    roles: ['admin', 'manager', 'staff'],
+  },
+  {
+    name: 'Inventory Settings',
+    href: '/inventory-settings',
+    icon: Cog,
+    roles: ['admin'],
   },
   {
     name: 'Users',
