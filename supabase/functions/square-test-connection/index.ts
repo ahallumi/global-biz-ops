@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const SQUARE_API_VERSION = '2024-12-18'
+const SQUARE_API_VERSION = '2025-07-17'
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -45,12 +45,30 @@ serve(async (req) => {
       throw new Error('Failed to retrieve credentials')
     }
 
-    const { access_token, environment } = credentialsData
+    const { access_token: rawToken, environment } = credentialsData
+
+    // Trim token to remove any whitespace that could cause 401s
+    const access_token = rawToken?.trim()
+    if (!access_token) {
+      throw new Error('Access token is empty or invalid after decryption')
+    }
+
+    // Validate token format (Square tokens are typically 64+ characters)
+    if (access_token.length < 32) {
+      console.warn('Access token appears unusually short:', access_token.length)
+    }
 
     // Test connection by calling Square Locations API
     const baseUrl = environment === 'SANDBOX' 
       ? 'https://connect.squareupsandbox.com' 
       : 'https://connect.squareup.com'
+
+    // Log debug info with masked token for troubleshooting
+    const maskedToken = access_token.length > 8 
+      ? `${access_token.slice(0, 4)}...${access_token.slice(-4)}`
+      : 'short'
+    
+    console.log(`[DEBUG] Environment: ${environment}, Base URL: ${baseUrl}, Token: ${maskedToken}`)
 
     const response = await fetch(`${baseUrl}/v2/locations`, {
       method: 'GET',
@@ -64,6 +82,7 @@ serve(async (req) => {
     if (!response.ok) {
       const errorData = await response.text()
       console.error('Square API error:', response.status, errorData)
+      console.error(`[DEBUG] Failed request - Environment: ${environment}, Base URL: ${baseUrl}`)
       
       // Parse Square error response for better feedback
       try {
@@ -71,16 +90,16 @@ serve(async (req) => {
         if (errorJson.errors && errorJson.errors.length > 0) {
           const squareError = errorJson.errors[0]
           if (squareError.code === 'UNAUTHORIZED') {
-            throw new Error(`Authentication failed: ${squareError.detail}. Please verify your access token is correct and matches the selected environment.`)
+            throw new Error(`Authentication failed: ${squareError.detail}. Environment: ${environment} (${baseUrl}). Please verify your access token is correct and matches the selected environment.`)
           } else {
-            throw new Error(`Square API error: ${squareError.category} - ${squareError.detail}`)
+            throw new Error(`Square API error: ${squareError.category} - ${squareError.detail} (Environment: ${environment})`)
           }
         }
       } catch (parseError) {
         // Fall back to original error if parsing fails
       }
       
-      throw new Error(`Square API error: ${response.status} - ${errorData}`)
+      throw new Error(`Square API error: ${response.status} - ${errorData} (Environment: ${environment}, URL: ${baseUrl})`)
     }
 
     const data = await response.json()
@@ -103,7 +122,10 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({ 
-        ok: true, 
+        ok: true,
+        environment,
+        baseUrl,
+        maskedToken: access_token.length > 8 ? `${access_token.slice(0, 4)}...${access_token.slice(-4)}` : 'short',
         locations: locations.map((loc: any) => ({
           id: loc.id,
           name: loc.name,
@@ -141,7 +163,14 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ ok: false, error: error.message }),
+      JSON.stringify({ 
+        ok: false, 
+        error: error.message,
+        debug: {
+          timestamp: new Date().toISOString(),
+          functionName: 'square-test-connection'
+        }
+      }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200 

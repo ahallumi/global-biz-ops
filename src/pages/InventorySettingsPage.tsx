@@ -415,9 +415,18 @@ export default function InventorySettingsPage() {
               {connectionResult && (
                 <div className="space-y-2">
                   {connectionResult.ok ? (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      Connected to {connectionResult.locations?.length || 0} Square location(s)
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        Connected to {connectionResult.locations?.length || 0} Square location(s)
+                      </div>
+                      {connectionResult.environment && (
+                        <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded font-mono">
+                          <div><strong>Environment:</strong> {connectionResult.environment}</div>
+                          <div><strong>Endpoint:</strong> {connectionResult.baseUrl}</div>
+                          <div><strong>Token:</strong> {connectionResult.maskedToken}</div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">

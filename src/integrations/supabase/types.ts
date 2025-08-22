@@ -943,6 +943,10 @@ export type Database = {
         Args: { ts: string }
         Returns: string
       }
+      decrypt_secret: {
+        Args: { cipher_b64: string; p_crypt_key: string }
+        Returns: string
+      }
       get_decrypted_credentials: {
         Args: { p_crypt_key: string; p_integration_id: string }
         Returns: {
