@@ -797,6 +797,13 @@ export type Database = {
         Args: { ts: string }
         Returns: string
       }
+      get_decrypted_credentials: {
+        Args: { p_crypt_key: string; p_integration_id: string }
+        Returns: {
+          access_token: string
+          environment: string
+        }[]
+      }
       has_role: {
         Args: {
           p_roles: Database["public"]["Enums"]["employee_role"][]
@@ -807,6 +814,14 @@ export type Database = {
       is_admin: {
         Args: { p_uid: string }
         Returns: boolean
+      }
+      save_encrypted_credentials: {
+        Args: {
+          p_access_token: string
+          p_crypt_key: string
+          p_integration_id: string
+        }
+        Returns: undefined
       }
     }
     Enums: {
