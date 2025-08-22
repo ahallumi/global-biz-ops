@@ -26,6 +26,10 @@ serve(async (req) => {
       throw new Error('Missing integration ID')
     }
 
+    // Debug logging for APP_CRYPT_KEY availability
+    console.log('🔐 [square-test-connection] ENV keys:', Object.keys(Deno.env.toObject()).filter(k => k.includes('CRYPT')))
+    console.log('🔐 [square-test-connection] APP_CRYPT_KEY exists:', !!Deno.env.get('APP_CRYPT_KEY'))
+
     // Get integration details and decrypt credentials
     const appCryptKey = Deno.env.get('APP_CRYPT_KEY')
     if (!appCryptKey) {

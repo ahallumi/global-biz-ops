@@ -39,6 +39,10 @@ serve(async (req) => {
     
     console.log('Token validation passed, length:', normalizedToken.length)
 
+    // Debug logging for APP_CRYPT_KEY availability
+    console.log('🔐 [inventory-save-credentials] ENV keys:', Object.keys(Deno.env.toObject()).filter(k => k.includes('CRYPT')))
+    console.log('🔐 [inventory-save-credentials] APP_CRYPT_KEY exists:', !!Deno.env.get('APP_CRYPT_KEY'))
+
     // Get the app master key for encryption
     const appCryptKey = Deno.env.get('APP_CRYPT_KEY')
     if (!appCryptKey) {
