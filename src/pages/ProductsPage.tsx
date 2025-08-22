@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '@/components/data-table/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
 import { Database } from '@/integrations/supabase/types';
-import { Search, RefreshCw, Package, ExternalLink, Upload, Download, Clock, CheckCircle, XCircle, MapPin } from 'lucide-react';
+import { Search, RefreshCw, Package, Upload, Download, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CandidateActions } from '@/components/products/CandidateActions';
 
@@ -22,9 +22,10 @@ export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('catalog');
   
-  // Product hooks
-  const { data: products, isLoading: isLoadingProducts, refetch: refetchProducts } = useProducts();
-  const { data: searchResults, isLoading: isSearching } = useSearchProducts(searchQuery);
+  // Product hooks - now filtered by catalog status
+  const { data: products, isLoading: isLoadingProducts, refetch: refetchProducts } = useProducts('ACTIVE');
+  const { data: placeholderProducts, isLoading: isLoadingPlaceholders } = useProducts('PLACEHOLDER');
+  const { data: searchResults, isLoading: isSearching } = useSearchProducts(searchQuery, 'ACTIVE');
   
   // Candidate hooks
   const { data: candidates, isLoading: isLoadingCandidates, refetch: refetchCandidates } = useProductCandidates();
@@ -360,6 +361,9 @@ export default function ProductsPage() {
                 <span className="text-sm text-muted-foreground">
                   Environment: {activeIntegration.environment}
                 </span>
+                {activeIntegration.auto_push_enabled && (
+                  <Badge variant="secondary">Auto-Push Enabled</Badge>
+                )}
                 {activeIntegration.last_success_at && (
                   <span className="text-sm text-muted-foreground">
                     Last sync: {new Date(activeIntegration.last_success_at).toLocaleString()}
@@ -371,12 +375,15 @@ export default function ProductsPage() {
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="catalog">
               Catalog ({products?.length || 0})
             </TabsTrigger>
             <TabsTrigger value="candidates">
               Candidates ({candidates?.filter(c => c.status === 'PENDING').length || 0})
+            </TabsTrigger>
+            <TabsTrigger value="placeholders">
+              Hidden ({placeholderProducts?.length || 0})
             </TabsTrigger>
             <TabsTrigger value="sync">
               Sync Queue
@@ -402,11 +409,11 @@ export default function ProductsPage() {
             {/* Products Table */}
             <Card>
               <CardHeader>
-                <CardTitle>Products Catalog ({displayedProducts.length})</CardTitle>
+                <CardTitle>Live Catalog ({displayedProducts.length})</CardTitle>
                 <CardDescription>
                   {searchQuery.trim() 
                     ? `Search results for "${searchQuery}"`
-                    : 'Live product catalog with POS sync status'
+                    : 'Active products available for sale'
                   }
                 </CardDescription>
               </CardHeader>
@@ -447,6 +454,32 @@ export default function ProductsPage() {
                   <DataTable 
                     columns={candidateColumns} 
                     data={candidates || []}
+                    searchKey="name"
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="placeholders" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Hidden Products</CardTitle>
+                <CardDescription>
+                  Placeholder and archived products that don't appear in the live catalog.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isLoadingPlaceholders ? (
+                  <div className="space-y-3">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
+                    ))}
+                  </div>
+                ) : (
+                  <DataTable 
+                    columns={productColumns} 
+                    data={placeholderProducts || []}
                     searchKey="name"
                   />
                 )}

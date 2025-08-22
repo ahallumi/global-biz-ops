@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,7 +26,8 @@ export function CandidateResolutionStep({ intakeId, onComplete }: CandidateResol
     candidate => candidate.intake_id === intakeId && candidate.status === 'PENDING'
   );
   
-  const autoPushEnabled = integrations[0]?.display_name?.includes('AUTO_PUSH') || false;
+  // Use the real auto_push_enabled flag
+  const autoPushEnabled = integrations[0]?.auto_push_enabled || false;
   
   const canComplete = intakeCandidates.length === 0;
   

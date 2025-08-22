@@ -200,6 +200,7 @@ export type Database = {
         Row: {
           auto_import_enabled: boolean
           auto_import_interval_minutes: number
+          auto_push_enabled: boolean
           created_at: string | null
           created_by: string | null
           display_name: string | null
@@ -213,6 +214,7 @@ export type Database = {
         Insert: {
           auto_import_enabled?: boolean
           auto_import_interval_minutes?: number
+          auto_push_enabled?: boolean
           created_at?: string | null
           created_by?: string | null
           display_name?: string | null
@@ -226,6 +228,7 @@ export type Database = {
         Update: {
           auto_import_enabled?: boolean
           auto_import_interval_minutes?: number
+          auto_push_enabled?: boolean
           created_at?: string | null
           created_by?: string | null
           display_name?: string | null
@@ -586,6 +589,7 @@ export type Database = {
         Row: {
           barcode: string | null
           brand: string | null
+          catalog_status: Database["public"]["Enums"]["catalog_status"]
           category: string | null
           created_at: string | null
           default_cost_cents: number | null
@@ -606,6 +610,7 @@ export type Database = {
         Insert: {
           barcode?: string | null
           brand?: string | null
+          catalog_status?: Database["public"]["Enums"]["catalog_status"]
           category?: string | null
           created_at?: string | null
           default_cost_cents?: number | null
@@ -626,6 +631,7 @@ export type Database = {
         Update: {
           barcode?: string | null
           brand?: string | null
+          catalog_status?: Database["public"]["Enums"]["catalog_status"]
           category?: string | null
           created_at?: string | null
           default_cost_cents?: number | null
@@ -965,6 +971,7 @@ export type Database = {
       }
     }
     Enums: {
+      catalog_status: "ACTIVE" | "PLACEHOLDER" | "ARCHIVED"
       employee_role: "admin" | "staff" | "manager"
       import_status: "PENDING" | "RUNNING" | "SUCCESS" | "FAILED" | "PARTIAL"
       intake_resolve:
@@ -1108,6 +1115,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      catalog_status: ["ACTIVE", "PLACEHOLDER", "ARCHIVED"],
       employee_role: ["admin", "staff", "manager"],
       import_status: ["PENDING", "RUNNING", "SUCCESS", "FAILED", "PARTIAL"],
       intake_resolve: [

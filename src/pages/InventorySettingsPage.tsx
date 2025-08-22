@@ -1,402 +1,420 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+
 import { Layout } from '@/components/layout/Layout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useInventoryIntegrations, useCreateInventoryIntegration, useUpdateInventoryIntegration, useTestConnection, useImportProducts, useProductImportRuns } from '@/hooks/useInventoryIntegrations';
-import { supabase } from '@/integrations/supabase/client';
+import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Settings, Square, TestTube2, Download, AlertCircle, CheckCircle, Clock, Loader2 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form"
+import { useInventoryIntegrations, useUpdateInventoryIntegration, useCreateInventoryIntegration, useTestConnection, useImportProducts } from '@/hooks/useInventoryIntegrations';
+import { supabase } from '@/integrations/supabase/client';
+import { AlertCircle, CheckCircle, Package, Upload, Download } from 'lucide-react';
+
+const integrationSchema = z.object({
+  environment: z.enum(['SANDBOX', 'PRODUCTION']),
+  access_token: z.string(),
+  auto_import_enabled: z.boolean(),
+  auto_import_interval_minutes: z.number().min(15).max(1440),
+  auto_push_enabled: z.boolean(), // Use the real boolean flag
+});
 
 export default function InventorySettingsPage() {
-  const { employee } = useAuth();
-  const { toast } = useToast();
-  const { data: integrations = [], refetch } = useInventoryIntegrations();
-  const { data: importRuns = [] } = useProductImportRuns();
-  const createIntegration = useCreateInventoryIntegration();
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [connectionResult, setConnectionResult] = useState<any>(null);
+
+  const { data: integrations, isLoading: isLoadingIntegrations } = useInventoryIntegrations();
   const updateIntegration = useUpdateInventoryIntegration();
+  const createIntegration = useCreateInventoryIntegration();
   const testConnection = useTestConnection();
   const importProducts = useImportProducts();
 
-  const [accessToken, setAccessToken] = useState('');
-  const [environment, setEnvironment] = useState<'SANDBOX' | 'PRODUCTION'>('PRODUCTION');
-  const [autoImportEnabled, setAutoImportEnabled] = useState(false);
-  const [autoImportInterval, setAutoImportInterval] = useState(180);
-  const [autoPushEnabled, setAutoPushEnabled] = useState(false);
+  const activeIntegration = integrations?.[0];
 
-  const currentIntegration = integrations[0]; // For now, we only support one Square integration
+  const form = useForm<z.infer<typeof integrationSchema>>({
+    resolver: zodResolver(integrationSchema),
+    defaultValues: {
+      environment: 'PRODUCTION',
+      access_token: '',
+      auto_import_enabled: false,
+      auto_import_interval_minutes: 180,
+      auto_push_enabled: false, // Use the real boolean flag
+    },
+  });
 
   useEffect(() => {
-    if (currentIntegration) {
-      setEnvironment(currentIntegration.environment as 'SANDBOX' | 'PRODUCTION');
-      setAutoImportEnabled(currentIntegration.auto_import_enabled);
-      setAutoImportInterval(currentIntegration.auto_import_interval_minutes);
-      // Check for auto-push setting in display_name or notes (temporary storage)
-      setAutoPushEnabled(currentIntegration.display_name?.includes('AUTO_PUSH') || false);
-    }
-  }, [currentIntegration]);
-
-  if (!employee || employee.role !== 'admin') {
-    return (
-      <Layout>
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            You need admin privileges to access inventory settings.
-          </AlertDescription>
-        </Alert>
-      </Layout>
-    );
-  }
-
-  const handleSaveCredentials = async () => {
-    if (!accessToken.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Please enter an access token',
-        variant: 'destructive',
+    if (activeIntegration) {
+      form.reset({
+        environment: activeIntegration.environment as 'SANDBOX' | 'PRODUCTION',
+        access_token: '',
+        auto_import_enabled: activeIntegration.auto_import_enabled,
+        auto_import_interval_minutes: activeIntegration.auto_import_interval_minutes,
+        auto_push_enabled: activeIntegration.auto_push_enabled, // Use the real boolean flag
       });
-      return;
     }
+  }, [activeIntegration, form]);
+
+  const { toast } = useToast();
+
+  const handleTestConnection = async () => {
+    setIsTestingConnection(true);
+    setConnectionResult(null);
 
     try {
-      let integrationId = currentIntegration?.id;
-
-      if (!currentIntegration) {
-        // Create new integration
-        const newIntegration = await createIntegration.mutateAsync({
-          provider: 'SQUARE',
-          environment,
-          display_name: 'Square',
-          created_by: employee.user_id,
-        });
-        integrationId = newIntegration.id;
-      } else {
-        // Update existing integration
-        await updateIntegration.mutateAsync({
-          id: currentIntegration.id,
-          environment,
-        });
+      if (!activeIntegration) {
+        throw new Error('No integration configured. Save settings first.');
       }
 
-      // Save encrypted credentials via Edge Function
-      const { error } = await supabase.functions.invoke('inventory-save-credentials', {
-        body: {
-          integrationId,
-          provider: 'SQUARE',
-          environment,
-          accessToken,
-        }
-      });
-
-      if (error) throw error;
-
-      setAccessToken('');
-      refetch();
+      const result = await testConnection.mutateAsync(activeIntegration.id);
+      setConnectionResult(result);
+    } catch (error: any) {
+      setConnectionResult({ error: error.message });
       toast({
-        title: 'Credentials Saved',
-        description: 'Access token has been encrypted and stored securely',
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsTestingConnection(false);
+    }
+  };
+
+  const handleImportProducts = async (mode: 'FULL' | 'DELTA') => {
+    try {
+      if (!activeIntegration) {
+        throw new Error('No integration configured. Save settings first.');
+      }
+
+      await importProducts.mutateAsync({ integrationId: activeIntegration.id, mode });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const onSubmit = async (values: z.infer<typeof integrationSchema>) => {
+    try {
+      if (activeIntegration) {
+        await updateIntegration.mutateAsync({
+          id: activeIntegration.id,
+          environment: values.environment,
+          auto_import_enabled: values.auto_import_enabled,
+          auto_import_interval_minutes: values.auto_import_interval_minutes,
+          auto_push_enabled: values.auto_push_enabled, // Use the real boolean flag
+        });
+
+        if (values.access_token.trim()) {
+          const response = await supabase.functions.invoke('inventory-save-credentials', {
+            body: {
+              integrationId: activeIntegration.id,
+              accessToken: values.access_token,
+            }
+          });
+
+          if (response.error) {
+            throw new Error(response.error.message);
+          }
+        }
+      } else {
+        if (!values.access_token.trim()) {
+          throw new Error('Access token is required for new integrations');
+        }
+
+        const newIntegration = await createIntegration.mutateAsync({
+          provider: 'SQUARE',
+          environment: values.environment,
+          auto_import_enabled: values.auto_import_enabled,
+          auto_import_interval_minutes: values.auto_import_interval_minutes,
+          auto_push_enabled: values.auto_push_enabled, // Use the real boolean flag
+        });
+
+        const response = await supabase.functions.invoke('inventory-save-credentials', {
+          body: {
+            integrationId: newIntegration.id,
+            accessToken: values.access_token,
+          }
+        });
+
+        if (response.error) {
+          throw new Error(response.error.message);
+        }
+      }
+
+      toast({
+        title: 'Success',
+        description: 'Integration settings saved successfully',
       });
     } catch (error: any) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to save credentials',
+        description: error.message,
         variant: 'destructive',
       });
     }
   };
-
-  const handleTestConnection = async () => {
-    if (!currentIntegration) {
-      toast({
-        title: 'Error',
-        description: 'No integration found. Please save credentials first.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    testConnection.mutate(currentIntegration.id);
-  };
-
-  const handleUpdateAutoImport = async () => {
-    if (!currentIntegration) return;
-
-    updateIntegration.mutate({
-      id: currentIntegration.id,
-      auto_import_enabled: autoImportEnabled,
-      auto_import_interval_minutes: autoImportInterval,
-      display_name: autoPushEnabled ? 'Square AUTO_PUSH' : 'Square',
-    });
-  };
-
-  const handleRunImport = () => {
-    if (!currentIntegration) {
-      toast({
-        title: 'Error',
-        description: 'No integration configured',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    importProducts.mutate({ integrationId: currentIntegration.id });
-  };
-
-  const getConnectionStatus = () => {
-    if (!currentIntegration) return { status: 'Never connected', variant: 'secondary' as const, icon: AlertCircle };
-    if (currentIntegration.last_success_at && !currentIntegration.last_error) {
-      return { status: 'Connected', variant: 'default' as const, icon: CheckCircle };
-    }
-    if (currentIntegration.last_error) {
-      return { status: 'Error', variant: 'destructive' as const, icon: AlertCircle };
-    }
-    return { status: 'Never connected', variant: 'secondary' as const, icon: AlertCircle };
-  };
-
-  const lastImportRun = importRuns[0];
-  const connectionStatus = getConnectionStatus();
-  const StatusIcon = connectionStatus.icon;
 
   return (
     <Layout>
-      <div className="space-y-6 animate-fade-in">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <Settings className="w-8 h-8 text-primary" />
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Inventory Integration</h1>
-            <p className="text-muted-foreground mt-1">
-              Configure Square POS integration and product imports
-            </p>
-          </div>
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Inventory Integration</h1>
+          <p className="text-muted-foreground">
+            Configure Square POS integration for automatic product sync
+          </p>
         </div>
 
-        {/* Integration Provider */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Square className="w-5 h-5" />
-              Integration Provider
+              <Package className="h-5 w-5" />
+              Integration Status
             </CardTitle>
             <CardDescription>
-              Configure your POS system integration
+              Current status of your Square POS integration
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Provider</Label>
-              <Select value="SQUARE" disabled>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="SQUARE">Square</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Environment</Label>
-              <Select value={environment} onValueChange={(value: 'SANDBOX' | 'PRODUCTION') => setEnvironment(value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="SANDBOX">Sandbox</SelectItem>
-                  <SelectItem value="PRODUCTION">Production</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Credentials */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Credentials</CardTitle>
-            <CardDescription>
-              Securely store your Square access token
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="accessToken">Access Token</Label>
-              <Input
-                id="accessToken"
-                type="password"
-                placeholder="Enter your Square access token"
-                value={accessToken}
-                onChange={(e) => setAccessToken(e.target.value)}
-              />
-            </div>
-            <div className="flex items-center gap-3">
-              <Button 
-                onClick={handleSaveCredentials}
-                disabled={createIntegration.isPending || updateIntegration.isPending}
-              >
-                {createIntegration.isPending || updateIntegration.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : null}
-                Save & Encrypt
-              </Button>
-              <Button 
-                variant="outline" 
-                onClick={handleTestConnection}
-                disabled={testConnection.isPending || !currentIntegration}
-              >
-                {testConnection.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : (
-                  <TestTube2 className="w-4 h-4 mr-2" />
-                )}
-                Test Connection
-              </Button>
-              <Badge variant={connectionStatus.variant} className="flex items-center gap-1">
-                <StatusIcon className="w-3 h-3" />
-                {connectionStatus.status}
-              </Badge>
-            </div>
-            {currentIntegration?.last_error && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{currentIntegration.last_error}</AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Auto Import */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Auto Import</CardTitle>
-            <CardDescription>
-              Configure automatic product synchronization
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Enable auto-import</Label>
-                <p className="text-sm text-muted-foreground">
-                  Automatically sync products from Square
-                </p>
-              </div>
-              <Switch
-                checked={autoImportEnabled}
-                onCheckedChange={setAutoImportEnabled}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Auto-push approved products</Label>
-                <p className="text-sm text-muted-foreground">
-                  Automatically push approved products to Square
-                </p>
-              </div>
-              <Switch
-                checked={autoPushEnabled}
-                onCheckedChange={setAutoPushEnabled}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Import Interval (minutes)</Label>
-              <Select 
-                value={autoImportInterval.toString()} 
-                onValueChange={(value) => setAutoImportInterval(parseInt(value))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="15">15 minutes</SelectItem>
-                  <SelectItem value="30">30 minutes</SelectItem>
-                  <SelectItem value="60">1 hour</SelectItem>
-                  <SelectItem value="180">3 hours</SelectItem>
-                  <SelectItem value="720">12 hours</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button 
-              onClick={handleUpdateAutoImport}
-              disabled={updateIntegration.isPending}
-            >
-              {updateIntegration.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : null}
-              Save Settings
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Manual Import */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Manual Import</CardTitle>
-            <CardDescription>
-              Manually trigger product import from Square
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Run product import</p>
-                <p className="text-sm text-muted-foreground">
-                  Import all products from your Square catalog
-                </p>
-              </div>
-              <Button 
-                onClick={handleRunImport}
-                disabled={importProducts.isPending || !currentIntegration}
-              >
-                {importProducts.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : (
-                  <Download className="w-4 h-4 mr-2" />
-                )}
-                Run Now
-              </Button>
-            </div>
-            
-            {lastImportRun && (
-              <div className="border rounded-lg p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">Last Import Run</span>
-                  <Badge 
-                    variant={lastImportRun.status === 'SUCCESS' ? 'default' : 
-                            lastImportRun.status === 'FAILED' ? 'destructive' : 'secondary'}
-                  >
-                    {lastImportRun.status === 'RUNNING' ? (
-                      <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Running</>
-                    ) : lastImportRun.status === 'SUCCESS' ? (
-                      <><CheckCircle className="w-3 h-3 mr-1" /> Success</>
-                    ) : lastImportRun.status === 'FAILED' ? (
-                      <><AlertCircle className="w-3 h-3 mr-1" /> Failed</>
-                    ) : (
-                      <><Clock className="w-3 h-3 mr-1" /> {lastImportRun.status}</>
-                    )}
-                  </Badge>
+          <CardContent>
+            {isLoadingIntegrations ? (
+              <p>Loading...</p>
+            ) : activeIntegration ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-muted-foreground">
+                    Environment: {activeIntegration.environment}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    Auto Import: {activeIntegration.auto_import_enabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    Auto Push: {activeIntegration.auto_push_enabled ? 'Enabled' : 'Disabled'}
+                  </span>
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  {formatDistanceToNow(new Date(lastImportRun.started_at), { addSuffix: true })}
-                </div>
-                {lastImportRun.status === 'SUCCESS' && (
-                  <div className="text-sm">
-                    Processed: {lastImportRun.processed_count} | 
-                    Created: {lastImportRun.created_count} | 
-                    Updated: {lastImportRun.updated_count}
+                {activeIntegration.last_success_at ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    Last successful sync: {new Date(activeIntegration.last_success_at).toLocaleString()}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                    No successful sync yet
                   </div>
                 )}
               </div>
+            ) : (
+              <p>No integration configured</p>
             )}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Square Integration Settings</CardTitle>
+            <CardDescription>
+              Configure your Square POS integration for seamless inventory management
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                <FormField
+                  control={form.control}
+                  name="environment"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Environment</FormLabel>
+                      <FormControl>
+                        <select
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          {...field}
+                        >
+                          <option value="PRODUCTION">Production</option>
+                          <option value="SANDBOX">Sandbox</option>
+                        </select>
+                      </FormControl>
+                      <FormDescription>
+                        Choose the Square environment to connect to
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="access_token"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Access Token</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          placeholder="Paste your Square access token here"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Enter your Square access token. Keep it safe!
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <Separator />
+
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium">Automation Settings</h3>
+                  
+                  <FormField
+                    control={form.control}
+                    name="auto_import_enabled"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                        <div className="space-y-0.5">
+                          <FormLabel className="text-base">Auto Import</FormLabel>
+                          <FormDescription>
+                            Automatically import products from Square at regular intervals
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="auto_push_enabled"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                        <div className="space-y-0.5">
+                          <FormLabel className="text-base">Auto Push</FormLabel>
+                          <FormDescription>
+                            Automatically push approved products to Square
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
+                  {form.watch('auto_import_enabled') && (
+                    <FormField
+                      control={form.control}
+                      name="auto_import_interval_minutes"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Import Interval (minutes)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="15"
+                              max="1440"
+                              {...field}
+                              onChange={(e) => field.onChange(parseInt(e.target.value))}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            How often to check for new products (15 minutes to 24 hours)
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                </div>
+
+                <div className="flex justify-end">
+                  <Button 
+                    type="submit" 
+                    disabled={updateIntegration.isPending || createIntegration.isPending}
+                  >
+                    {updateIntegration.isPending || createIntegration.isPending ? 'Saving...' : 'Save Settings'}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Test Connection</CardTitle>
+              <CardDescription>
+                Verify your Square integration settings
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button onClick={handleTestConnection} disabled={isTestingConnection}>
+                {isTestingConnection ? 'Testing...' : 'Test Connection'}
+              </Button>
+              {connectionResult && (
+                <div className="space-y-2">
+                  {connectionResult.ok ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      Connected to {connectionResult.locations?.length || 0} Square location(s)
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <AlertCircle className="h-4 w-4 text-red-500" />
+                      Connection failed: {connectionResult.error || 'Unknown error'}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Import Products</CardTitle>
+              <CardDescription>
+                Import products from Square to seed your catalog
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button onClick={() => handleImportProducts('FULL')} disabled={importProducts.isLoading}>
+                <Download className="h-4 w-4 mr-2" />
+                Full Import
+              </Button>
+              <Button onClick={() => handleImportProducts('DELTA')} disabled={importProducts.isLoading} variant="outline">
+                <Upload className="h-4 w-4 mr-2" />
+                Delta Import
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                Full import will overwrite existing products. Delta import will only add new products.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </Layout>
   );

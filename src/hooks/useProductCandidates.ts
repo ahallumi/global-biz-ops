@@ -1,3 +1,4 @@
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Database } from '@/integrations/supabase/types';
@@ -123,31 +124,91 @@ export function useApproveCandidate() {
       candidateId: string;
       productData: Database['public']['Tables']['products']['Insert'];
     }) => {
-      // Create the product first
-      const { data: product, error: productError } = await supabase
+      // First, try to find a placeholder product to promote
+      let placeholderQuery = supabase
         .from('products')
-        .insert({
-          ...productData,
-          origin: 'LOCAL',
-          sync_state: 'LOCAL_ONLY'
-        })
-        .select()
-        .single();
+        .select('*')
+        .eq('catalog_status', 'PLACEHOLDER');
 
-      if (productError) throw productError;
+      if (productData.upc) {
+        placeholderQuery = placeholderQuery.eq('upc', productData.upc);
+      } else if (productData.plu) {
+        placeholderQuery = placeholderQuery.eq('plu', productData.plu);
+      } else if (productData.name) {
+        placeholderQuery = placeholderQuery.ilike('name', `%${productData.name}%`);
+      }
 
-      // Update candidate status to APPROVED and link to the new product
-      const { error: candidateError } = await supabase
-        .from('product_candidates')
-        .update({
-          status: 'APPROVED',
-          merged_into_product_id: product.id
-        })
-        .eq('id', candidateId);
+      const { data: placeholder } = await placeholderQuery.maybeSingle();
 
-      if (candidateError) throw candidateError;
+      let productId: string;
 
-      return { product, candidateId };
+      if (placeholder) {
+        // Promote the placeholder in place
+        const { data: promotedProduct, error: promoteError } = await supabase
+          .from('products')
+          .update({
+            name: productData.name,
+            sku: productData.sku || placeholder.sku,
+            upc: productData.upc || placeholder.upc,
+            plu: productData.plu || placeholder.plu,
+            unit_of_sale: productData.unit_of_sale,
+            default_cost_cents: productData.default_cost_cents || placeholder.default_cost_cents,
+            retail_price_cents: productData.retail_price_cents || placeholder.retail_price_cents,
+            brand: productData.brand || placeholder.brand,
+            category: productData.category || placeholder.category,
+            size: productData.size || placeholder.size,
+            weight_unit: productData.weight_unit || placeholder.weight_unit,
+            catalog_status: 'ACTIVE',
+            origin: 'LOCAL',
+            sync_state: 'LOCAL_ONLY',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', placeholder.id)
+          .select()
+          .single();
+
+        if (promoteError) throw promoteError;
+        productId = promotedProduct.id;
+
+        // Mark candidate as merged
+        const { error: candidateError } = await supabase
+          .from('product_candidates')
+          .update({
+            status: 'MERGED',
+            merged_into_product_id: productId
+          })
+          .eq('id', candidateId);
+
+        if (candidateError) throw candidateError;
+      } else {
+        // Create new product
+        const { data: product, error: productError } = await supabase
+          .from('products')
+          .insert({
+            ...productData,
+            catalog_status: 'ACTIVE',
+            origin: 'LOCAL',
+            sync_state: 'LOCAL_ONLY'
+          })
+          .select()
+          .single();
+
+        if (productError) throw productError;
+        productId = product.id;
+
+        // Mark candidate as approved
+        const { error: candidateError } = await supabase
+          .from('product_candidates')
+          .update({
+            status: 'APPROVED',
+            merged_into_product_id: productId
+          })
+          .eq('id', candidateId);
+
+        if (candidateError) throw candidateError;
+      }
+
+      return { productId, candidateId };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product-candidates'] });
