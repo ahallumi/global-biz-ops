@@ -28,7 +28,7 @@ const integrationSchema = z.object({
   environment: z.enum(['SANDBOX', 'PRODUCTION']),
   access_token: z.string(),
   auto_import_enabled: z.boolean(),
-  auto_import_interval_minutes: z.number().min(15).max(1440),
+  auto_import_interval_hours: z.number().min(0.25).max(24), // 15 minutes to 24 hours
   auto_push_enabled: z.boolean(), // Use the real boolean flag
 });
 
@@ -50,7 +50,7 @@ export default function InventorySettingsPage() {
       environment: 'PRODUCTION',
       access_token: '',
       auto_import_enabled: false,
-      auto_import_interval_minutes: 180,
+      auto_import_interval_hours: 3, // 3 hours (was 180 minutes)
       auto_push_enabled: false, // Use the real boolean flag
     },
   });
@@ -61,7 +61,7 @@ export default function InventorySettingsPage() {
         environment: activeIntegration.environment as 'SANDBOX' | 'PRODUCTION',
         access_token: '',
         auto_import_enabled: activeIntegration.auto_import_enabled,
-        auto_import_interval_minutes: activeIntegration.auto_import_interval_minutes,
+        auto_import_interval_hours: activeIntegration.auto_import_interval_minutes / 60, // Convert minutes to hours
         auto_push_enabled: activeIntegration.auto_push_enabled, // Use the real boolean flag
       });
     }
@@ -115,7 +115,7 @@ export default function InventorySettingsPage() {
           id: activeIntegration.id,
           environment: values.environment,
           auto_import_enabled: values.auto_import_enabled,
-          auto_import_interval_minutes: values.auto_import_interval_minutes,
+          auto_import_interval_minutes: Math.round(values.auto_import_interval_hours * 60), // Convert hours to minutes
           auto_push_enabled: values.auto_push_enabled, // Use the real boolean flag
         });
 
@@ -140,7 +140,7 @@ export default function InventorySettingsPage() {
           provider: 'SQUARE',
           environment: values.environment,
           auto_import_enabled: values.auto_import_enabled,
-          auto_import_interval_minutes: values.auto_import_interval_minutes,
+          auto_import_interval_minutes: Math.round(values.auto_import_interval_hours * 60), // Convert hours to minutes
           auto_push_enabled: values.auto_push_enabled, // Use the real boolean flag
         });
 
@@ -327,21 +327,22 @@ export default function InventorySettingsPage() {
                   {form.watch('auto_import_enabled') && (
                     <FormField
                       control={form.control}
-                      name="auto_import_interval_minutes"
+                      name="auto_import_interval_hours"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Import Interval (minutes)</FormLabel>
+                          <FormLabel>Import Interval (hours)</FormLabel>
                           <FormControl>
                             <Input
                               type="number"
-                              min="15"
-                              max="1440"
+                              min="0.25"
+                              max="24"
+                              step="0.25"
                               {...field}
-                              onChange={(e) => field.onChange(parseInt(e.target.value))}
+                              onChange={(e) => field.onChange(parseFloat(e.target.value))}
                             />
                           </FormControl>
                           <FormDescription>
-                            How often to check for new products (15 minutes to 24 hours)
+                            How often to check for new products (0.25 to 24 hours)
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
