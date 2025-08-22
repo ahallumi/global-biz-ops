@@ -181,3 +181,60 @@ export function useImportProducts() {
     }
   });
 }
+
+export function useCredentialStatus(integrationId?: string) {
+  return useQuery({
+    queryKey: ['credential-status', integrationId],
+    queryFn: async () => {
+      if (!integrationId) return { hasCredentials: false };
+      
+      const { data, error } = await supabase
+        .from('integration_credentials')
+        .select('id, created_at, updated_at')
+        .eq('integration_id', integrationId)
+        .maybeSingle();
+      
+      if (error) throw error;
+      return {
+        hasCredentials: !!data,
+        lastUpdated: data?.updated_at
+      };
+    },
+    enabled: !!integrationId
+  });
+}
+
+export function useSaveCredentials() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ integrationId, accessToken, provider, environment }: { 
+      integrationId: string; 
+      accessToken: string;
+      provider: string;
+      environment: string;
+    }) => {
+      const { data, error } = await supabase.functions.invoke('inventory-save-credentials', {
+        body: { integrationId, accessToken, provider, environment }
+      });
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['credential-status'] });
+      toast({
+        title: 'Credentials Saved',
+        description: 'API credentials have been securely stored',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Save Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  });
+}

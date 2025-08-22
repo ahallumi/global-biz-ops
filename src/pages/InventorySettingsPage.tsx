@@ -20,9 +20,10 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form"
-import { useInventoryIntegrations, useUpdateInventoryIntegration, useCreateInventoryIntegration, useTestConnection, useImportProducts } from '@/hooks/useInventoryIntegrations';
+import { useInventoryIntegrations, useUpdateInventoryIntegration, useCreateInventoryIntegration, useTestConnection, useImportProducts, useCredentialStatus, useSaveCredentials } from '@/hooks/useInventoryIntegrations';
 import { supabase } from '@/integrations/supabase/client';
-import { AlertCircle, CheckCircle, Package, Upload, Download } from 'lucide-react';
+import { AlertCircle, CheckCircle, Package, Upload, Download, Key, Shield } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 const integrationSchema = z.object({
   environment: z.enum(['SANDBOX', 'PRODUCTION']),
@@ -41,8 +42,10 @@ export default function InventorySettingsPage() {
   const createIntegration = useCreateInventoryIntegration();
   const testConnection = useTestConnection();
   const importProducts = useImportProducts();
+  const saveCredentials = useSaveCredentials();
 
   const activeIntegration = integrations?.[0];
+  const { data: credentialStatus } = useCredentialStatus(activeIntegration?.id);
 
   const form = useForm<z.infer<typeof integrationSchema>>({
     resolver: zodResolver(integrationSchema),
@@ -120,16 +123,12 @@ export default function InventorySettingsPage() {
         });
 
         if (values.access_token.trim()) {
-          const response = await supabase.functions.invoke('inventory-save-credentials', {
-            body: {
-              integrationId: activeIntegration.id,
-              accessToken: values.access_token,
-            }
+          await saveCredentials.mutateAsync({
+            integrationId: activeIntegration.id,
+            accessToken: values.access_token,
+            provider: 'SQUARE',
+            environment: values.environment
           });
-
-          if (response.error) {
-            throw new Error(response.error.message);
-          }
         }
       } else {
         if (!values.access_token.trim()) {
@@ -144,21 +143,20 @@ export default function InventorySettingsPage() {
           auto_push_enabled: values.auto_push_enabled, // Use the real boolean flag
         });
 
-        const response = await supabase.functions.invoke('inventory-save-credentials', {
-          body: {
-            integrationId: newIntegration.id,
-            accessToken: values.access_token,
-          }
+        await saveCredentials.mutateAsync({
+          integrationId: newIntegration.id,
+          accessToken: values.access_token,
+          provider: 'SQUARE',
+          environment: values.environment
         });
-
-        if (response.error) {
-          throw new Error(response.error.message);
-        }
       }
 
+      // Clear the form access token field after successful save
+      form.setValue('access_token', '');
+      
       toast({
         title: 'Success',
-        description: 'Integration settings saved successfully',
+        description: 'Integration settings and credentials saved successfully',
       });
     } catch (error: any) {
       toast({
@@ -189,37 +187,58 @@ export default function InventorySettingsPage() {
               Current status of your Square POS integration
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            {isLoadingIntegrations ? (
-              <p>Loading...</p>
-            ) : activeIntegration ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-4">
-                  <span className="text-sm text-muted-foreground">
-                    Environment: {activeIntegration.environment}
-                  </span>
-                  <span className="text-sm text-muted-foreground">
-                    Auto Import: {activeIntegration.auto_import_enabled ? 'Enabled' : 'Disabled'}
-                  </span>
-                  <span className="text-sm text-muted-foreground">
-                    Auto Push: {activeIntegration.auto_push_enabled ? 'Enabled' : 'Disabled'}
-                  </span>
-                </div>
-                {activeIntegration.last_success_at ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                    Last successful sync: {new Date(activeIntegration.last_success_at).toLocaleString()}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <AlertCircle className="h-4 w-4 text-red-500" />
-                    No successful sync yet
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p>No integration configured</p>
-            )}
+           <CardContent>
+             {isLoadingIntegrations ? (
+               <p>Loading...</p>
+             ) : activeIntegration ? (
+               <div className="space-y-3">
+                 <div className="flex items-center gap-4 flex-wrap">
+                   <span className="text-sm text-muted-foreground">
+                     Environment: {activeIntegration.environment}
+                   </span>
+                   <span className="text-sm text-muted-foreground">
+                     Auto Import: {activeIntegration.auto_import_enabled ? 'Enabled' : 'Disabled'}
+                   </span>
+                   <span className="text-sm text-muted-foreground">
+                     Auto Push: {activeIntegration.auto_push_enabled ? 'Enabled' : 'Disabled'}
+                   </span>
+                 </div>
+                 
+                 {/* Credential Status */}
+                 <div className="flex items-center gap-2 text-sm">
+                   {credentialStatus?.hasCredentials ? (
+                     <>
+                       <CheckCircle className="h-4 w-4 text-green-500" />
+                       <span className="text-muted-foreground">API credentials configured</span>
+                       {credentialStatus?.lastUpdated && (
+                         <span className="text-muted-foreground">
+                           (updated {new Date(credentialStatus.lastUpdated).toLocaleDateString()})
+                         </span>
+                       )}
+                     </>
+                   ) : (
+                     <>
+                       <AlertCircle className="h-4 w-4 text-orange-500" />
+                       <span className="text-muted-foreground">API credentials missing</span>
+                     </>
+                   )}
+                 </div>
+                 
+                 {activeIntegration.last_success_at ? (
+                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                     <CheckCircle className="h-4 w-4 text-green-500" />
+                     Last successful sync: {new Date(activeIntegration.last_success_at).toLocaleString()}
+                   </div>
+                 ) : (
+                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                     <AlertCircle className="h-4 w-4 text-red-500" />
+                     No successful sync yet
+                   </div>
+                 )}
+               </div>
+             ) : (
+               <p>No integration configured</p>
+             )}
           </CardContent>
         </Card>
 
@@ -261,16 +280,33 @@ export default function InventorySettingsPage() {
                   name="access_token"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Access Token</FormLabel>
+                      <div className="flex items-center justify-between">
+                        <FormLabel>Access Token</FormLabel>
+                        {credentialStatus?.hasCredentials && (
+                          <Badge variant="secondary" className="flex items-center gap-1">
+                            <Shield className="w-3 h-3" />
+                            Credentials Stored
+                          </Badge>
+                        )}
+                      </div>
                       <FormControl>
                         <Input
                           type="password"
-                          placeholder="Paste your Square access token here"
+                          placeholder={
+                            credentialStatus?.hasCredentials 
+                              ? "••••••••••••••••••••••• (Leave empty to keep existing)" 
+                              : "Paste your Square access token here"
+                          }
                           {...field}
                         />
                       </FormControl>
                       <FormDescription>
                         Enter your Square <strong>Access Token</strong> (not Application ID). Get this from your Square Developer Dashboard → Applications → [Your App] → Production/Sandbox → Access Token.
+                        {credentialStatus?.hasCredentials && credentialStatus?.lastUpdated && (
+                          <div className="mt-1 text-sm text-muted-foreground">
+                            Last updated: {new Date(credentialStatus.lastUpdated).toLocaleDateString()}
+                          </div>
+                        )}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
