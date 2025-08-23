@@ -5,6 +5,13 @@ import { Database } from '@/integrations/supabase/types';
 type ProductCandidate = Database['public']['Tables']['product_candidates']['Row'];
 type Product = Database['public']['Tables']['products']['Row'];
 
+// Extended type for candidates with relationships
+type ExpandedCandidate = ProductCandidate & {
+  intake?: { id: string; invoice_number: string | null; date_received: string } | null;
+  supplier?: { id: string; name: string; code: string } | null;
+  merged_product?: { id: string; name: string } | null;
+};
+
 export type StagingItem = {
   id: string;
   type: 'CANDIDATE' | 'PLACEHOLDER';
@@ -30,23 +37,31 @@ export function useStagingData() {
     queryFn: async () => {
       console.log('🔍 Fetching staging data...');
       
-      // Fetch product candidates
-      const { data: candidates, error: candidatesError } = await supabase
-        .from('product_candidates')
-        .select(`
-          *,
-          intake:product_intakes(id, invoice_number, date_received),
-          supplier:suppliers(id, name, code),
-          merged_product:products(id, name)
-        `)
-        .order('created_at', { ascending: false });
+      // Fetch product candidates with error resilience
+      let candidates: ExpandedCandidate[] = [];
+      try {
+        const { data, error: candidatesError } = await supabase
+          .from('product_candidates')
+          .select(`
+            *,
+            intake:product_intakes(id, invoice_number, date_received),
+            supplier:suppliers(id, name, code),
+            merged_product:products!product_candidates_merged_into_product_id_fkey(id, name)
+          `)
+          .order('created_at', { ascending: false });
 
-      if (candidatesError) {
-        console.error('❌ Candidates error:', candidatesError);
-        throw candidatesError;
+        if (candidatesError) {
+          console.error('❌ Candidates error:', candidatesError);
+          throw candidatesError;
+        }
+
+        candidates = (data as ExpandedCandidate[]) || [];
+        console.log('📋 Candidates loaded:', candidates.length);
+      } catch (error) {
+        console.error('❌ Failed to fetch candidates:', error);
+        console.log('📋 Falling back to placeholders only');
+        candidates = [];
       }
-
-      console.log('📋 Candidates loaded:', candidates?.length || 0);
 
       // Fetch placeholder and archived products
       const { data: placeholders, error: placeholdersError } = await supabase
