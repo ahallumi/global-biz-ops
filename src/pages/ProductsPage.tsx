@@ -14,6 +14,9 @@ import { DataTable } from '@/components/data-table/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
 import { Database } from '@/integrations/supabase/types';
 import { Search, RefreshCw, Package, Upload, Download, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { SplitButton } from '@/components/ui/split-button';
+import { SyncStatusPopover } from '@/components/sync/SyncStatusPopover';
+import { ImportStatusPopover } from '@/components/sync/ImportStatusPopover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CandidateActions } from '@/components/products/CandidateActions';
 import { PlaceholderActions } from '@/components/products/PlaceholderActions';
@@ -361,22 +364,26 @@ export default function ProductsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button
+            <SplitButton
               onClick={() => pullFromSquare.mutate()}
               disabled={pullFromSquare.isPending}
               variant="outline"
+              popoverContent={<ImportStatusPopover />}
             >
               <Download className={`h-4 w-4 mr-2 ${pullFromSquare.isPending ? 'animate-spin' : ''}`} />
               Import from Square
-            </Button>
-            <Button
+            </SplitButton>
+            
+            <SplitButton
               onClick={handlePushAll}
               disabled={pushToSquare.isPending || !products?.some(p => p.sync_state === 'LOCAL_ONLY')}
               variant="outline"
+              popoverContent={<SyncStatusPopover />}
             >
               <Upload className={`h-4 w-4 mr-2 ${pushToSquare.isPending ? 'animate-spin' : ''}`} />
               Push All Local
-            </Button>
+            </SplitButton>
+            
             <Button
               onClick={handleRefresh}
               disabled={isLoadingProducts || isLoadingStaging}
@@ -549,7 +556,7 @@ export default function ProductsPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="sync" className="space-y-4">
+          <TabsContent value="sync" className="space-y-4" id="sync-queue">
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>

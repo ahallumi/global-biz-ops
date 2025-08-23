@@ -98,3 +98,41 @@ export function usePullProductsFromSquare() {
     }
   });
 }
+
+// Utility functions for popover summaries
+export function getSyncRunSummary(runs: ProductSyncRun[]) {
+  const lastRun = runs.find(run => run.direction === 'OUT');
+  
+  if (!lastRun) {
+    return { lastRun: null, timeAgo: null };
+  }
+
+  const timeAgo = getTimeAgo(lastRun.started_at);
+  return { lastRun, timeAgo };
+}
+
+export function getImportRunSummary(runs: any[]) {
+  const lastRun = runs[0]; // Import runs are already sorted by started_at desc
+  
+  if (!lastRun) {
+    return { lastRun: null, timeAgo: null };
+  }
+
+  const timeAgo = getTimeAgo(lastRun.started_at);
+  return { lastRun, timeAgo };
+}
+
+function getTimeAgo(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  
+  const minutes = Math.floor(diffMs / (1000 * 60));
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  return `${days}d ago`;
+}
