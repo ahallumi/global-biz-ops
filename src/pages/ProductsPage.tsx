@@ -489,6 +489,15 @@ export default function ProductsPage() {
                   Product candidates and legacy placeholders that need action to move into your live catalog.
                   Use filters to narrow down the view as needed.
                 </CardDescription>
+                {/* Debug Info */}
+                {stagingData && (
+                  <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                    <strong>Debug:</strong> Loaded {stagingData.length} total items • 
+                    Displaying {displayedStagingData.length} after filters • 
+                    Raw candidates: {stagingData.filter(i => i.type === 'CANDIDATE').length} • 
+                    Raw placeholders: {stagingData.filter(i => i.type === 'PLACEHOLDER').length}
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="p-0">
                 <StagingFilters
@@ -510,11 +519,30 @@ export default function ProductsPage() {
                       ))}
                     </div>
                   ) : (
-                    <DataTable 
-                      columns={stagingColumns} 
-                      data={displayedStagingData}
-                      searchKey="name"
-                    />
+                    <>
+                      <DataTable 
+                        columns={stagingColumns} 
+                        data={displayedStagingData}
+                        searchKey="name"
+                      />
+                      
+                      {/* Debug fallback - if data exists but table is empty */}
+                      {stagingData && stagingData.length > 0 && displayedStagingData.length === 0 && (
+                        <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+                          <h4 className="font-semibold text-yellow-800 dark:text-yellow-200">Debug: Data Present But Hidden</h4>
+                          <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                            Found {stagingData.length} items but filters are hiding them all. First 3 items:
+                          </p>
+                          <div className="mt-2 space-y-1 text-xs">
+                            {stagingData.slice(0, 3).map((item, idx) => (
+                              <div key={idx} className="font-mono bg-yellow-100 dark:bg-yellow-900/40 p-1 rounded">
+                                {item.type}: {item.name} | Status: {item.status} | Source: {item.source}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </CardContent>

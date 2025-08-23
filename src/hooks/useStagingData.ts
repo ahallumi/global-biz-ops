@@ -28,6 +28,8 @@ export function useStagingData() {
   return useQuery({
     queryKey: ['staging-data'],
     queryFn: async () => {
+      console.log('🔍 Fetching staging data...');
+      
       // Fetch product candidates
       const { data: candidates, error: candidatesError } = await supabase
         .from('product_candidates')
@@ -39,7 +41,12 @@ export function useStagingData() {
         `)
         .order('created_at', { ascending: false });
 
-      if (candidatesError) throw candidatesError;
+      if (candidatesError) {
+        console.error('❌ Candidates error:', candidatesError);
+        throw candidatesError;
+      }
+
+      console.log('📋 Candidates loaded:', candidates?.length || 0);
 
       // Fetch placeholder and archived products
       const { data: placeholders, error: placeholdersError } = await supabase
@@ -48,7 +55,12 @@ export function useStagingData() {
         .in('catalog_status', ['PLACEHOLDER', 'ARCHIVED'])
         .order('created_at', { ascending: false });
 
-      if (placeholdersError) throw placeholdersError;
+      if (placeholdersError) {
+        console.error('❌ Placeholders error:', placeholdersError);
+        throw placeholdersError;
+      }
+
+      console.log('📦 Placeholders loaded:', placeholders?.length || 0);
 
       // Combine and transform data
       const stagingItems: StagingItem[] = [
@@ -90,6 +102,13 @@ export function useStagingData() {
           original_data: product
         })))
       ];
+
+      console.log('🎯 Total staging items:', stagingItems.length);
+      console.log('📊 Breakdown:', {
+        candidates: candidates?.length || 0,
+        placeholders: placeholders?.length || 0,
+        total: stagingItems.length
+      });
 
       return stagingItems;
     }
