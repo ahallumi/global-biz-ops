@@ -44,10 +44,16 @@ serve(async (req) => {
     }
 
     // Get integration details and credentials
-    const appCryptKey = Deno.env.get('APP_CRYPT_KEY')
+    console.log('🔐 [square-import-products] APP_CRYPT_KEY exists:', !!Deno.env.get('APP_CRYPT_KEY'))
+    console.log('🔐 [square-import-products] APP_CRYPT_KEY2 exists:', !!Deno.env.get('APP_CRYPT_KEY2'))
+    console.log('🔐 [square-import-products] ENV keys:', Object.keys(Deno.env.toObject()).filter(k => k.includes('CRYPT')))
+
+    const appCryptKey = Deno.env.get('APP_CRYPT_KEY2')
     if (!appCryptKey) {
-      throw new Error('APP_CRYPT_KEY not configured')
+      throw new Error('APP_CRYPT_KEY2 not configured')
     }
+
+    console.log('🔐 [square-import-products] Using encryption key: APP_CRYPT_KEY2')
 
     const { data: credentialsData, error: credentialsError } = await supabase.rpc('get_decrypted_credentials', {
       p_integration_id: integrationId,
@@ -58,7 +64,16 @@ serve(async (req) => {
       throw new Error('Failed to retrieve credentials')
     }
 
-    const { access_token, environment } = credentialsData
+    // RPC functions return an array, so we need to access the first element
+    console.log('🔐 [square-import-products] RPC result type:', typeof credentialsData, 'Array?', Array.isArray(credentialsData))
+    console.log('🔐 [square-import-products] RPC result length:', credentialsData?.length)
+    
+    if (!Array.isArray(credentialsData) || credentialsData.length === 0) {
+      console.error('No credentials found for integration:', integrationId)
+      throw new Error('No credentials found for this integration')
+    }
+
+    const { access_token, environment } = credentialsData[0]
 
     const baseUrl = environment === 'SANDBOX' 
       ? 'https://connect.squareupsandbox.com' 
