@@ -5,11 +5,16 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { CheckCircle, XCircle, Clock, Download, RotateCcw, ExternalLink } from "lucide-react"
 import { useProductImportRuns, usePullProductsFromSquare, getImportRunSummary } from "@/hooks/useProductSync"
-import { useInventoryIntegrations } from "@/hooks/useInventoryIntegrations"
+import { useInventoryIntegrations, useUpdateInventoryIntegration } from "@/hooks/useInventoryIntegrations"
 
-export function ImportStatusPopover() {
+interface ImportStatusPopoverProps {
+  onNavigateToSyncQueue?: () => void
+}
+
+export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopoverProps) {
   const { data: importRuns } = useProductImportRuns()
   const { data: integrations } = useInventoryIntegrations()
+  const updateIntegration = useUpdateInventoryIntegration()
   const pullFromSquare = usePullProductsFromSquare()
   
   const summary = getImportRunSummary(importRuns || [])
@@ -86,8 +91,15 @@ export function ImportStatusPopover() {
             <div className="text-xs text-muted-foreground">Automatically sync from Square</div>
           </div>
           <Switch 
-            checked={activeIntegration?.auto_push_enabled || false}
-            disabled
+            checked={activeIntegration?.auto_import_enabled || false}
+            onCheckedChange={(checked) => {
+              if (activeIntegration) {
+                updateIntegration.mutate({
+                  id: activeIntegration.id,
+                  auto_import_enabled: checked
+                })
+              }
+            }}
           />
         </div>
         
@@ -102,10 +114,13 @@ export function ImportStatusPopover() {
             Import Now
           </Button>
           
-          <Button size="sm" variant="ghost" asChild>
-            <a href="#sync-queue" className="flex items-center gap-1">
-              <ExternalLink className="h-3 w-3" />
-            </a>
+          <Button 
+            size="sm" 
+            variant="ghost" 
+            onClick={onNavigateToSyncQueue}
+            className="flex items-center gap-1"
+          >
+            <ExternalLink className="h-3 w-3" />
           </Button>
         </div>
       </div>

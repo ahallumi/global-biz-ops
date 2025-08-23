@@ -5,11 +5,17 @@ import { Separator } from "@/components/ui/separator"
 import { CheckCircle, XCircle, Clock, Upload, RotateCcw, ExternalLink } from "lucide-react"
 import { useProductSyncRuns, usePushProductsToSquare, getSyncRunSummary } from "@/hooks/useProductSync"
 import { useProducts } from "@/hooks/useProducts"
+import { useToast } from "@/hooks/use-toast"
 
-export function SyncStatusPopover() {
+interface SyncStatusPopoverProps {
+  onNavigateToSyncQueue?: () => void
+}
+
+export function SyncStatusPopover({ onNavigateToSyncQueue }: SyncStatusPopoverProps) {
   const { data: syncRuns } = useProductSyncRuns()
   const { data: products } = useProducts('ACTIVE')
   const pushToSquare = usePushProductsToSquare()
+  const { toast } = useToast()
   
   const summary = getSyncRunSummary(syncRuns || [])
   const localOnlyCount = products?.filter(p => p.sync_state === 'LOCAL_ONLY').length || 0
@@ -32,6 +38,11 @@ export function SyncStatusPopover() {
     const localOnlyProducts = products?.filter(p => p.sync_state === 'LOCAL_ONLY').map(p => p.id) || []
     if (localOnlyProducts.length > 0) {
       pushToSquare.mutate(localOnlyProducts)
+    } else {
+      toast({
+        title: 'No Products to Push',
+        description: 'There are no local-only products available to push to Square.',
+      })
     }
   }
 
@@ -95,17 +106,20 @@ export function SyncStatusPopover() {
           <Button
             size="sm"
             onClick={handlePushAll}
-            disabled={pushToSquare.isPending || localOnlyCount === 0}
+            disabled={pushToSquare.isPending}
             className="flex-1"
           >
             <RotateCcw className="h-3 w-3 mr-1" />
             Push All
           </Button>
           
-          <Button size="sm" variant="ghost" asChild>
-            <a href="#sync-queue" className="flex items-center gap-1">
-              <ExternalLink className="h-3 w-3" />
-            </a>
+          <Button 
+            size="sm" 
+            variant="ghost" 
+            onClick={onNavigateToSyncQueue}
+            className="flex items-center gap-1"
+          >
+            <ExternalLink className="h-3 w-3" />
           </Button>
         </div>
       </div>

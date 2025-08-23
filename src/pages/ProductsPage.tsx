@@ -351,6 +351,14 @@ export default function ProductsPage() {
     }
   };
 
+  const handleNavigateToSyncQueue = () => {
+    setActiveTab('sync');
+    // Scroll to sync queue section after a brief delay to allow tab switch
+    setTimeout(() => {
+      document.getElementById('sync-queue')?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
+
   const activeIntegration = integrations?.find(i => i.provider === 'SQUARE');
 
   return (
@@ -368,7 +376,7 @@ export default function ProductsPage() {
               onClick={() => pullFromSquare.mutate()}
               disabled={pullFromSquare.isPending}
               variant="outline"
-              popoverContent={<ImportStatusPopover />}
+              popoverContent={<ImportStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
             >
               <Download className={`h-4 w-4 mr-2 ${pullFromSquare.isPending ? 'animate-spin' : ''}`} />
               Import from Square
@@ -376,9 +384,9 @@ export default function ProductsPage() {
             
             <SplitButton
               onClick={handlePushAll}
-              disabled={pushToSquare.isPending || !products?.some(p => p.sync_state === 'LOCAL_ONLY')}
+              disabled={pushToSquare.isPending}
               variant="outline"
-              popoverContent={<SyncStatusPopover />}
+              popoverContent={<SyncStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
             >
               <Upload className={`h-4 w-4 mr-2 ${pushToSquare.isPending ? 'animate-spin' : ''}`} />
               Push All Local
