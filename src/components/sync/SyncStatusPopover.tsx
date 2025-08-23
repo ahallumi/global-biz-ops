@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { CheckCircle, XCircle, Clock, Upload, RotateCcw, ExternalLink } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 import { useProductSyncRuns, usePushProductsToSquare, getSyncRunSummary } from "@/hooks/useProductSync"
 import { useProducts } from "@/hooks/useProducts"
 import { useToast } from "@/hooks/use-toast"
@@ -12,6 +13,7 @@ interface SyncStatusPopoverProps {
 }
 
 export function SyncStatusPopover({ onNavigateToSyncQueue }: SyncStatusPopoverProps) {
+  const navigate = useNavigate()
   const { data: syncRuns } = useProductSyncRuns()
   const { data: products } = useProducts('ACTIVE')
   const pushToSquare = usePushProductsToSquare()
@@ -116,7 +118,7 @@ export function SyncStatusPopover({ onNavigateToSyncQueue }: SyncStatusPopoverPr
           <Button 
             size="sm" 
             variant="ghost" 
-            onClick={onNavigateToSyncQueue}
+            onClick={() => navigate('/sync-queue')}
             className="flex items-center gap-1"
           >
             <ExternalLink className="h-3 w-3" />

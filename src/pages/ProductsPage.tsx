@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useProducts, useSearchProducts } from '@/hooks/useProducts';
 import { useProductCandidates } from '@/hooks/useProductCandidates';
-import { useProductSyncRuns, useProductImportRuns, usePushProductsToSquare, usePullProductsFromSquare } from '@/hooks/useProductSync';
+import { usePushProductsToSquare, usePullProductsFromSquare } from '@/hooks/useProductSync';
 import { useInventoryIntegrations } from '@/hooks/useInventoryIntegrations';
 import { useStagingData, useStagingStats, StagingItem } from '@/hooks/useStagingData';
 import { Layout } from '@/components/layout/Layout';
@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '@/components/data-table/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
 import { Database } from '@/integrations/supabase/types';
-import { Search, RefreshCw, Package, Upload, Download, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { Search, RefreshCw, Package, Upload } from 'lucide-react';
 import { SplitButton } from '@/components/ui/split-button';
 import { SyncStatusPopover } from '@/components/sync/SyncStatusPopover';
 import { ImportStatusPopover } from '@/components/sync/ImportStatusPopover';
@@ -39,9 +39,6 @@ export default function ProductsPage() {
   const { data: stagingData, isLoading: isLoadingStaging, refetch: refetchStaging } = useStagingData();
   const { data: stagingStats } = useStagingStats();
   
-  // Sync hooks
-  const { data: syncRuns, isLoading: isLoadingSyncRuns } = useProductSyncRuns();
-  const { data: importRuns, isLoading: isLoadingImportRuns } = useProductImportRuns();
   const pushToSquare = usePushProductsToSquare();
   const pullFromSquare = usePullProductsFromSquare();
   
@@ -265,71 +262,7 @@ export default function ProductsPage() {
   ];
 
   // Sync runs columns
-  const syncRunColumns: ColumnDef<any>[] = [
-    {
-      accessorKey: 'direction',
-      header: 'Direction',
-      cell: ({ row }) => {
-        const direction = row.getValue('direction') as string;
-        const isOut = direction === 'OUT';
-        return (
-          <Badge variant={isOut ? 'secondary' : 'default'} className="gap-1">
-            {isOut ? <Upload className="h-3 w-3" /> : <Download className="h-3 w-3" />}
-            {isOut ? 'Push' : 'Pull'}
-          </Badge>
-        );
-      },
-    },
-    {
-      accessorKey: 'status',
-      header: 'Status',
-      cell: ({ row }) => {
-        const status = row.getValue('status') as string;
-        const getVariant = (status: string) => {
-          switch (status) {
-            case 'COMPLETED': return 'default';
-            case 'FAILED': return 'destructive';
-            case 'PENDING': return 'secondary';
-            default: return 'outline';
-          }
-        };
-        const getIcon = (status: string) => {
-          switch (status) {
-            case 'COMPLETED': return <CheckCircle className="h-3 w-3" />;
-            case 'FAILED': return <XCircle className="h-3 w-3" />;
-            case 'PENDING': return <Clock className="h-3 w-3" />;
-            default: return null;
-          }
-        };
-        return (
-          <Badge variant={getVariant(status)} className="gap-1">
-            {getIcon(status)}
-            {status}
-          </Badge>
-        );
-      },
-    },
-    {
-      accessorKey: 'started_at',
-      header: 'Started',
-      cell: ({ row }) => {
-        const date = row.getValue('started_at') as string;
-        return new Date(date).toLocaleString();
-      },
-    },
-    {
-      accessorKey: 'processed_count',
-      header: 'Processed',
-    },
-    {
-      accessorKey: 'created_count',
-      header: 'Created',
-    },
-    {
-      accessorKey: 'updated_count',
-      header: 'Updated',
-    },
-  ];
+  const syncRunColumns: ColumnDef<any>[] = [];
 
   const handleRefresh = () => {
     if (activeTab === 'catalog') {
@@ -352,11 +285,8 @@ export default function ProductsPage() {
   };
 
   const handleNavigateToSyncQueue = () => {
-    setActiveTab('sync');
-    // Scroll to sync queue section after a brief delay to allow tab switch
-    setTimeout(() => {
-      document.getElementById('sync-queue')?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    // Navigate to the dedicated sync queue page
+    window.location.href = '/sync-queue';
   };
 
   const activeIntegration = integrations?.find(i => i.provider === 'SQUARE');
@@ -378,7 +308,7 @@ export default function ProductsPage() {
               variant="outline"
               popoverContent={<ImportStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
             >
-              <Download className={`h-4 w-4 mr-2 ${pullFromSquare.isPending ? 'animate-spin' : ''}`} />
+              <Package className={`h-4 w-4 mr-2 ${pullFromSquare.isPending ? 'animate-spin' : ''}`} />
               Import from Square
             </SplitButton>
             
@@ -437,15 +367,12 @@ export default function ProductsPage() {
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="catalog">
               Catalog ({products?.length || 0})
             </TabsTrigger>
             <TabsTrigger value="staging">
               Staging ({stagingStats?.totalStaging || 0})
-            </TabsTrigger>
-            <TabsTrigger value="sync">
-              Sync Queue
             </TabsTrigger>
           </TabsList>
 
@@ -562,52 +489,6 @@ export default function ProductsPage() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="sync" className="space-y-4" id="sync-queue">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Sync Runs (Push)</CardTitle>
-                  <CardDescription>Recent push operations to Square</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {isLoadingSyncRuns ? (
-                    <div className="space-y-3">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        <Skeleton key={i} className="h-12 w-full" />
-                      ))}
-                    </div>
-                  ) : (
-                    <DataTable 
-                      columns={syncRunColumns} 
-                      data={syncRuns || []}
-                    />
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Import Runs (Pull)</CardTitle>
-                  <CardDescription>Recent import operations from Square</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {isLoadingImportRuns ? (
-                    <div className="space-y-3">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        <Skeleton key={i} className="h-12 w-full" />
-                      ))}
-                    </div>
-                  ) : (
-                    <DataTable 
-                      columns={syncRunColumns} 
-                      data={importRuns || []}
-                    />
-                  )}
-                </CardContent>
-              </Card>
-            </div>
           </TabsContent>
         </Tabs>
       </div>

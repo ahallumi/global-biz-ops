@@ -18,6 +18,7 @@ import IntakeDetailPage from "./pages/IntakeDetailPage";
 import SuppliersPage from "./pages/SuppliersPage";
 import InventorySettingsPage from "./pages/InventorySettingsPage";
 import ProductsPage from "./pages/ProductsPage";
+import SyncQueuePage from "./pages/SyncQueuePage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -119,6 +120,14 @@ const App = () => (
               element={
                 <ProtectedRoute requiredRoles={['admin', 'manager', 'staff']}>
                   <ProductsPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/sync-queue" 
+              element={
+                <ProtectedRoute requiredRoles={['admin', 'manager', 'staff']}>
+                  <SyncQueuePage />
                 </ProtectedRoute>
               } 
             />

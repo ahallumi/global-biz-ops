@@ -78,6 +78,12 @@ const navigation = [
     roles: ['admin', 'manager', 'staff'],
   },
   {
+    name: 'Sync Queue',
+    href: '/sync-queue',
+    icon: History,
+    roles: ['admin', 'manager', 'staff'],
+  },
+  {
     name: 'Inventory Settings',
     href: '/inventory-settings',
     icon: Cog,

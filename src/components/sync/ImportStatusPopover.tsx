@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { CheckCircle, XCircle, Clock, Download, RotateCcw, ExternalLink } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 import { useProductImportRuns, usePullProductsFromSquare, getImportRunSummary } from "@/hooks/useProductSync"
 import { useInventoryIntegrations, useUpdateInventoryIntegration } from "@/hooks/useInventoryIntegrations"
 
@@ -12,6 +13,7 @@ interface ImportStatusPopoverProps {
 }
 
 export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopoverProps) {
+  const navigate = useNavigate()
   const { data: importRuns } = useProductImportRuns()
   const { data: integrations } = useInventoryIntegrations()
   const updateIntegration = useUpdateInventoryIntegration()
@@ -117,7 +119,7 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
           <Button 
             size="sm" 
             variant="ghost" 
-            onClick={onNavigateToSyncQueue}
+            onClick={() => navigate('/sync-queue')}
             className="flex items-center gap-1"
           >
             <ExternalLink className="h-3 w-3" />
