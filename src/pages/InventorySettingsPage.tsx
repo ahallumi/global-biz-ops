@@ -21,8 +21,10 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { useInventoryIntegrations, useUpdateInventoryIntegration, useCreateInventoryIntegration, useTestConnection, useImportProducts, useCredentialStatus, useSaveCredentials } from '@/hooks/useInventoryIntegrations';
+import { useImportProgress } from '@/hooks/useImportProgress';
+import { ImportProgressDialog } from '@/components/imports/ImportProgressDialog';
 import { supabase } from '@/integrations/supabase/client';
-import { AlertCircle, CheckCircle, Package, Upload, Download, Key, Shield } from 'lucide-react';
+import { AlertCircle, CheckCircle, Package, Upload, Download, Key, Shield, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 const integrationSchema = z.object({
@@ -36,6 +38,8 @@ const integrationSchema = z.object({
 export default function InventorySettingsPage() {
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionResult, setConnectionResult] = useState<any>(null);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importMode, setImportMode] = useState<'FULL' | 'DELTA'>('FULL');
 
   const { data: integrations, isLoading: isLoadingIntegrations } = useInventoryIntegrations();
   const updateIntegration = useUpdateInventoryIntegration();
@@ -46,6 +50,7 @@ export default function InventorySettingsPage() {
 
   const activeIntegration = integrations?.[0];
   const { data: credentialStatus } = useCredentialStatus(activeIntegration?.id);
+  const { currentImport, isImporting } = useImportProgress(activeIntegration?.id);
 
   const form = useForm<z.infer<typeof integrationSchema>>({
     resolver: zodResolver(integrationSchema),
@@ -101,6 +106,8 @@ export default function InventorySettingsPage() {
         throw new Error('No integration configured. Save settings first.');
       }
 
+      setImportMode(mode);
+      setShowImportDialog(true);
       await importProducts.mutateAsync({ integrationId: activeIntegration.id, mode });
     } catch (error: any) {
       toast({
@@ -108,6 +115,7 @@ export default function InventorySettingsPage() {
         description: error.message,
         variant: 'destructive',
       });
+      setShowImportDialog(false);
     }
   };
 
@@ -224,17 +232,37 @@ export default function InventorySettingsPage() {
                    )}
                  </div>
                  
-                 {activeIntegration.last_success_at ? (
-                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                     <CheckCircle className="h-4 w-4 text-green-500" />
-                     Last successful sync: {new Date(activeIntegration.last_success_at).toLocaleString()}
-                   </div>
-                 ) : (
-                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                     <AlertCircle className="h-4 w-4 text-red-500" />
-                     No successful sync yet
-                   </div>
-                 )}
+                  {/* Current Import Status */}
+                  {isImporting && currentImport && (
+                    <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-blue-700 dark:text-blue-300">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Import in Progress
+                      </div>
+                      <div className="text-sm text-blue-600 dark:text-blue-400">
+                        {currentImport.processed_count > 0 
+                          ? `Processing... ${currentImport.processed_count} products processed`
+                          : 'Fetching products from Square...'
+                        }
+                      </div>
+                      <div className="flex gap-4 text-xs text-blue-500 dark:text-blue-400">
+                        <span>Created: {currentImport.created_count}</span>
+                        <span>Updated: {currentImport.updated_count}</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {activeIntegration.last_success_at ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      Last successful sync: {new Date(activeIntegration.last_success_at).toLocaleString()}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <AlertCircle className="h-4 w-4 text-red-500" />
+                      No successful sync yet
+                    </div>
+                  )}
                </div>
              ) : (
                <p>No integration configured</p>
@@ -447,20 +475,81 @@ export default function InventorySettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Button onClick={() => handleImportProducts('FULL')} disabled={importProducts.isPending}>
-                <Download className="h-4 w-4 mr-2" />
-                Full Import
-              </Button>
-              <Button onClick={() => handleImportProducts('DELTA')} disabled={importProducts.isPending} variant="outline">
-                <Upload className="h-4 w-4 mr-2" />
-                Delta Import
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => handleImportProducts('FULL')} 
+                  disabled={importProducts.isPending || isImporting}
+                  className="flex-1"
+                >
+                  {isImporting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4 mr-2" />
+                      Full Import
+                    </>
+                  )}
+                </Button>
+                <Button 
+                  onClick={() => handleImportProducts('DELTA')} 
+                  disabled={importProducts.isPending || isImporting} 
+                  variant="outline"
+                  className="flex-1"
+                >
+                  {isImporting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Delta Import
+                    </>
+                  )}
+                </Button>
+              </div>
+              
+              {isImporting && currentImport && (
+                <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Import Progress</span>
+                    <Badge variant="secondary">
+                      {currentImport.status}
+                    </Badge>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {currentImport.processed_count > 0 
+                      ? `${currentImport.processed_count} products processed`
+                      : 'Initializing import...'
+                    }
+                  </div>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Created: {currentImport.created_count}</span>
+                    <span>Updated: {currentImport.updated_count}</span>
+                  </div>
+                </div>
+              )}
+              
               <p className="text-sm text-muted-foreground">
                 Full import will overwrite existing products. Delta import will only add new products.
               </p>
             </CardContent>
           </Card>
         </div>
+
+        {/* Import Progress Dialog */}
+        {activeIntegration && (
+          <ImportProgressDialog
+            open={showImportDialog}
+            onOpenChange={setShowImportDialog}
+            integrationId={activeIntegration.id}
+            mode={importMode}
+          />
+        )}
       </div>
     </Layout>
   );
