@@ -57,14 +57,8 @@ export default function ProductsPage() {
     return true;
   }) || [];
 
-  // Default filter to show actionable items (pending candidates and placeholders)
-  const shouldShowDefaultFilter = sourceFilter === 'all' && statusFilter === 'all';
-  const displayedStagingData = shouldShowDefaultFilter 
-    ? stagingData?.filter(item => 
-        (item.type === 'CANDIDATE' && item.status === 'PENDING') || 
-        (item.type === 'PLACEHOLDER' && item.status === 'PLACEHOLDER')
-      ) || []
-    : filteredStagingData;
+  // Show all staging data by default - let users apply filters explicitly
+  const displayedStagingData = filteredStagingData;
 
   // Product columns with origin and sync state
   const productColumns: ColumnDef<Product>[] = [
@@ -493,7 +487,7 @@ export default function ProductsPage() {
                 <CardTitle>Staging Area</CardTitle>
                 <CardDescription>
                   Product candidates and legacy placeholders that need action to move into your live catalog.
-                  By default, showing actionable items (pending candidates and placeholders).
+                  Use filters to narrow down the view as needed.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
