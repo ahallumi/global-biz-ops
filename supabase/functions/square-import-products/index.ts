@@ -244,7 +244,7 @@ async function processProduct(
       retail_price_cents: variationData.price_money?.amount || null,
       category: itemData.category_id || null,
       size: variationData.name !== itemData.name ? variationData.name : null,
-      active: !itemData.is_deleted && !variationData.is_deleted,
+      catalog_status: (itemData.is_deleted || variationData.is_deleted) ? 'ARCHIVED' : 'ACTIVE',
       updated_at: new Date().toISOString()
     }
 
