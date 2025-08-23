@@ -162,6 +162,13 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "intake_reconcile_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_catalog"
+            referencedColumns: ["id"]
+          },
         ]
       }
       integration_credentials: {
@@ -318,6 +325,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "product_candidates_merged_into_product_id_fkey"
+            columns: ["merged_into_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_catalog"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "product_candidates_supplier_id_fkey"
             columns: ["supplier_id"]
             isOneToOne: false
@@ -453,6 +467,13 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "product_intake_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_catalog"
+            referencedColumns: ["id"]
+          },
         ]
       }
       product_intakes: {
@@ -544,6 +565,13 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "product_pos_links_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_catalog"
+            referencedColumns: ["id"]
+          },
         ]
       }
       product_sync_runs: {
@@ -587,6 +615,9 @@ export type Database = {
       }
       products: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
+          approved_candidate_id: string | null
           barcode: string | null
           brand: string | null
           catalog_status: Database["public"]["Enums"]["catalog_status"]
@@ -608,6 +639,9 @@ export type Database = {
           weight_unit: string | null
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_candidate_id?: string | null
           barcode?: string | null
           brand?: string | null
           catalog_status?: Database["public"]["Enums"]["catalog_status"]
@@ -629,6 +663,9 @@ export type Database = {
           weight_unit?: string | null
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_candidate_id?: string | null
           barcode?: string | null
           brand?: string | null
           catalog_status?: Database["public"]["Enums"]["catalog_status"]
@@ -649,7 +686,15 @@ export type Database = {
           updated_at?: string | null
           weight_unit?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_approved_candidate_id_fkey"
+            columns: ["approved_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "product_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       punch_events: {
         Row: {
@@ -820,6 +865,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "supplier_products_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_products_catalog"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "supplier_products_supplier_id_fkey"
             columns: ["supplier_id"]
             isOneToOne: false
@@ -917,6 +969,89 @@ export type Database = {
       }
     }
     Views: {
+      v_products_catalog: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          approved_candidate_id: string | null
+          barcode: string | null
+          brand: string | null
+          catalog_status: Database["public"]["Enums"]["catalog_status"] | null
+          category: string | null
+          created_at: string | null
+          default_cost_cents: number | null
+          id: string | null
+          image_url: string | null
+          name: string | null
+          origin: string | null
+          plu: string | null
+          retail_price_cents: number | null
+          size: string | null
+          sku: string | null
+          sync_state: string | null
+          unit_of_sale: Database["public"]["Enums"]["unit_of_sale"] | null
+          upc: string | null
+          updated_at: string | null
+          weight_unit: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_candidate_id?: string | null
+          barcode?: string | null
+          brand?: string | null
+          catalog_status?: Database["public"]["Enums"]["catalog_status"] | null
+          category?: string | null
+          created_at?: string | null
+          default_cost_cents?: number | null
+          id?: string | null
+          image_url?: string | null
+          name?: string | null
+          origin?: string | null
+          plu?: string | null
+          retail_price_cents?: number | null
+          size?: string | null
+          sku?: string | null
+          sync_state?: string | null
+          unit_of_sale?: Database["public"]["Enums"]["unit_of_sale"] | null
+          upc?: string | null
+          updated_at?: string | null
+          weight_unit?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_candidate_id?: string | null
+          barcode?: string | null
+          brand?: string | null
+          catalog_status?: Database["public"]["Enums"]["catalog_status"] | null
+          category?: string | null
+          created_at?: string | null
+          default_cost_cents?: number | null
+          id?: string | null
+          image_url?: string | null
+          name?: string | null
+          origin?: string | null
+          plu?: string | null
+          retail_price_cents?: number | null
+          size?: string | null
+          sku?: string | null
+          sync_state?: string | null
+          unit_of_sale?: Database["public"]["Enums"]["unit_of_sale"] | null
+          upc?: string | null
+          updated_at?: string | null
+          weight_unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_approved_candidate_id_fkey"
+            columns: ["approved_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "product_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_timesheet_daily: {
         Row: {
           break_seconds: number | null
