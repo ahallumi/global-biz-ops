@@ -44,14 +44,13 @@ serve(async (req) => {
     console.log('🔐 [inventory-save-credentials] APP_CRYPT_KEY exists:', !!Deno.env.get('APP_CRYPT_KEY'))
     console.log('🔐 [inventory-save-credentials] APP_CRYPT_KEY2 exists:', !!Deno.env.get('APP_CRYPT_KEY2'))
 
-    // Get the app master key for encryption - try APP_CRYPT_KEY first, then APP_CRYPT_KEY2
-    const appCryptKey = Deno.env.get('APP_CRYPT_KEY') || Deno.env.get('APP_CRYPT_KEY2')
+    // Get the app master key for encryption - use APP_CRYPT_KEY2
+    const appCryptKey = Deno.env.get('APP_CRYPT_KEY2')
     if (!appCryptKey) {
-      throw new Error('Neither APP_CRYPT_KEY nor APP_CRYPT_KEY2 is configured')
+      throw new Error('APP_CRYPT_KEY2 is not configured')
     }
     
-    const keyUsed = Deno.env.get('APP_CRYPT_KEY') ? 'APP_CRYPT_KEY' : 'APP_CRYPT_KEY2'
-    console.log('🔐 [inventory-save-credentials] Using encryption key:', keyUsed)
+    console.log('🔐 [inventory-save-credentials] Using encryption key: APP_CRYPT_KEY2')
 
     console.log('Saving credentials for integration:', integrationId)
 
