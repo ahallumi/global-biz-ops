@@ -13,14 +13,26 @@ export function useProducts(catalogStatus: CatalogStatus = 'ACTIVE') {
   return useQuery({
     queryKey: ['products', catalogStatus],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('catalog_status', catalogStatus)
-        .order('name');
-      
-      if (error) throw error;
-      return data as Product[];
+      if (catalogStatus === 'ACTIVE') {
+        // Use secure catalog view for ACTIVE products only
+        const { data, error } = await supabase
+          .from('v_products_catalog' as any)
+          .select('*')
+          .order('name');
+        
+        if (error) throw error;
+        return data as unknown as Product[];
+      } else {
+        // Use regular products table for other statuses
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .eq('catalog_status', catalogStatus)
+          .order('name');
+        
+        if (error) throw error;
+        return data as Product[];
+      }
     }
   });
 }
@@ -80,16 +92,30 @@ export function useSearchProducts(query: string, catalogStatus: CatalogStatus = 
     queryFn: async () => {
       if (!query.trim()) return [];
       
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('catalog_status', catalogStatus)
-        .or(`name.ilike.%${query}%,sku.ilike.%${query}%,upc.ilike.%${query}%,barcode.ilike.%${query}%`)
-        .order('name')
-        .limit(20);
-      
-      if (error) throw error;
-      return data as Product[];
+      if (catalogStatus === 'ACTIVE') {
+        // Use secure catalog view for ACTIVE products only
+        const { data, error } = await supabase
+          .from('v_products_catalog' as any)
+          .select('*')
+          .or(`name.ilike.%${query}%,sku.ilike.%${query}%,upc.ilike.%${query}%,barcode.ilike.%${query}%`)
+          .order('name')
+          .limit(20);
+        
+        if (error) throw error;
+        return data as unknown as Product[];
+      } else {
+        // Use regular products table for other statuses
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .eq('catalog_status', catalogStatus)
+          .or(`name.ilike.%${query}%,sku.ilike.%${query}%,upc.ilike.%${query}%,barcode.ilike.%${query}%`)
+          .order('name')
+          .limit(20);
+        
+        if (error) throw error;
+        return data as Product[];
+      }
     },
     enabled: query.trim().length > 0
   });

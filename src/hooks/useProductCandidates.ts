@@ -161,6 +161,7 @@ export function useApproveCandidate() {
             catalog_status: 'ACTIVE',
             origin: 'LOCAL',
             sync_state: 'LOCAL_ONLY',
+            approved_candidate_id: candidateId,
             updated_at: new Date().toISOString()
           })
           .eq('id', placeholder.id)
@@ -188,7 +189,8 @@ export function useApproveCandidate() {
             ...productData,
             catalog_status: 'ACTIVE',
             origin: 'LOCAL',
-            sync_state: 'LOCAL_ONLY'
+            sync_state: 'LOCAL_ONLY',
+            approved_candidate_id: candidateId
           })
           .select()
           .single();
