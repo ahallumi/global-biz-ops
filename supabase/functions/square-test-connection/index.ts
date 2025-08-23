@@ -52,7 +52,16 @@ serve(async (req) => {
       throw new Error('Failed to retrieve credentials')
     }
 
-    const { access_token: rawToken, environment } = credentialsData
+    // RPC functions return an array, so we need to access the first element
+    console.log('🔐 [square-test-connection] RPC result type:', typeof credentialsData, 'Array?', Array.isArray(credentialsData))
+    console.log('🔐 [square-test-connection] RPC result length:', credentialsData?.length)
+    
+    if (!Array.isArray(credentialsData) || credentialsData.length === 0) {
+      console.error('No credentials found for integration:', integrationId)
+      throw new Error('No credentials found for this integration')
+    }
+
+    const { access_token: rawToken, environment } = credentialsData[0]
 
     // Trim token to remove any whitespace that could cause 401s
     const access_token = rawToken?.trim()
