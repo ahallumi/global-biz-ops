@@ -149,26 +149,26 @@ export function LiveImportStatusPanel({ importRun, title }: LiveImportStatusPane
           </div>
           
           {importRun.status === 'RUNNING' && (
-            <div className="flex items-center gap-2">
+            <div className="space-y-1">
               <Button
                 size="sm"
                 variant="outline"
                 onClick={handleForceUnstick}
                 disabled={isUnsticking}
-                className="text-orange-600 hover:text-orange-700 border-orange-200 hover:bg-orange-50"
+                className="w-full text-orange-600 hover:text-orange-700 border-orange-200 hover:bg-orange-50"
               >
                 <AlertTriangle className="h-3 w-3 mr-1" />
-                {isUnsticking ? 'Unsticking...' : 'Force Unstick'}
+                {isUnsticking ? 'Unsticking...' : 'Unstick'}
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={handleAbort}
                 disabled={isAborting}
-                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
               >
                 <X className="h-3 w-3 mr-1" />
-                {isAborting ? 'Cancelling...' : 'Cancel Import'}
+                {isAborting ? 'Cancelling...' : 'Cancel'}
               </Button>
             </div>
           )}
