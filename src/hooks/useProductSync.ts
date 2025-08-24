@@ -112,9 +112,9 @@ export function useActiveSyncRun() {
         .eq('direction', 'OUT')
         .order('started_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
       
-      if (error && error.code !== 'PGRST116') throw error;
+      if (error) throw error;
       return data as ProductSyncRun | null;
     },
     refetchInterval: 2000, // Poll every 2 seconds
@@ -132,9 +132,9 @@ export function useActiveImportRun() {
         .in('status', ['RUNNING', 'PENDING'])
         .order('started_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
       
-      if (error && error.code !== 'PGRST116') throw error;
+      if (error) throw error;
       return data;
     },
     refetchInterval: 2000, // Poll every 2 seconds
