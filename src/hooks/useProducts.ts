@@ -13,27 +13,39 @@ export function useProducts(catalogStatus: CatalogStatus = 'ACTIVE') {
   return useQuery({
     queryKey: ['products', catalogStatus],
     queryFn: async () => {
-      if (catalogStatus === 'ACTIVE') {
-        // Use secure catalog view for ACTIVE products only
-        const { data, error } = await supabase
-          .from('v_products_catalog' as any)
-          .select('*')
-          .order('name');
-        
-        if (error) throw error;
-        return data as unknown as Product[];
-      } else {
-        // Use regular products table for other statuses
-        const { data, error } = await supabase
-          .from('products')
-          .select('*')
-          .eq('catalog_status', catalogStatus)
-          .order('name');
-        
-        if (error) throw error;
-        return data as Product[];
+      try {
+        if (catalogStatus === 'ACTIVE') {
+          // Use secure catalog view for ACTIVE products only
+          const { data, error } = await supabase
+            .from('v_products_catalog' as any)
+            .select('*')
+            .order('name');
+          
+          if (error) throw error;
+          return data as unknown as Product[];
+        } else {
+          // Use regular products table for other statuses
+          const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('catalog_status', catalogStatus)
+            .order('name');
+          
+          if (error) throw error;
+          return data as Product[];
+        }
+      } catch (err: any) {
+        const msg = String(err?.message || err);
+        if (/load failed|failed to fetch|network/i.test(msg)) {
+          console.warn('Products query suppressed network error:', msg);
+          return [] as Product[];
+        }
+        throw err;
       }
-    }
+    },
+    retry: 0,
+    refetchOnWindowFocus: false,
+    staleTime: 5000,
   });
 }
 
@@ -90,34 +102,46 @@ export function useSearchProducts(query: string, catalogStatus: CatalogStatus = 
   return useQuery({
     queryKey: ['products', 'search', query, catalogStatus],
     queryFn: async () => {
-      if (!query.trim()) return [];
-      
-      if (catalogStatus === 'ACTIVE') {
-        // Use secure catalog view for ACTIVE products only
-        const { data, error } = await supabase
-          .from('v_products_catalog' as any)
-          .select('*')
-          .or(`name.ilike.%${query}%,sku.ilike.%${query}%,upc.ilike.%${query}%,barcode.ilike.%${query}%`)
-          .order('name')
-          .limit(20);
+      try {
+        if (!query.trim()) return [];
         
-        if (error) throw error;
-        return data as unknown as Product[];
-      } else {
-        // Use regular products table for other statuses
-        const { data, error } = await supabase
-          .from('products')
-          .select('*')
-          .eq('catalog_status', catalogStatus)
-          .or(`name.ilike.%${query}%,sku.ilike.%${query}%,upc.ilike.%${query}%,barcode.ilike.%${query}%`)
-          .order('name')
-          .limit(20);
-        
-        if (error) throw error;
-        return data as Product[];
+        if (catalogStatus === 'ACTIVE') {
+          // Use secure catalog view for ACTIVE products only
+          const { data, error } = await supabase
+            .from('v_products_catalog' as any)
+            .select('*')
+            .or(`name.ilike.%${query}%,sku.ilike.%${query}%,upc.ilike.%${query}%,barcode.ilike.%${query}%`)
+            .order('name')
+            .limit(20);
+          
+          if (error) throw error;
+          return data as unknown as Product[];
+        } else {
+          // Use regular products table for other statuses
+          const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('catalog_status', catalogStatus)
+            .or(`name.ilike.%${query}%,sku.ilike.%${query}%,upc.ilike.%${query}%,barcode.ilike.%${query}%`)
+            .order('name')
+            .limit(20);
+          
+          if (error) throw error;
+          return data as Product[];
+        }
+      } catch (err: any) {
+        const msg = String(err?.message || err);
+        if (/load failed|failed to fetch|network/i.test(msg)) {
+          console.warn('Product search suppressed network error:', msg);
+          return [] as Product[];
+        }
+        throw err;
       }
     },
-    enabled: query.trim().length > 0
+    enabled: query.trim().length > 0,
+    retry: 0,
+    refetchOnWindowFocus: false,
+    staleTime: 5000,
   });
 }
 

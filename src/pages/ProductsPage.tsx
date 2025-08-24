@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useProducts, useSearchProducts, useDeleteProducts } from '@/hooks/useProducts';
 import { useProductCandidates } from '@/hooks/useProductCandidates';
 import { usePushProductsToSquare, usePullProductsFromSquare, useActiveSyncRun, useActiveImportRun } from '@/hooks/useProductSync';
 import { useInventoryIntegrations } from '@/hooks/useInventoryIntegrations';
 import { useStagingData, useStagingStats, StagingItem } from '@/hooks/useStagingData';
 import { Layout } from '@/components/layout/Layout';
+import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -65,6 +66,25 @@ export default function ProductsPage() {
 
   const displayedProducts = searchQuery.trim() ? searchResults || [] : products || [];
 
+  // Ensure selection never references rows that no longer exist
+  useEffect(() => {
+    const list = displayedProducts || [];
+    if (list.length === 0) {
+      if (Object.keys(rowSelection).length) {
+        setRowSelection({});
+      }
+      return;
+    }
+    const ids = new Set(list.map((p: any) => p.id));
+    const next: Record<string, boolean> = {};
+    let changed = false;
+    for (const key of Object.keys(rowSelection)) {
+      if (ids.has(key)) next[key] = true;
+      else changed = true;
+    }
+    if (changed) setRowSelection(next);
+  }, [displayedProducts, rowSelection]);
+
   // Selection helpers
   const selectedProductIds = Object.keys(rowSelection).filter(key => rowSelection[key]);
   const selectedProducts = selectedProductIds.map(id => displayedProducts.find(p => p.id === id)).filter(Boolean);
@@ -97,8 +117,10 @@ export default function ProductsPage() {
   const handleDeleteSelected = async () => {
     if (selectedProductIds.length > 0) {
       try {
-        await deleteProducts.mutateAsync(selectedProductIds);
+        // Clear selection first to avoid rendering stale selections on empty data
         handleClearSelection();
+        await deleteProducts.mutateAsync(selectedProductIds);
+        await refetchProducts();
       } catch (err) {
         // Error toasts are handled in useDeleteProducts
       }
@@ -370,238 +392,123 @@ export default function ProductsPage() {
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Products</h1>
-            <p className="text-muted-foreground">
-              Manage your product catalog, candidates, and POS sync
-            </p>
+      <ErrorBoundary>
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">Products</h1>
+              <p className="text-muted-foreground">
+                Manage your product catalog, candidates, and POS sync
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <SplitButton
+                onClick={() => pullFromSquare.mutate()}
+                disabled={pullFromSquare.isPending}
+                variant="outline"
+                isActive={!!activeImportRun}
+                activeLabel={activeImportRun?.status === 'RUNNING' ? 'Importing...' : 'Queued'}
+                popoverContent={<ImportStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
+              >
+                <Package className={`h-4 w-4 mr-2 ${pullFromSquare.isPending ? 'animate-spin' : ''}`} />
+                Import from Square
+              </SplitButton>
+              
+              <SplitButton
+                onClick={handlePushAll}
+                disabled={pushToSquare.isPending}
+                variant="outline"
+                isActive={!!activeSyncRun}
+                activeLabel={activeSyncRun?.status === 'RUNNING' ? 'Syncing...' : 'Queued'}
+                popoverContent={<SyncStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
+              >
+                <Upload className={`h-4 w-4 mr-2 ${pushToSquare.isPending ? 'animate-spin' : ''}`} />
+                Push All Local
+              </SplitButton>
+              
+              <Button
+                onClick={handleRefresh}
+                disabled={isLoadingProducts || isLoadingStaging}
+                variant="outline"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${(isLoadingProducts || isLoadingStaging) ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <SplitButton
-              onClick={() => pullFromSquare.mutate()}
-              disabled={pullFromSquare.isPending}
-              variant="outline"
-              isActive={!!activeImportRun}
-              activeLabel={activeImportRun?.status === 'RUNNING' ? 'Importing...' : 'Queued'}
-              popoverContent={<ImportStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
-            >
-              <Package className={`h-4 w-4 mr-2 ${pullFromSquare.isPending ? 'animate-spin' : ''}`} />
-              Import from Square
-            </SplitButton>
-            
-            <SplitButton
-              onClick={handlePushAll}
-              disabled={pushToSquare.isPending}
-              variant="outline"
-              isActive={!!activeSyncRun}
-              activeLabel={activeSyncRun?.status === 'RUNNING' ? 'Syncing...' : 'Queued'}
-              popoverContent={<SyncStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
-            >
-              <Upload className={`h-4 w-4 mr-2 ${pushToSquare.isPending ? 'animate-spin' : ''}`} />
-              Push All Local
-            </SplitButton>
-            
-            <Button
-              onClick={handleRefresh}
-              disabled={isLoadingProducts || isLoadingStaging}
-              variant="outline"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${(isLoadingProducts || isLoadingStaging) ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-          </div>
-        </div>
 
-        {/* Integration Status */}
-        {activeIntegration && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Square Integration Status
-              </CardTitle>
-              <CardDescription>
-                Current status of your Square POS integration
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-4">
-                <Badge variant={activeIntegration.last_success_at ? 'default' : 'destructive'}>
-                  {activeIntegration.last_success_at ? 'Connected' : 'Disconnected'}
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  Environment: {activeIntegration.environment}
-                </span>
-                {activeIntegration.auto_push_enabled && (
-                  <Badge variant="secondary">Auto-Push Enabled</Badge>
-                )}
-                {activeIntegration.last_success_at && (
-                  <span className="text-sm text-muted-foreground">
-                    Last sync: {new Date(activeIntegration.last_success_at).toLocaleString()}
-                  </span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="catalog">
-              Catalog ({products?.length || 0})
-            </TabsTrigger>
-            <TabsTrigger value="staging">
-              Staging ({stagingStats?.totalStaging || 0})
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="catalog" className="space-y-4">
-            {/* Search */}
-            <Card>
-              <CardContent className="pt-6">
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search products by name, SKU, UPC, or barcode..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Products Table */}
+          {/* Integration Status */}
+          {activeIntegration && (
             <Card>
               <CardHeader>
-                <CardTitle>Live Catalog ({displayedProducts.length})</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5" />
+                  Square Integration Status
+                </CardTitle>
                 <CardDescription>
-                  {searchQuery.trim() 
-                    ? `Search results for "${searchQuery}"`
-                    : 'Active products available for sale'
-                  }
+                  Current status of your Square POS integration
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {isLoadingProducts || isSearching ? (
-                  <div className="space-y-3">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Skeleton key={i} className="h-12 w-full" />
-                    ))}
-                  </div>
-                ) : (
-                  <>
-                    {/* Selection Toolbar */}
-                    {selectedProductIds.length > 0 && (
-                      <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg mb-4">
-                        <div className="flex items-center gap-4">
-                          <span className="text-sm font-medium">
-                            {selectedProductIds.length} product{selectedProductIds.length === 1 ? '' : 's'} selected
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={handlePushSelected}
-                              disabled={pushToSquare.isPending || selectedProducts.every(p => p.sync_state === 'SYNCED')}
-                            >
-                              <Upload className="h-3 w-3 mr-1" />
-                              Push Selected to Square
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  disabled={deleteProducts.isPending}
-                                >
-                                  <Trash2 className="h-3 w-3 mr-1" />
-                                  Delete Selected
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Selected Products</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete {selectedProductIds.length} product{selectedProductIds.length === 1 ? '' : 's'}? This action cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel disabled={deleteProducts.isPending}>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={handleDeleteSelected} disabled={deleteProducts.isPending}>
-                                    {deleteProducts.isPending ? (
-                                      <>
-                                        <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                                        Deleting...
-                                      </>
-                                    ) : 'Delete'}
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={handleClearSelection}
-                        >
-                          <X className="h-3 w-3 mr-1" />
-                          Clear Selection
-                        </Button>
-                      </div>
-                    )}
-                    
-                    <DataTable 
-                      columns={productColumns} 
-                      data={displayedProducts}
-                      searchKey="name"
-                      rowSelection={rowSelection}
-                      onRowSelectionChange={setRowSelection}
-                      getRowId={(row) => row.id}
-                    />
-                  </>
-                )}
+                <div className="flex items-center gap-4">
+                  <Badge variant={activeIntegration.last_success_at ? 'default' : 'destructive'}>
+                    {activeIntegration.last_success_at ? 'Connected' : 'Disconnected'}
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">
+                    Environment: {activeIntegration.environment}
+                  </span>
+                  {activeIntegration.auto_push_enabled && (
+                    <Badge variant="secondary">Auto-Push Enabled</Badge>
+                  )}
+                  {activeIntegration.last_success_at && (
+                    <span className="text-sm text-muted-foreground">
+                      Last sync: {new Date(activeIntegration.last_success_at).toLocaleString()}
+                    </span>
+                  )}
+                </div>
               </CardContent>
             </Card>
-          </TabsContent>
+          )}
 
-          <TabsContent value="staging" className="space-y-4">
-            <StagingAdminActions />
-            
-            <Card>
-              <CardHeader>
-                <CardTitle>Staging Area</CardTitle>
-                <CardDescription>
-                  Product candidates and legacy placeholders that need action to move into your live catalog.
-                  Use filters to narrow down the view as needed.
-                </CardDescription>
-                {/* Debug Info */}
-                {stagingData && (
-                  <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
-                    <strong>Debug:</strong> Loaded {stagingData.length} total items • 
-                    Displaying {displayedStagingData.length} after filters • 
-                    Raw candidates: {stagingData.filter(i => i.type === 'CANDIDATE').length} • 
-                    Raw placeholders: {stagingData.filter(i => i.type === 'PLACEHOLDER').length}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="catalog">
+                Catalog ({products?.length || 0})
+              </TabsTrigger>
+              <TabsTrigger value="staging">
+                Staging ({stagingStats?.totalStaging || 0})
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="catalog" className="space-y-4">
+              {/* Search */}
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search products by name, SKU, UPC, or barcode..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
                   </div>
-                )}
-              </CardHeader>
-              <CardContent className="p-0">
-                <StagingFilters
-                  sourceFilter={sourceFilter}
-                  statusFilter={statusFilter}
-                  onSourceFilterChange={setSourceFilter}
-                  onStatusFilterChange={setStatusFilter}
-                  onClearFilters={handleClearFilters}
-                  stats={{
-                    total: stagingData?.length || 0,
-                    filtered: displayedStagingData.length
-                  }}
-                />
-                <div className="p-6">
-                  {isLoadingStaging ? (
+                </CardContent>
+              </Card>
+
+              {/* Products Table */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Live Catalog ({displayedProducts.length})</CardTitle>
+                  <CardDescription>
+                    {searchQuery.trim() 
+                      ? `Search results for "${searchQuery}"`
+                      : 'Active products available for sale'
+                    }
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingProducts || isSearching ? (
                     <div className="space-y-3">
                       {Array.from({ length: 5 }).map((_, i) => (
                         <Skeleton key={i} className="h-12 w-full" />
@@ -609,36 +516,153 @@ export default function ProductsPage() {
                     </div>
                   ) : (
                     <>
-                      <DataTable 
-                        columns={stagingColumns} 
-                        data={displayedStagingData}
-                        searchKey="name"
-                      />
-                      
-                      {/* Debug fallback - if data exists but table is empty */}
-                      {stagingData && stagingData.length > 0 && displayedStagingData.length === 0 && (
-                        <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
-                          <h4 className="font-semibold text-yellow-800 dark:text-yellow-200">Debug: Data Present But Hidden</h4>
-                          <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-                            Found {stagingData.length} items but filters are hiding them all. First 3 items:
-                          </p>
-                          <div className="mt-2 space-y-1 text-xs">
-                            {stagingData.slice(0, 3).map((item, idx) => (
-                              <div key={idx} className="font-mono bg-yellow-100 dark:bg-yellow-900/40 p-1 rounded">
-                                {item.type}: {item.name} | Status: {item.status} | Source: {item.source}
-                              </div>
-                            ))}
+                      {/* Selection Toolbar */}
+                      {selectedProductIds.length > 0 && (
+                        <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg mb-4">
+                          <div className="flex items-center gap-4">
+                            <span className="text-sm font-medium">
+                              {selectedProductIds.length} product{selectedProductIds.length === 1 ? '' : 's'} selected
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={handlePushSelected}
+                                disabled={pushToSquare.isPending || selectedProducts.every(p => p.sync_state === 'SYNCED')}
+                              >
+                                <Upload className="h-3 w-3 mr-1" />
+                                Push Selected to Square
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    disabled={deleteProducts.isPending}
+                                  >
+                                    <Trash2 className="h-3 w-3 mr-1" />
+                                    Delete Selected
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete Selected Products</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to delete {selectedProductIds.length} product{selectedProductIds.length === 1 ? '' : 's'}? This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel disabled={deleteProducts.isPending}>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleDeleteSelected} disabled={deleteProducts.isPending}>
+                                      {deleteProducts.isPending ? (
+                                        <>
+                                          <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                                          Deleting...
+                                        </>
+                                      ) : 'Delete'}
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
                           </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleClearSelection}
+                          >
+                            <X className="h-3 w-3 mr-1" />
+                            Clear Selection
+                          </Button>
                         </div>
                       )}
+                      
+                      <DataTable 
+                        columns={productColumns} 
+                        data={displayedProducts}
+                        searchKey="name"
+                        rowSelection={rowSelection}
+                        onRowSelectionChange={setRowSelection}
+                        getRowId={(row) => row.id}
+                      />
                     </>
                   )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="staging" className="space-y-4">
+              <StagingAdminActions />
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle>Staging Area</CardTitle>
+                  <CardDescription>
+                    Product candidates and legacy placeholders that need action to move into your live catalog.
+                    Use filters to narrow down the view as needed.
+                  </CardDescription>
+                  {/* Debug Info */}
+                  {stagingData && (
+                    <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                      <strong>Debug:</strong> Loaded {stagingData.length} total items • 
+                      Displaying {displayedStagingData.length} after filters • 
+                      Raw candidates: {stagingData.filter(i => i.type === 'CANDIDATE').length} • 
+                      Raw placeholders: {stagingData.filter(i => i.type === 'PLACEHOLDER').length}
+                    </div>
+                  )}
+                </CardHeader>
+                <CardContent className="p-0">
+                  <StagingFilters
+                    sourceFilter={sourceFilter}
+                    statusFilter={statusFilter}
+                    onSourceFilterChange={setSourceFilter}
+                    onStatusFilterChange={setStatusFilter}
+                    onClearFilters={handleClearFilters}
+                    stats={{
+                      total: stagingData?.length || 0,
+                      filtered: displayedStagingData.length
+                    }}
+                  />
+                  <div className="p-6">
+                    {isLoadingStaging ? (
+                      <div className="space-y-3">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Skeleton key={i} className="h-12 w-full" />
+                        ))}
+                      </div>
+                    ) : (
+                      <>
+                        <DataTable 
+                          columns={stagingColumns} 
+                          data={displayedStagingData}
+                          searchKey="name"
+                        />
+                        
+                        {/* Debug fallback - if data exists but table is empty */}
+                        {stagingData && stagingData.length > 0 && displayedStagingData.length === 0 && (
+                          <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+                            <h4 className="font-semibold text-yellow-800 dark:text-yellow-200">Debug: Data Present But Hidden</h4>
+                            <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                              Found {stagingData.length} items but filters are hiding them all. First 3 items:
+                            </p>
+                            <div className="mt-2 space-y-1 text-xs">
+                              {stagingData.slice(0, 3).map((item, idx) => (
+                                <div key={idx} className="font-mono bg-yellow-100 dark:bg-yellow-900/40 p-1 rounded">
+                                  {item.type}: {item.name} | Status: {item.status} | Source: {item.source}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </ErrorBoundary>
     </Layout>
   );
 }
