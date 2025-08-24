@@ -64,18 +64,22 @@ export function useStagingData() {
       }
 
       // Fetch placeholder and archived products
-      const { data: placeholders, error: placeholdersError } = await supabase
-        .from('products')
-        .select('*')
-        .in('catalog_status', ['PLACEHOLDER', 'ARCHIVED'])
-        .order('created_at', { ascending: false });
+      let placeholders: any[] = [];
+      try {
+        const { data, error: placeholdersError } = await supabase
+          .from('products')
+          .select('*')
+          .in('catalog_status', ['PLACEHOLDER', 'ARCHIVED'])
+          .order('created_at', { ascending: false });
 
-      if (placeholdersError) {
-        console.error('❌ Placeholders error:', placeholdersError);
-        throw placeholdersError;
+        if (placeholdersError) throw placeholdersError;
+        placeholders = data || [];
+      } catch (error) {
+        console.error('❌ Placeholders error:', error);
+        placeholders = [];
       }
 
-      console.log('📦 Placeholders loaded:', placeholders?.length || 0);
+      console.log('📦 Placeholders loaded:', placeholders.length);
 
       // Combine and transform data
       const stagingItems: StagingItem[] = [
@@ -126,7 +130,10 @@ export function useStagingData() {
       });
 
       return stagingItems;
-    }
+    },
+    retry: 0,
+    refetchOnWindowFocus: false,
+    staleTime: 5000,
   });
 }
 
@@ -134,28 +141,41 @@ export function useStagingStats() {
   return useQuery({
     queryKey: ['staging-stats'],
     queryFn: async () => {
-      // Get candidate counts
-      const { count: pendingCandidatesCount } = await supabase
-        .from('product_candidates')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'PENDING');
+      try {
+        // Get candidate counts
+        const { count: pendingCandidatesCount } = await supabase
+          .from('product_candidates')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'PENDING');
 
-      const { count: totalCandidatesCount } = await supabase
-        .from('product_candidates')
-        .select('id', { count: 'exact', head: true });
+        const { count: totalCandidatesCount } = await supabase
+          .from('product_candidates')
+          .select('id', { count: 'exact', head: true });
 
-      // Get placeholder counts  
-      const { count: placeholdersCount } = await supabase
-        .from('products')
-        .select('id', { count: 'exact', head: true })
-        .in('catalog_status', ['PLACEHOLDER', 'ARCHIVED']);
+        // Get placeholder counts
+        const { count: placeholdersCount } = await supabase
+          .from('products')
+          .select('id', { count: 'exact', head: true })
+          .in('catalog_status', ['PLACEHOLDER', 'ARCHIVED']);
 
-      return {
-        pendingCandidates: pendingCandidatesCount || 0,
-        totalCandidates: totalCandidatesCount || 0,
-        placeholders: placeholdersCount || 0,
-        totalStaging: (totalCandidatesCount || 0) + (placeholdersCount || 0)
-      };
-    }
+        return {
+          pendingCandidates: pendingCandidatesCount || 0,
+          totalCandidates: totalCandidatesCount || 0,
+          placeholders: placeholdersCount || 0,
+          totalStaging: (totalCandidatesCount || 0) + (placeholdersCount || 0)
+        };
+      } catch (error) {
+        console.warn('useStagingStats error:', error);
+        return {
+          pendingCandidates: 0,
+          totalCandidates: 0,
+          placeholders: 0,
+          totalStaging: 0
+        };
+      }
+    },
+    retry: 0,
+    refetchOnWindowFocus: false,
+    staleTime: 5000,
   });
 }

@@ -45,6 +45,9 @@ export default function ProductsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [rowSelection, setRowSelection] = useState({});
   
+  // Safe mode disables heavy popovers and staging UI to isolate issues
+  const isSafeMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('safe') === '1';
+  
   // Product hooks - now filtered by catalog status
   const { data: products, isLoading: isLoadingProducts, refetch: refetchProducts } = useProducts('ACTIVE');
   const { data: searchResults, isLoading: isSearching } = useSearchProducts(searchQuery, 'ACTIVE');
@@ -408,7 +411,7 @@ export default function ProductsPage() {
                 variant="outline"
                 isActive={!!activeImportRun}
                 activeLabel={activeImportRun?.status === 'RUNNING' ? 'Importing...' : 'Queued'}
-                popoverContent={<ImportStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
+                popoverContent={isSafeMode ? undefined : <ImportStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
               >
                 <Package className={`h-4 w-4 mr-2 ${pullFromSquare.isPending ? 'animate-spin' : ''}`} />
                 Import from Square
@@ -420,7 +423,7 @@ export default function ProductsPage() {
                 variant="outline"
                 isActive={!!activeSyncRun}
                 activeLabel={activeSyncRun?.status === 'RUNNING' ? 'Syncing...' : 'Queued'}
-                popoverContent={<SyncStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
+                popoverContent={isSafeMode ? undefined : <SyncStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
               >
                 <Upload className={`h-4 w-4 mr-2 ${pushToSquare.isPending ? 'animate-spin' : ''}`} />
                 Push All Local
@@ -471,13 +474,15 @@ export default function ProductsPage() {
           )}
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className={`grid w-full ${isSafeMode ? 'grid-cols-1' : 'grid-cols-2'}`}>
               <TabsTrigger value="catalog">
                 Catalog ({products?.length || 0})
               </TabsTrigger>
-              <TabsTrigger value="staging">
-                Staging ({stagingStats?.totalStaging || 0})
-              </TabsTrigger>
+              {!isSafeMode && (
+                <TabsTrigger value="staging">
+                  Staging ({stagingStats?.totalStaging || 0})
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="catalog" className="space-y-4">
@@ -591,75 +596,77 @@ export default function ProductsPage() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="staging" className="space-y-4">
-              <StagingAdminActions />
-              
-              <Card>
-                <CardHeader>
-                  <CardTitle>Staging Area</CardTitle>
-                  <CardDescription>
-                    Product candidates and legacy placeholders that need action to move into your live catalog.
-                    Use filters to narrow down the view as needed.
-                  </CardDescription>
-                  {/* Debug Info */}
-                  {stagingData && (
-                    <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
-                      <strong>Debug:</strong> Loaded {stagingData.length} total items • 
-                      Displaying {displayedStagingData.length} after filters • 
-                      Raw candidates: {stagingData.filter(i => i.type === 'CANDIDATE').length} • 
-                      Raw placeholders: {stagingData.filter(i => i.type === 'PLACEHOLDER').length}
-                    </div>
-                  )}
-                </CardHeader>
-                <CardContent className="p-0">
-                  <StagingFilters
-                    sourceFilter={sourceFilter}
-                    statusFilter={statusFilter}
-                    onSourceFilterChange={setSourceFilter}
-                    onStatusFilterChange={setStatusFilter}
-                    onClearFilters={handleClearFilters}
-                    stats={{
-                      total: stagingData?.length || 0,
-                      filtered: displayedStagingData.length
-                    }}
-                  />
-                  <div className="p-6">
-                    {isLoadingStaging ? (
-                      <div className="space-y-3">
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <Skeleton key={i} className="h-12 w-full" />
-                        ))}
+            {!isSafeMode && (
+              <TabsContent value="staging" className="space-y-4">
+                <StagingAdminActions />
+                
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Staging Area</CardTitle>
+                    <CardDescription>
+                      Product candidates and legacy placeholders that need action to move into your live catalog.
+                      Use filters to narrow down the view as needed.
+                    </CardDescription>
+                    {/* Debug Info */}
+                    {stagingData && (
+                      <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                        <strong>Debug:</strong> Loaded {stagingData.length} total items • 
+                        Displaying {displayedStagingData.length} after filters • 
+                        Raw candidates: {stagingData.filter(i => i.type === 'CANDIDATE').length} • 
+                        Raw placeholders: {stagingData.filter(i => i.type === 'PLACEHOLDER').length}
                       </div>
-                    ) : (
-                      <>
-                        <DataTable 
-                          columns={stagingColumns} 
-                          data={displayedStagingData}
-                          searchKey="name"
-                        />
-                        
-                        {/* Debug fallback - if data exists but table is empty */}
-                        {stagingData && stagingData.length > 0 && displayedStagingData.length === 0 && (
-                          <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
-                            <h4 className="font-semibold text-yellow-800 dark:text-yellow-200">Debug: Data Present But Hidden</h4>
-                            <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-                              Found {stagingData.length} items but filters are hiding them all. First 3 items:
-                            </p>
-                            <div className="mt-2 space-y-1 text-xs">
-                              {stagingData.slice(0, 3).map((item, idx) => (
-                                <div key={idx} className="font-mono bg-yellow-100 dark:bg-yellow-900/40 p-1 rounded">
-                                  {item.type}: {item.name} | Status: {item.status} | Source: {item.source}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
                     )}
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <StagingFilters
+                      sourceFilter={sourceFilter}
+                      statusFilter={statusFilter}
+                      onSourceFilterChange={setSourceFilter}
+                      onStatusFilterChange={setStatusFilter}
+                      onClearFilters={handleClearFilters}
+                      stats={{
+                        total: stagingData?.length || 0,
+                        filtered: displayedStagingData.length
+                      }}
+                    />
+                    <div className="p-6">
+                      {isLoadingStaging ? (
+                        <div className="space-y-3">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <Skeleton key={i} className="h-12 w-full" />
+                          ))}
+                        </div>
+                      ) : (
+                        <>
+                          <DataTable 
+                            columns={stagingColumns} 
+                            data={displayedStagingData}
+                            searchKey="name"
+                          />
+                          
+                          {/* Debug fallback - if data exists but table is empty */}
+                          {stagingData && stagingData.length > 0 && displayedStagingData.length === 0 && (
+                            <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+                              <h4 className="font-semibold text-yellow-800 dark:text-yellow-200">Debug: Data Present But Hidden</h4>
+                              <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                                Found {stagingData.length} items but filters are hiding them all. First 3 items:
+                              </p>
+                              <div className="mt-2 space-y-1 text-xs">
+                                {stagingData.slice(0, 3).map((item, idx) => (
+                                  <div key={idx} className="font-mono bg-yellow-100 dark:bg-yellow-900/40 p-1 rounded">
+                                    {item.type}: {item.name} | Status: {item.status} | Source: {item.source}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
           </Tabs>
         </div>
       </ErrorBoundary>

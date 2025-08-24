@@ -7,6 +7,7 @@ interface ErrorBoundaryProps {
 interface ErrorBoundaryState {
   hasError: boolean;
   error?: any;
+  componentStack?: string;
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
@@ -18,6 +19,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: any, errorInfo: any) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+    this.setState({ error, componentStack: errorInfo?.componentStack });
   }
 
   render() {
@@ -26,6 +28,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         <div className="p-4 rounded border border-destructive/20 bg-destructive/5 text-destructive">
           <div className="font-semibold">Something went wrong loading this section.</div>
           <div className="text-xs opacity-80 mt-2">{String(this.state.error?.message || this.state.error || 'Unknown error')}</div>
+          {this.state.componentStack && (
+            <pre className="mt-2 text-[10px] opacity-70 whitespace-pre-wrap">
+              {this.state.componentStack}
+            </pre>
+          )}
         </div>
       );
     }

@@ -9,15 +9,23 @@ export function useProductSyncRuns() {
   return useQuery({
     queryKey: ['product-sync-runs'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('product_sync_runs')
-        .select('*')
-        .order('started_at', { ascending: false })
-        .limit(20);
-      
-      if (error) throw error;
-      return data as ProductSyncRun[];
-    }
+      try {
+        const { data, error } = await supabase
+          .from('product_sync_runs')
+          .select('*')
+          .order('started_at', { ascending: false })
+          .limit(20);
+        
+        if (error) throw error;
+        return (data as ProductSyncRun[]) || [];
+      } catch (err) {
+        console.warn('useProductSyncRuns error:', err);
+        return [] as ProductSyncRun[];
+      }
+    },
+    retry: 0,
+    refetchOnWindowFocus: false,
+    staleTime: 5000,
   });
 }
 
@@ -25,15 +33,23 @@ export function useProductImportRuns() {
   return useQuery({
     queryKey: ['product-import-runs'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('product_import_runs')
-        .select('*')
-        .order('started_at', { ascending: false })
-        .limit(20);
-      
-      if (error) throw error;
-      return data;
-    }
+      try {
+        const { data, error } = await supabase
+          .from('product_import_runs')
+          .select('*')
+          .order('started_at', { ascending: false })
+          .limit(20);
+        
+        if (error) throw error;
+        return data || [];
+      } catch (err) {
+        console.warn('useProductImportRuns error:', err);
+        return [];
+      }
+    },
+    retry: 0,
+    refetchOnWindowFocus: false,
+    staleTime: 5000,
   });
 }
 

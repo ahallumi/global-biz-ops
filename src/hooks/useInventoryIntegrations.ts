@@ -6,14 +6,22 @@ export function useInventoryIntegrations() {
   return useQuery({
     queryKey: ['inventory-integrations'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('inventory_integrations')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return data;
-    }
+      try {
+        const { data, error } = await supabase
+          .from('inventory_integrations')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        return data || [];
+      } catch (err) {
+        console.warn('useInventoryIntegrations error:', err);
+        return [];
+      }
+    },
+    retry: 0,
+    refetchOnWindowFocus: false,
+    staleTime: 5000,
   });
 }
 
@@ -103,15 +111,23 @@ export function useProductImportRuns() {
   return useQuery({
     queryKey: ['product-import-runs'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('product_import_runs')
-        .select('*')
-        .order('started_at', { ascending: false })
-        .limit(10);
-      
-      if (error) throw error;
-      return data;
-    }
+      try {
+        const { data, error } = await supabase
+          .from('product_import_runs')
+          .select('*')
+          .order('started_at', { ascending: false })
+          .limit(10);
+        
+        if (error) throw error;
+        return data || [];
+      } catch (err) {
+        console.warn('useProductImportRuns (inventory) error:', err);
+        return [];
+      }
+    },
+    retry: 0,
+    refetchOnWindowFocus: false,
+    staleTime: 5000,
   });
 }
 
