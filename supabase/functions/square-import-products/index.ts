@@ -88,6 +88,18 @@ serve(async (req) => {
     // Import products in batches
     while (true) {
       try {
+        // Check for cancellation before each batch
+        const { data: currentRun } = await supabase
+          .from('product_import_runs')
+          .select('status')
+          .eq('id', importRun.id)
+          .single()
+
+        if (currentRun?.status !== 'RUNNING') {
+          console.log('Import was cancelled, stopping...')
+          break
+        }
+
         // Build query parameters
         const params = new URLSearchParams({
           types: 'ITEM,ITEM_VARIATION',
@@ -105,6 +117,7 @@ serve(async (req) => {
             'Square-Version': SQUARE_API_VERSION,
             'Content-Type': 'application/json',
           },
+          signal: AbortSignal.timeout(30000) // 30 second timeout
         })
 
         if (!response.ok) {
@@ -146,11 +159,23 @@ serve(async (req) => {
         }
 
         cursor = data.cursor
+
+        // Update progress after each batch
+        await supabase
+          .from('product_import_runs')
+          .update({
+            processed_count: totalProcessed,
+            created_count: totalCreated,
+            updated_count: totalUpdated,
+            cursor: cursor
+          })
+          .eq('id', importRun.id)
+
+        console.log(`Processed ${totalProcessed} products so far...`)
+
         if (!cursor) {
           break // No more pages
         }
-
-        console.log(`Processed ${totalProcessed} products so far...`)
 
       } catch (batchError) {
         console.error('Batch processing error:', batchError)

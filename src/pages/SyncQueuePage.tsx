@@ -1,20 +1,53 @@
 import { Layout } from '@/components/layout/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/data-table/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
 import { useProductSyncRuns, useProductImportRuns } from '@/hooks/useProductSync';
 import { useInventoryIntegrations } from '@/hooks/useInventoryIntegrations';
 import { Skeleton } from '@/components/ui/skeleton';
-import { History, Package, Upload, Download, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { History, Package, Upload, Download, Clock, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
+import { useState } from 'react';
 
 export default function SyncQueuePage() {
+  const [isUnsticking, setIsUnsticking] = useState(false)
+  
   // Sync hooks
   const { data: syncRuns, isLoading: isLoadingSyncRuns } = useProductSyncRuns();
   const { data: importRuns, isLoading: isLoadingImportRuns } = useProductImportRuns();
   
   // Integration
   const { data: integrations } = useInventoryIntegrations();
+
+  const handleUnstickStaleRuns = async () => {
+    setIsUnsticking(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('import-watchdog', {
+        body: { thresholdMinutes: 15 }
+      })
+      
+      if (error) {
+        throw error
+      }
+      
+      toast({
+        title: "Watchdog complete",
+        description: `${data.cleaned_count} stale runs were cleaned up.`
+      })
+    } catch (error) {
+      console.error('Failed to run watchdog:', error)
+      toast({
+        title: "Watchdog failed",
+        description: "Could not clean up stale import runs.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsUnsticking(false)
+    }
+  }
 
   // Sync runs columns
   const syncRunColumns: ColumnDef<any>[] = [
@@ -96,6 +129,15 @@ export default function SyncQueuePage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleUnstickStaleRuns}
+              disabled={isUnsticking}
+            >
+              <AlertTriangle className="h-4 w-4 mr-2" />
+              {isUnsticking ? 'Unsticking...' : 'Unstick Stale Runs'}
+            </Button>
             <History className="h-5 w-5 text-muted-foreground" />
           </div>
         </div>

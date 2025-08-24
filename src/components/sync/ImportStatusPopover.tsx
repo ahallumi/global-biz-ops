@@ -5,8 +5,8 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { CheckCircle, XCircle, Clock, Download, RotateCcw, ExternalLink } from "lucide-react"
 import { useNavigate } from "react-router-dom"
-import { useProductImportRuns, usePullProductsFromSquare, getImportRunSummary, useActiveImportRun } from "@/hooks/useProductSync"
-import { useInventoryIntegrations, useUpdateInventoryIntegration } from "@/hooks/useInventoryIntegrations"
+import { useProductImportRuns, getImportRunSummary, useActiveImportRun } from "@/hooks/useProductSync"
+import { useInventoryIntegrations, useUpdateInventoryIntegration, useImportProducts } from "@/hooks/useInventoryIntegrations"
 import { LiveImportStatusPanel } from "./LiveImportStatusPanel"
 
 interface ImportStatusPopoverProps {
@@ -19,7 +19,7 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
   const { data: integrations } = useInventoryIntegrations()
   const { data: activeImportRun } = useActiveImportRun()
   const updateIntegration = useUpdateInventoryIntegration()
-  const pullFromSquare = usePullProductsFromSquare()
+  const importProducts = useImportProducts()
   
   const summary = getImportRunSummary(importRuns || [])
   const activeIntegration = integrations?.find(i => i.provider === 'SQUARE')
@@ -120,8 +120,15 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
         <div className="flex gap-2">
           <Button
             size="sm"
-            onClick={() => pullFromSquare.mutate()}
-            disabled={pullFromSquare.isPending}
+            onClick={() => {
+              if (activeIntegration) {
+                importProducts.mutate({ 
+                  integrationId: activeIntegration.id, 
+                  mode: 'FULL' 
+                })
+              }
+            }}
+            disabled={importProducts.isPending || !activeIntegration}
             className="flex-1"
           >
             <RotateCcw className="h-3 w-3 mr-1" />

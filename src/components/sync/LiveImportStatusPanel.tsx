@@ -3,8 +3,10 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
-import { Clock, Info, XCircle, AlertCircle } from "lucide-react"
+import { Clock, Info, XCircle, AlertCircle, StopCircle } from "lucide-react"
 import { useState } from "react"
+import { supabase } from "@/integrations/supabase/client"
+import { toast } from "@/hooks/use-toast"
 
 interface LiveImportStatusPanelProps {
   importRun: any
@@ -13,6 +15,7 @@ interface LiveImportStatusPanelProps {
 
 export function LiveImportStatusPanel({ importRun, title }: LiveImportStatusPanelProps) {
   const [showDetails, setShowDetails] = useState(false)
+  const [isAborting, setIsAborting] = useState(false)
   
   const getElapsedTime = () => {
     if (!importRun?.started_at) return "0s"
@@ -31,6 +34,35 @@ export function LiveImportStatusPanel({ importRun, title }: LiveImportStatusPane
         return <AlertCircle className="h-4 w-4 text-yellow-500" />
       default:
         return <XCircle className="h-4 w-4 text-red-500" />
+    }
+  }
+
+  const handleAbort = async () => {
+    if (!importRun?.id || isAborting) return
+    
+    setIsAborting(true)
+    try {
+      const { error } = await supabase.functions.invoke('import-abort', {
+        body: { runId: importRun.id }
+      })
+      
+      if (error) {
+        throw error
+      }
+      
+      toast({
+        title: "Import cancelled",
+        description: "The import operation has been cancelled successfully."
+      })
+    } catch (error) {
+      console.error('Failed to abort import:', error)
+      toast({
+        title: "Failed to cancel import", 
+        description: "Could not cancel the import operation.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsAborting(false)
     }
   }
 
@@ -83,6 +115,21 @@ export function LiveImportStatusPanel({ importRun, title }: LiveImportStatusPane
       </Card>
 
       <Separator />
+
+      {importRun?.status === 'RUNNING' && (
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={handleAbort}
+            disabled={isAborting}
+            className="flex-1"
+          >
+            <StopCircle className="h-3 w-3 mr-1" />
+            {isAborting ? 'Cancelling...' : 'Cancel Import'}
+          </Button>
+        </div>
+      )}
 
       <Collapsible open={showDetails} onOpenChange={setShowDetails}>
         <CollapsibleTrigger asChild>
