@@ -96,8 +96,12 @@ export default function ProductsPage() {
 
   const handleDeleteSelected = async () => {
     if (selectedProductIds.length > 0) {
-      await deleteProducts.mutateAsync(selectedProductIds);
-      handleClearSelection();
+      try {
+        await deleteProducts.mutateAsync(selectedProductIds);
+        handleClearSelection();
+      } catch (err) {
+        // Error toasts are handled in useDeleteProducts
+      }
     }
   };
 
@@ -525,9 +529,14 @@ export default function ProductsPage() {
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={handleDeleteSelected}>
-                                    Delete
+                                  <AlertDialogCancel disabled={deleteProducts.isPending}>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={handleDeleteSelected} disabled={deleteProducts.isPending}>
+                                    {deleteProducts.isPending ? (
+                                      <>
+                                        <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                                        Deleting...
+                                      </>
+                                    ) : 'Delete'}
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>

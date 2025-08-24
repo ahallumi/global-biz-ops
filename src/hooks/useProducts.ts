@@ -45,7 +45,7 @@ export function useProduct(id: string) {
         .from('products')
         .select('*')
         .eq('id', id)
-        .single();
+        .maybeSingle();
       
       if (error) throw error;
       return data;
@@ -168,10 +168,13 @@ export function useDeleteProducts() {
         description: `${productIds.length} product${productIds.length === 1 ? '' : 's'} deleted successfully`,
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      const msg = (error?.code === '23503' || /foreign key/i.test(error?.message || ''))
+        ? 'Some products could not be deleted because they are referenced by other records.'
+        : (error?.message || 'Failed to delete products');
       toast({
         title: 'Error',
-        description: error.message,
+        description: msg,
         variant: 'destructive',
       });
     }
