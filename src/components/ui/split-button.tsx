@@ -11,7 +11,7 @@ interface SplitButtonProps {
   variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link"
   size?: "default" | "sm" | "lg" | "icon"
   className?: string
-  popoverContent: React.ReactNode
+  popoverContent: React.ReactNode | (() => React.ReactNode)
   popoverSide?: "top" | "right" | "bottom" | "left"
   isActive?: boolean
   activeLabel?: string
@@ -29,6 +29,7 @@ export function SplitButton({
   isActive = false,
   activeLabel
 }: SplitButtonProps) {
+  const [isOpen, setIsOpen] = React.useState(false);
   const activeButtonClass = isActive 
     ? "bg-muted text-muted-foreground border-dashed animate-pulse" 
     : "";
@@ -51,7 +52,7 @@ export function SplitButton({
           )}
         </div>
       </Button>
-      <Popover>
+      <Popover open={isOpen} onOpenChange={setIsOpen}>
         <PopoverTrigger asChild>
           <Button
             variant={variant}
@@ -67,7 +68,7 @@ export function SplitButton({
           align="end" 
           className="w-80 p-3"
         >
-          {popoverContent}
+          {typeof popoverContent === 'function' ? popoverContent() : popoverContent}
         </PopoverContent>
       </Popover>
     </div>

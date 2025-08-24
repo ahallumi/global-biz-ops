@@ -11,18 +11,17 @@ import { LiveSyncStatusPanel } from "./LiveSyncStatusPanel"
 
 interface SyncStatusPopoverProps {
   onNavigateToSyncQueue?: () => void
+  localOnlyCount?: number
 }
 
-export function SyncStatusPopover({ onNavigateToSyncQueue }: SyncStatusPopoverProps) {
+export function SyncStatusPopover({ onNavigateToSyncQueue, localOnlyCount = 0 }: SyncStatusPopoverProps) {
   const navigate = useNavigate()
   const { data: syncRuns } = useProductSyncRuns()
-  const { data: products } = useProducts('ACTIVE')
   const { data: activeSyncRun } = useActiveSyncRun()
   const pushToSquare = usePushProductsToSquare()
   const { toast } = useToast()
   
   const summary = getSyncRunSummary(syncRuns || [])
-  const localOnlyCount = products?.filter(p => p.sync_state === 'LOCAL_ONLY').length || 0
   
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -39,9 +38,9 @@ export function SyncStatusPopover({ onNavigateToSyncQueue }: SyncStatusPopoverPr
   }
 
   const handlePushAll = () => {
-    const localOnlyProducts = products?.filter(p => p.sync_state === 'LOCAL_ONLY').map(p => p.id) || []
-    if (localOnlyProducts.length > 0) {
-      pushToSquare.mutate(localOnlyProducts)
+    if (localOnlyCount > 0) {
+      // This will trigger a push of all local-only products
+      pushToSquare.mutate([])
     } else {
       toast({
         title: 'No Products to Push',

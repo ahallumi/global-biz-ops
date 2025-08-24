@@ -53,8 +53,8 @@ export default function ProductsPage() {
   const { data: searchResults, isLoading: isSearching } = useSearchProducts(searchQuery, 'ACTIVE');
   
   // Staging hooks
-  const { data: stagingData, isLoading: isLoadingStaging, refetch: refetchStaging } = useStagingData();
-  const { data: stagingStats } = useStagingStats();
+  const { data: stagingData, isLoading: isLoadingStaging, refetch: refetchStaging } = useStagingData(!isSafeMode && activeTab === 'staging');
+  const { data: stagingStats } = useStagingStats(!isSafeMode && activeTab === 'staging');
   
   const pushToSquare = usePushProductsToSquare();
   const pullFromSquare = usePullProductsFromSquare();
@@ -68,6 +68,7 @@ export default function ProductsPage() {
   const { data: integrations } = useInventoryIntegrations();
 
   const displayedProducts = searchQuery.trim() ? searchResults || [] : products || [];
+  const localOnlyCount = products?.filter(product => product.sync_state === 'LOCAL_ONLY').length || 0;
 
   // Ensure selection never references rows that no longer exist
   useEffect(() => {
@@ -411,7 +412,7 @@ export default function ProductsPage() {
                 variant="outline"
                 isActive={!!activeImportRun}
                 activeLabel={activeImportRun?.status === 'RUNNING' ? 'Importing...' : 'Queued'}
-                popoverContent={isSafeMode ? undefined : <ImportStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
+                popoverContent={isSafeMode ? undefined : () => <ImportStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
               >
                 <Package className={`h-4 w-4 mr-2 ${pullFromSquare.isPending ? 'animate-spin' : ''}`} />
                 Import from Square
@@ -423,7 +424,7 @@ export default function ProductsPage() {
                 variant="outline"
                 isActive={!!activeSyncRun}
                 activeLabel={activeSyncRun?.status === 'RUNNING' ? 'Syncing...' : 'Queued'}
-                popoverContent={isSafeMode ? undefined : <SyncStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
+                popoverContent={isSafeMode ? undefined : () => <SyncStatusPopover localOnlyCount={localOnlyCount} onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
               >
                 <Upload className={`h-4 w-4 mr-2 ${pushToSquare.isPending ? 'animate-spin' : ''}`} />
                 Push All Local

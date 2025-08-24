@@ -31,9 +31,10 @@ export type StagingItem = {
   original_data: any; // Use any for now to simplify type handling
 };
 
-export function useStagingData() {
+export function useStagingData(enabled: boolean = true) {
   return useQuery({
     queryKey: ['staging-data'],
+    enabled,
     queryFn: async () => {
       console.log('🔍 Fetching staging data...');
       
@@ -137,9 +138,10 @@ export function useStagingData() {
   });
 }
 
-export function useStagingStats() {
+export function useStagingStats(enabled: boolean = true) {
   return useQuery({
     queryKey: ['staging-stats'],
+    enabled,
     queryFn: async () => {
       try {
         // Get candidate counts
