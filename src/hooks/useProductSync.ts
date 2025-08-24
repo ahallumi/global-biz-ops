@@ -104,20 +104,31 @@ export function useActiveSyncRun() {
   return useQuery({
     queryKey: ['active-sync-run'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('product_sync_runs')
-        .select('*')
-        .is('finished_at', null)
-        .in('status', ['RUNNING', 'PENDING'])
-        .eq('direction', 'OUT')
-        .order('started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      if (error) throw error;
-      return data as ProductSyncRun | null;
+      try {
+        const { data, error } = await supabase
+          .from('product_sync_runs')
+          .select('*')
+          .is('finished_at', null)
+          .in('status', ['RUNNING', 'PENDING'])
+          .eq('direction', 'OUT')
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          console.warn('Active sync run polling error:', error);
+          return null;
+        }
+        return (data as ProductSyncRun | null) ?? null;
+      } catch (err) {
+        console.warn('Active sync run polling exception:', err);
+        return null;
+      }
     },
-    refetchInterval: 2000, // Poll every 2 seconds
+    refetchInterval: 2000,
+    retry: 0,
+    refetchOnWindowFocus: false,
+    staleTime: 5000,
   });
 }
 
@@ -125,19 +136,30 @@ export function useActiveImportRun() {
   return useQuery({
     queryKey: ['active-import-run'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('product_import_runs')
-        .select('*')
-        .is('finished_at', null)
-        .in('status', ['RUNNING', 'PENDING'])
-        .order('started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      if (error) throw error;
-      return data;
+      try {
+        const { data, error } = await supabase
+          .from('product_import_runs')
+          .select('*')
+          .is('finished_at', null)
+          .in('status', ['RUNNING', 'PENDING'])
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          console.warn('Active import run polling error:', error);
+          return null;
+        }
+        return data ?? null;
+      } catch (err) {
+        console.warn('Active import run polling exception:', err);
+        return null;
+      }
     },
-    refetchInterval: 2000, // Poll every 2 seconds
+    refetchInterval: 2000,
+    retry: 0,
+    refetchOnWindowFocus: false,
+    staleTime: 5000,
   });
 }
 
