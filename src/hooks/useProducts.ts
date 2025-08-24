@@ -146,3 +146,34 @@ export function useFindPlaceholderProduct() {
     }
   });
 }
+
+export function useDeleteProducts() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (productIds: string[]) => {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .in('id', productIds);
+      
+      if (error) throw error;
+      return productIds;
+    },
+    onSuccess: (productIds) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast({
+        title: 'Success',
+        description: `${productIds.length} product${productIds.length === 1 ? '' : 's'} deleted successfully`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  });
+}

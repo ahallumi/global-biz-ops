@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useProducts, useSearchProducts } from '@/hooks/useProducts';
+import { useProducts, useSearchProducts, useDeleteProducts } from '@/hooks/useProducts';
 import { useProductCandidates } from '@/hooks/useProductCandidates';
 import { usePushProductsToSquare, usePullProductsFromSquare, useActiveSyncRun, useActiveImportRun } from '@/hooks/useProductSync';
 import { useInventoryIntegrations } from '@/hooks/useInventoryIntegrations';
@@ -23,6 +23,17 @@ import { CandidateActions } from '@/components/products/CandidateActions';
 import { PlaceholderActions } from '@/components/products/PlaceholderActions';
 import { StagingFilters } from '@/components/products/StagingFilters';
 import { StagingAdminActions } from '@/components/products/StagingAdminActions';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 type Product = Database['public']['Tables']['products']['Row'];
 
@@ -43,6 +54,7 @@ export default function ProductsPage() {
   
   const pushToSquare = usePushProductsToSquare();
   const pullFromSquare = usePullProductsFromSquare();
+  const deleteProducts = useDeleteProducts();
   
   // Active operation detection
   const { data: activeSyncRun } = useActiveSyncRun();
@@ -78,6 +90,13 @@ export default function ProductsPage() {
   const handlePushSelected = () => {
     if (selectedProductIds.length > 0) {
       pushToSquare.mutate(selectedProductIds);
+      handleClearSelection();
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedProductIds.length > 0) {
+      await deleteProducts.mutateAsync(selectedProductIds);
       handleClearSelection();
     }
   };
@@ -487,6 +506,32 @@ export default function ProductsPage() {
                               <Upload className="h-3 w-3 mr-1" />
                               Push Selected to Square
                             </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  disabled={deleteProducts.isPending}
+                                >
+                                  <Trash2 className="h-3 w-3 mr-1" />
+                                  Delete Selected
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Selected Products</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete {selectedProductIds.length} product{selectedProductIds.length === 1 ? '' : 's'}? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={handleDeleteSelected}>
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         </div>
                         <Button
