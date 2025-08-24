@@ -99,6 +99,48 @@ export function usePullProductsFromSquare() {
   });
 }
 
+// Active sync detection hooks
+export function useActiveSyncRun() {
+  return useQuery({
+    queryKey: ['active-sync-run'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('product_sync_runs')
+        .select('*')
+        .is('finished_at', null)
+        .in('status', ['RUNNING', 'PENDING'])
+        .eq('direction', 'OUT')
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data as ProductSyncRun | null;
+    },
+    refetchInterval: 2000, // Poll every 2 seconds
+  });
+}
+
+export function useActiveImportRun() {
+  return useQuery({
+    queryKey: ['active-import-run'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('product_import_runs')
+        .select('*')
+        .is('finished_at', null)
+        .in('status', ['RUNNING', 'PENDING'])
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+    refetchInterval: 2000, // Poll every 2 seconds
+  });
+}
+
 // Utility functions for popover summaries
 export function getSyncRunSummary(runs: ProductSyncRun[]) {
   const lastRun = runs.find(run => run.direction === 'OUT');

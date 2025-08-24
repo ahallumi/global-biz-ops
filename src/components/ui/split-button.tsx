@@ -13,6 +13,8 @@ interface SplitButtonProps {
   className?: string
   popoverContent: React.ReactNode
   popoverSide?: "top" | "right" | "bottom" | "left"
+  isActive?: boolean
+  activeLabel?: string
 }
 
 export function SplitButton({
@@ -23,8 +25,14 @@ export function SplitButton({
   size = "default",
   className,
   popoverContent,
-  popoverSide = "bottom"
+  popoverSide = "bottom",
+  isActive = false,
+  activeLabel
 }: SplitButtonProps) {
+  const activeButtonClass = isActive 
+    ? "bg-muted text-muted-foreground border-dashed animate-pulse" 
+    : "";
+
   return (
     <div className={cn("flex", className)}>
       <Button
@@ -32,9 +40,16 @@ export function SplitButton({
         disabled={disabled}
         variant={variant}
         size={size}
-        className="rounded-r-none border-r-0"
+        className={cn("rounded-r-none border-r-0", activeButtonClass)}
       >
-        {children}
+        <div className="flex items-center gap-2">
+          {children}
+          {isActive && activeLabel && (
+            <span className="text-xs bg-primary/20 px-1.5 py-0.5 rounded-full">
+              {activeLabel}
+            </span>
+          )}
+        </div>
       </Button>
       <Popover>
         <PopoverTrigger asChild>
@@ -42,7 +57,7 @@ export function SplitButton({
             variant={variant}
             size={size}
             disabled={disabled}
-            className="rounded-l-none px-2 border-l"
+            className={cn("rounded-l-none px-2 border-l", activeButtonClass)}
           >
             <ChevronDown className="h-3 w-3" />
           </Button>

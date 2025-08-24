@@ -5,8 +5,9 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { CheckCircle, XCircle, Clock, Download, RotateCcw, ExternalLink } from "lucide-react"
 import { useNavigate } from "react-router-dom"
-import { useProductImportRuns, usePullProductsFromSquare, getImportRunSummary } from "@/hooks/useProductSync"
+import { useProductImportRuns, usePullProductsFromSquare, getImportRunSummary, useActiveImportRun } from "@/hooks/useProductSync"
 import { useInventoryIntegrations, useUpdateInventoryIntegration } from "@/hooks/useInventoryIntegrations"
+import { LiveImportStatusPanel } from "./LiveImportStatusPanel"
 
 interface ImportStatusPopoverProps {
   onNavigateToSyncQueue?: () => void
@@ -16,6 +17,7 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
   const navigate = useNavigate()
   const { data: importRuns } = useProductImportRuns()
   const { data: integrations } = useInventoryIntegrations()
+  const { data: activeImportRun } = useActiveImportRun()
   const updateIntegration = useUpdateInventoryIntegration()
   const pullFromSquare = usePullProductsFromSquare()
   
@@ -34,6 +36,16 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
       default:
         return <Clock className="h-4 w-4 text-muted-foreground" />
     }
+  }
+
+  // Show live status if there's an active import run
+  if (activeImportRun) {
+    return (
+      <LiveImportStatusPanel 
+        importRun={activeImportRun} 
+        title="Import from Square" 
+      />
+    )
   }
 
   return (

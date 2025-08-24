@@ -4,9 +4,10 @@ import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { CheckCircle, XCircle, Clock, Upload, RotateCcw, ExternalLink } from "lucide-react"
 import { useNavigate } from "react-router-dom"
-import { useProductSyncRuns, usePushProductsToSquare, getSyncRunSummary } from "@/hooks/useProductSync"
+import { useProductSyncRuns, usePushProductsToSquare, getSyncRunSummary, useActiveSyncRun } from "@/hooks/useProductSync"
 import { useProducts } from "@/hooks/useProducts"
 import { useToast } from "@/hooks/use-toast"
+import { LiveSyncStatusPanel } from "./LiveSyncStatusPanel"
 
 interface SyncStatusPopoverProps {
   onNavigateToSyncQueue?: () => void
@@ -16,6 +17,7 @@ export function SyncStatusPopover({ onNavigateToSyncQueue }: SyncStatusPopoverPr
   const navigate = useNavigate()
   const { data: syncRuns } = useProductSyncRuns()
   const { data: products } = useProducts('ACTIVE')
+  const { data: activeSyncRun } = useActiveSyncRun()
   const pushToSquare = usePushProductsToSquare()
   const { toast } = useToast()
   
@@ -46,6 +48,16 @@ export function SyncStatusPopover({ onNavigateToSyncQueue }: SyncStatusPopoverPr
         description: 'There are no local-only products available to push to Square.',
       })
     }
+  }
+
+  // Show live status if there's an active sync run
+  if (activeSyncRun) {
+    return (
+      <LiveSyncStatusPanel 
+        syncRun={activeSyncRun} 
+        title="Push to Square" 
+      />
+    )
   }
 
   return (

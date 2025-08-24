@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useProducts, useSearchProducts } from '@/hooks/useProducts';
 import { useProductCandidates } from '@/hooks/useProductCandidates';
-import { usePushProductsToSquare, usePullProductsFromSquare } from '@/hooks/useProductSync';
+import { usePushProductsToSquare, usePullProductsFromSquare, useActiveSyncRun, useActiveImportRun } from '@/hooks/useProductSync';
 import { useInventoryIntegrations } from '@/hooks/useInventoryIntegrations';
 import { useStagingData, useStagingStats, StagingItem } from '@/hooks/useStagingData';
 import { Layout } from '@/components/layout/Layout';
@@ -41,6 +41,10 @@ export default function ProductsPage() {
   
   const pushToSquare = usePushProductsToSquare();
   const pullFromSquare = usePullProductsFromSquare();
+  
+  // Active operation detection
+  const { data: activeSyncRun } = useActiveSyncRun();
+  const { data: activeImportRun } = useActiveImportRun();
   
   // Integration
   const { data: integrations } = useInventoryIntegrations();
@@ -306,6 +310,8 @@ export default function ProductsPage() {
               onClick={() => pullFromSquare.mutate()}
               disabled={pullFromSquare.isPending}
               variant="outline"
+              isActive={!!activeImportRun}
+              activeLabel={activeImportRun?.status === 'RUNNING' ? 'Importing...' : 'Queued'}
               popoverContent={<ImportStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
             >
               <Package className={`h-4 w-4 mr-2 ${pullFromSquare.isPending ? 'animate-spin' : ''}`} />
@@ -316,6 +322,8 @@ export default function ProductsPage() {
               onClick={handlePushAll}
               disabled={pushToSquare.isPending}
               variant="outline"
+              isActive={!!activeSyncRun}
+              activeLabel={activeSyncRun?.status === 'RUNNING' ? 'Syncing...' : 'Queued'}
               popoverContent={<SyncStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
             >
               <Upload className={`h-4 w-4 mr-2 ${pushToSquare.isPending ? 'animate-spin' : ''}`} />
