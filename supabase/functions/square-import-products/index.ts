@@ -15,6 +15,8 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders })
   }
 
+  let importRunId: string | null = null
+  
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -42,6 +44,8 @@ serve(async (req) => {
     if (runError) {
       throw new Error(`Failed to create import run: ${runError.message}`)
     }
+
+    importRunId = importRun.id
 
     // Get integration details and credentials
     console.log('🔐 [square-import-products] APP_CRYPT_KEY exists:', !!Deno.env.get('APP_CRYPT_KEY'))
@@ -132,9 +136,9 @@ serve(async (req) => {
           break // No more data
         }
 
-        // Process items and variations
-        const items = objects.filter((obj: any) => obj.type === 'ITEM')
-        const variations = objects.filter((obj: any) => obj.type === 'ITEM_VARIATION')
+        // Process items and variations - filter out null/undefined objects
+        const items = objects.filter((obj: any) => obj && obj.type === 'ITEM')
+        const variations = objects.filter((obj: any) => obj && obj.type === 'ITEM_VARIATION')
 
         for (const item of items) {
           const itemVariations = variations.filter((v: any) => 
@@ -228,6 +232,27 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Import failed:', error)
+
+    // Mark import run as failed if we have an ID
+    if (importRunId) {
+      try {
+        const supabase = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+        )
+        
+        await supabase
+          .from('product_import_runs')
+          .update({
+            status: 'FAILED',
+            finished_at: new Date().toISOString(),
+            errors: [error.message]
+          })
+          .eq('id', importRunId)
+      } catch (updateError) {
+        console.error('Failed to update import run status:', updateError)
+      }
+    }
 
     return new Response(
       JSON.stringify({ error: error.message }),

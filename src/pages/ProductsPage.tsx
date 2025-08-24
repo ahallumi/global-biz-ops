@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useProducts, useSearchProducts } from '@/hooks/useProducts';
 import { useProductCandidates } from '@/hooks/useProductCandidates';
 import { usePushProductsToSquare, usePullProductsFromSquare, useActiveSyncRun, useActiveImportRun } from '@/hooks/useProductSync';
-import { useInventoryIntegrations } from '@/hooks/useInventoryIntegrations';
+import { useInventoryIntegrations, useImportProducts } from '@/hooks/useInventoryIntegrations';
 import { useStagingData, useStagingStats, StagingItem } from '@/hooks/useStagingData';
 import { Layout } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
@@ -40,7 +40,7 @@ export default function ProductsPage() {
   const { data: stagingStats } = useStagingStats();
   
   const pushToSquare = usePushProductsToSquare();
-  const pullFromSquare = usePullProductsFromSquare();
+  const { mutate: importProducts, isPending: isImportPending } = useImportProducts();
   
   // Active operation detection
   const { data: activeSyncRun } = useActiveSyncRun();
@@ -307,14 +307,18 @@ export default function ProductsPage() {
           </div>
           <div className="flex items-center gap-2">
             <SplitButton
-              onClick={() => pullFromSquare.mutate()}
-              disabled={pullFromSquare.isPending}
+              onClick={() => {
+                if (activeIntegration?.id) {
+                  importProducts({ integrationId: activeIntegration.id, mode: 'FULL' })
+                }
+              }}
+              disabled={isImportPending || !activeIntegration?.id}
               variant="outline"
               isActive={!!activeImportRun}
               activeLabel={activeImportRun?.status === 'RUNNING' ? 'Importing...' : 'Queued'}
               popoverContent={<ImportStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
             >
-              <Package className={`h-4 w-4 mr-2 ${pullFromSquare.isPending ? 'animate-spin' : ''}`} />
+              <Package className={`h-4 w-4 mr-2 ${isImportPending ? 'animate-spin' : ''}`} />
               Import from Square
             </SplitButton>
             

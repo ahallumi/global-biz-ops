@@ -26,6 +26,11 @@ export function LiveImportStatusPanel({ importRun, title }: LiveImportStatusPane
     return `${minutes}m ${seconds}s`
   }
 
+  const getElapsedMinutes = () => {
+    if (!importRun?.started_at) return 0
+    return Math.floor((new Date().getTime() - new Date(importRun.started_at).getTime()) / (1000 * 60))
+  }
+
   const getStatusIcon = () => {
     switch (importRun?.status) {
       case 'RUNNING':
@@ -88,7 +93,14 @@ export function LiveImportStatusPanel({ importRun, title }: LiveImportStatusPane
         
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Elapsed time</span>
-          <span className="font-mono">{getElapsedTime()}</span>
+          <div className="text-right">
+            <span className="font-mono">{getElapsedTime()}</span>
+            {getElapsedMinutes() > 10 && (
+              <div className="text-xs text-yellow-600">
+                Auto-unstick at 15m
+              </div>
+            )}
+          </div>
         </div>
 
         {importRun?.processed_count !== undefined && (
