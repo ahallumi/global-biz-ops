@@ -3,14 +3,11 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
-import { CheckCircle, XCircle, Clock, Download, RotateCcw, ExternalLink, AlertTriangle } from "lucide-react"
+import { CheckCircle, XCircle, Clock, Download, RotateCcw, ExternalLink } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { useProductImportRuns, getImportRunSummary, useActiveImportRun } from "@/hooks/useProductSync"
 import { useInventoryIntegrations, useUpdateInventoryIntegration, useImportProducts } from "@/hooks/useInventoryIntegrations"
 import { LiveImportStatusPanel } from "./LiveImportStatusPanel"
-import { supabase } from "@/integrations/supabase/client"
-import { toast } from "sonner"
-import { useState } from "react"
 
 interface ImportStatusPopoverProps {
   onNavigateToSyncQueue?: () => void
@@ -23,7 +20,6 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
   const { data: activeImportRun } = useActiveImportRun()
   const updateIntegration = useUpdateInventoryIntegration()
   const importProducts = useImportProducts()
-  const [isUnsticking, setIsUnsticking] = useState(false)
   
   const summary = getImportRunSummary(importRuns || [])
   const activeIntegration = integrations?.find(i => i.provider === 'SQUARE')
@@ -39,25 +35,6 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
         return <Clock className="h-4 w-4 text-yellow-500" />
       default:
         return <Clock className="h-4 w-4 text-muted-foreground" />
-    }
-  }
-
-  const handleForceUnstick = async () => {
-    try {
-      setIsUnsticking(true)
-      
-      const { error } = await supabase.functions.invoke('import-watchdog', {
-        body: { thresholdMinutes: 2 } // Short threshold for manual force unstick
-      })
-      
-      if (error) throw error
-      
-      toast.success('Force unstick completed - stale imports have been cleaned up')
-    } catch (error) {
-      console.error('Failed to force unstick:', error)
-      toast.error('Failed to unstick imports')
-    } finally {
-      setIsUnsticking(false)
     }
   }
 
@@ -156,18 +133,6 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
           >
             <RotateCcw className="h-3 w-3 mr-1" />
             Import Now
-          </Button>
-          
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleForceUnstick}
-            disabled={isUnsticking}
-            className="text-orange-600 hover:text-orange-700 border-orange-200 hover:bg-orange-50"
-            title="Clean up any stuck imports"
-          >
-            <AlertTriangle className="h-3 w-3" />
-            {isUnsticking ? '...' : 'Unstick'}
           </Button>
           
           <Button 

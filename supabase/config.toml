@@ -70,9 +70,3 @@ verify_jwt = true
 
 [functions.square-push-products]
 verify_jwt = true
-
-[functions.import-abort]
-verify_jwt = true
-
-[functions.import-watchdog]
-verify_jwt = true
