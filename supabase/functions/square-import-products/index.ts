@@ -9,13 +9,63 @@ const corsHeaders = {
 const SQUARE_API_VERSION = '2024-12-18'
 const BATCH_SIZE = 100
 
+// Helper function for exponential backoff delays
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+// Retry wrapper for Square API calls
+async function retrySquareApiCall<T>(
+  apiCall: () => Promise<T>,
+  operation: string,
+  maxRetries = 3
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await apiCall()
+    } catch (error) {
+      const isRetryableError = error.name === 'TimeoutError' || 
+                              (error.message && error.message.includes('429')) ||
+                              (error.message && error.message.includes('connection'))
+
+      if (attempt === maxRetries || !isRetryableError) {
+        console.error(`${operation} failed after ${attempt} attempts:`, error.message)
+        throw error
+      }
+
+      const backoffDelay = Math.min(100 * Math.pow(2, attempt - 1), 1000) // 100ms, 200ms, 400ms, max 1000ms
+      console.log(`${operation} failed (attempt ${attempt}/${maxRetries}), retrying in ${backoffDelay}ms...`)
+      await sleep(backoffDelay)
+    }
+  }
+}
+
+// Safe progress update wrapper
+async function safeUpdateProgress(
+  supabase: any,
+  runId: string,
+  updates: any,
+  operation: string
+): Promise<void> {
+  try {
+    await supabase
+      .from('product_import_runs')
+      .update({
+        ...updates,
+        last_updated_at: new Date().toISOString()
+      })
+      .eq('id', runId)
+  } catch (error) {
+    console.error(`Failed to update progress for ${operation}:`, error.message)
+    // Don't throw - continue processing
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
-  let importRunId: string | null = null
+  let runId: string | null = null
   
   try {
     const supabase = createClient(
@@ -29,14 +79,15 @@ serve(async (req) => {
       throw new Error('Missing integration ID')
     }
 
-    console.log('Starting product import for integration:', integrationId, 'mode:', mode)
+    console.log(`🚀 Starting product import for integration: ${integrationId}, mode: ${mode}`)
 
     // Create import run record
     const { data: importRun, error: runError } = await supabase
       .from('product_import_runs')
       .insert({
         integration_id: integrationId,
-        status: 'RUNNING'
+        status: 'RUNNING',
+        started_at: new Date().toISOString()
       })
       .select()
       .single()
@@ -45,19 +96,19 @@ serve(async (req) => {
       throw new Error(`Failed to create import run: ${runError.message}`)
     }
 
-    importRunId = importRun.id
+    runId = importRun.id
+    console.log(`📋 Created import run: ${runId}`)
 
     // Get integration details and credentials
     console.log('🔐 [square-import-products] APP_CRYPT_KEY exists:', !!Deno.env.get('APP_CRYPT_KEY'))
     console.log('🔐 [square-import-products] APP_CRYPT_KEY2 exists:', !!Deno.env.get('APP_CRYPT_KEY2'))
-    console.log('🔐 [square-import-products] ENV keys:', Object.keys(Deno.env.toObject()).filter(k => k.includes('CRYPT')))
 
     const appCryptKey = Deno.env.get('APP_CRYPT_KEY2')
     if (!appCryptKey) {
       throw new Error('APP_CRYPT_KEY2 not configured')
     }
 
-    console.log('🔐 [square-import-products] Using encryption key: APP_CRYPT_KEY2')
+    console.log('🔐 Using encryption key: APP_CRYPT_KEY2')
 
     const { data: credentialsData, error: credentialsError } = await supabase.rpc('get_decrypted_credentials', {
       p_integration_id: integrationId,
@@ -68,10 +119,6 @@ serve(async (req) => {
       throw new Error('Failed to retrieve credentials')
     }
 
-    // RPC functions return an array, so we need to access the first element
-    console.log('🔐 [square-import-products] RPC result type:', typeof credentialsData, 'Array?', Array.isArray(credentialsData))
-    console.log('🔐 [square-import-products] RPC result length:', credentialsData?.length)
-    
     if (!Array.isArray(credentialsData) || credentialsData.length === 0) {
       console.error('No credentials found for integration:', integrationId)
       throw new Error('No credentials found for this integration')
@@ -88,20 +135,40 @@ serve(async (req) => {
     let totalCreated = 0
     let totalUpdated = 0
     const errors: string[] = []
+    let batchNumber = 0
+
+    console.log(`🔄 Starting batch import process (baseUrl: ${baseUrl})`)
 
     // Import products in batches
     while (true) {
+      batchNumber++
+      console.log(`📦 Starting batch ${batchNumber} with cursor: ${cursor || 'initial'}`)
+      
       try {
-        // Check for cancellation before each batch
+        // Check for cancellation before each batch (abort-aware)
         const { data: currentRun } = await supabase
           .from('product_import_runs')
           .select('status')
-          .eq('id', importRun.id)
+          .eq('id', runId)
           .single()
 
         if (currentRun?.status !== 'RUNNING') {
-          console.log('Import was cancelled, stopping...')
-          break
+          console.log(`🛑 Import was cancelled (status: ${currentRun?.status}), exiting cleanly`)
+          // Don't overwrite the status - it was set by the abort function
+          return new Response(
+            JSON.stringify({ 
+              success: true,
+              message: 'Import cancelled by user',
+              run_id: runId,
+              processed_count: totalProcessed,
+              created_count: totalCreated,
+              updated_count: totalUpdated
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 200 
+            }
+          )
         }
 
         // Build query parameters
@@ -114,15 +181,19 @@ serve(async (req) => {
           params.append('cursor', cursor)
         }
 
-        const response = await fetch(`${baseUrl}/v2/catalog/list?${params}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${access_token}`,
-            'Square-Version': SQUARE_API_VERSION,
-            'Content-Type': 'application/json',
-          },
-          signal: AbortSignal.timeout(30000) // 30 second timeout
-        })
+        // Square API call with retry logic
+        const response = await retrySquareApiCall(
+          () => fetch(`${baseUrl}/v2/catalog/list?${params}`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${access_token}`,
+              'Square-Version': SQUARE_API_VERSION,
+              'Content-Type': 'application/json',
+            },
+            signal: AbortSignal.timeout(30000) // 30 second timeout
+          }),
+          `Square API batch ${batchNumber}`
+        )
 
         if (!response.ok) {
           const errorData = await response.text()
@@ -133,8 +204,11 @@ serve(async (req) => {
         const objects = data.objects || []
 
         if (objects.length === 0) {
+          console.log('📄 No more data - ending batch processing')
           break // No more data
         }
+
+        console.log(`📊 Processing ${objects.length} objects in batch ${batchNumber}`)
 
         // Process items and variations - filter out null/undefined objects
         const items = objects.filter((obj: any) => obj && obj.type === 'ITEM')
@@ -164,61 +238,82 @@ serve(async (req) => {
 
         cursor = data.cursor
 
-        // Update progress after each batch
-        await supabase
-          .from('product_import_runs')
-          .update({
-            processed_count: totalProcessed,
-            created_count: totalCreated,
-            updated_count: totalUpdated,
-            cursor: cursor
-          })
-          .eq('id', importRun.id)
+        // Safe progress update after each batch
+        await safeUpdateProgress(supabase, runId, {
+          processed_count: totalProcessed,
+          created_count: totalCreated,
+          updated_count: totalUpdated,
+          cursor: cursor
+        }, `batch ${batchNumber}`)
 
-        console.log(`Processed ${totalProcessed} products so far...`)
+        console.log(`✅ Completed batch ${batchNumber}: ${totalProcessed} total processed (+${totalCreated} created, +${totalUpdated} updated)`)
 
         if (!cursor) {
+          console.log('🏁 No more pages - import complete')
           break // No more pages
         }
 
+        // Brief delay between batches to prevent API rate limiting
+        await sleep(200)
+
       } catch (batchError) {
-        console.error('Batch processing error:', batchError)
-        errors.push(`Batch error: ${batchError.message}`)
-        break
+        console.error(`❌ Batch ${batchNumber} processing error:`, batchError.message)
+        errors.push(`Batch ${batchNumber} error: ${batchError.message}`)
+        
+        // For critical errors, stop processing
+        if (batchError.message.includes('credentials') || 
+            batchError.message.includes('authorization') ||
+            batchError.message.includes('integration')) {
+          console.log('🚨 Critical error detected - stopping import')
+          break
+        }
+        
+        // For other errors, continue with next batch
+        console.log('⚠️ Non-critical error - continuing with next batch')
       }
     }
 
-    // Update import run with results
-    const finalStatus = errors.length > 0 ? 'PARTIAL' : 'SUCCESS'
-    
-    await supabase
+    // Finalize the import run (only if status is still RUNNING)
+    const { data: finalRun } = await supabase
       .from('product_import_runs')
-      .update({
+      .select('status')
+      .eq('id', runId)
+      .single()
+
+    // Only update to SUCCESS/PARTIAL if the run wasn't manually aborted
+    if (finalRun?.status === 'RUNNING') {
+      const finalStatus = errors.length > 0 ? 'PARTIAL' : 'SUCCESS'
+      
+      await safeUpdateProgress(supabase, runId, {
         status: finalStatus,
         finished_at: new Date().toISOString(),
         processed_count: totalProcessed,
         created_count: totalCreated,
         updated_count: totalUpdated,
         errors: errors,
-        cursor: cursor || null
-      })
-      .eq('id', importRun.id)
+        cursor: null
+      }, 'final status')
 
-    // Update integration success status
-    await supabase
-      .from('inventory_integrations')
-      .update({
-        last_success_at: new Date().toISOString(),
-        last_error: errors.length > 0 ? errors[0] : null
-      })
-      .eq('id', integrationId)
+      console.log(`🎯 Import finalized with status: ${finalStatus}`)
 
-    console.log(`Import completed: ${totalProcessed} processed, ${totalCreated} created, ${totalUpdated} updated`)
+      // Update integration success status
+      await supabase
+        .from('inventory_integrations')
+        .update({
+          last_success_at: new Date().toISOString(),
+          last_error: errors.length > 0 ? errors[0] : null
+        })
+        .eq('id', integrationId)
+    } else {
+      console.log(`🛑 Import run was ${finalRun?.status} - not overwriting final status`)
+    }
+
+    console.log(`🏆 Import completed: ${totalProcessed} processed, ${totalCreated} created, ${totalUpdated} updated, ${errors.length} errors`)
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        run_id: importRun.id,
+        run_id: runId,
         processed_count: totalProcessed,
         created_count: totalCreated,
         updated_count: totalUpdated,
@@ -231,10 +326,10 @@ serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Import failed:', error)
+    console.error('💥 Import failed with unexpected error:', error.message)
 
     // Mark import run as failed if we have an ID
-    if (importRunId) {
+    if (runId) {
       try {
         const supabase = createClient(
           Deno.env.get('SUPABASE_URL') ?? '',
@@ -246,12 +341,16 @@ serve(async (req) => {
           .update({
             status: 'FAILED',
             finished_at: new Date().toISOString(),
-            errors: [error.message]
+            errors: [`Unexpected crash during import: ${error.message}`]
           })
-          .eq('id', importRunId)
+          .eq('id', runId)
+          
+        console.log(`🔧 Marked import run ${runId} as FAILED due to crash`)
       } catch (updateError) {
-        console.error('Failed to update import run status:', updateError)
+        console.error('❌ Failed to update import run status after crash:', updateError.message)
       }
+    } else {
+      console.error('❌ Critical: No runId available for crash cleanup')
     }
 
     return new Response(
@@ -298,13 +397,13 @@ async function processProduct(
       updated_at: new Date().toISOString()
     }
 
-    // Check if product already exists by POS link
+    // Check if product already exists by POS link - fix null handling
     const { data: existingLink } = await supabase
       .from('product_pos_links')
       .select('product_id, products(*)')
       .eq('source', 'SQUARE')
       .eq('pos_item_id', item.id)
-      .eq('pos_variation_id', variation?.id || null)
+      .is('pos_variation_id', variation?.id || null)
       .single()
 
     let productId: string
@@ -347,7 +446,7 @@ async function processProduct(
           source: 'SQUARE',
           pos_item_id: item.id,
           pos_variation_id: variation?.id || null,
-          location_id: null // TODO: Handle location-specific variations
+          location_id: null
         })
     }
 
