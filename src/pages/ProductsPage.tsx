@@ -13,7 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '@/components/data-table/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
 import { Database } from '@/integrations/supabase/types';
-import { Search, RefreshCw, Package, Upload } from 'lucide-react';
+import { Search, RefreshCw, Package, Upload, Trash2, X } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { SplitButton } from '@/components/ui/split-button';
 import { SyncStatusPopover } from '@/components/sync/SyncStatusPopover';
 import { ImportStatusPopover } from '@/components/sync/ImportStatusPopover';
@@ -30,6 +31,7 @@ export default function ProductsPage() {
   const [activeTab, setActiveTab] = useState('catalog');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [rowSelection, setRowSelection] = useState({});
   
   // Product hooks - now filtered by catalog status
   const { data: products, isLoading: isLoadingProducts, refetch: refetchProducts } = useProducts('ACTIVE');
@@ -51,6 +53,35 @@ export default function ProductsPage() {
 
   const displayedProducts = searchQuery.trim() ? searchResults || [] : products || [];
 
+  // Selection helpers
+  const selectedProductIds = Object.keys(rowSelection).filter(key => rowSelection[key]);
+  const selectedProducts = selectedProductIds.map(id => displayedProducts.find(p => p.id === id)).filter(Boolean);
+  const isAllSelected = displayedProducts.length > 0 && selectedProductIds.length === displayedProducts.length;
+  const isIndeterminate = selectedProductIds.length > 0 && selectedProductIds.length < displayedProducts.length;
+
+  const handleSelectAll = () => {
+    if (isAllSelected) {
+      setRowSelection({});
+    } else {
+      const newSelection = {};
+      displayedProducts.forEach(product => {
+        newSelection[product.id] = true;
+      });
+      setRowSelection(newSelection);
+    }
+  };
+
+  const handleClearSelection = () => {
+    setRowSelection({});
+  };
+
+  const handlePushSelected = () => {
+    if (selectedProductIds.length > 0) {
+      pushToSquare.mutate(selectedProductIds);
+      handleClearSelection();
+    }
+  };
+
   // Filter staging data
   const filteredStagingData = stagingData?.filter(item => {
     if (sourceFilter !== 'all') {
@@ -64,8 +95,27 @@ export default function ProductsPage() {
   // Show all staging data by default - let users apply filters explicitly
   const displayedStagingData = filteredStagingData;
 
-  // Product columns with origin and sync state
+  // Product columns with selection and origin and sync state
   const productColumns: ColumnDef<Product>[] = [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <Checkbox
+          checked={isAllSelected ? true : isIndeterminate ? "indeterminate" : false}
+          onCheckedChange={handleSelectAll}
+          aria-label="Select all"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          aria-label="Select row"
+        />
+      ),
+      enableSorting: false,
+      enableHiding: false,
+    },
     {
       accessorKey: 'name',
       header: 'Name',
@@ -419,11 +469,46 @@ export default function ProductsPage() {
                     ))}
                   </div>
                 ) : (
-                  <DataTable 
-                    columns={productColumns} 
-                    data={displayedProducts}
-                    searchKey="name"
-                  />
+                  <>
+                    {/* Selection Toolbar */}
+                    {selectedProductIds.length > 0 && (
+                      <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg mb-4">
+                        <div className="flex items-center gap-4">
+                          <span className="text-sm font-medium">
+                            {selectedProductIds.length} product{selectedProductIds.length === 1 ? '' : 's'} selected
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={handlePushSelected}
+                              disabled={pushToSquare.isPending || selectedProducts.every(p => p.sync_state === 'SYNCED')}
+                            >
+                              <Upload className="h-3 w-3 mr-1" />
+                              Push Selected to Square
+                            </Button>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={handleClearSelection}
+                        >
+                          <X className="h-3 w-3 mr-1" />
+                          Clear Selection
+                        </Button>
+                      </div>
+                    )}
+                    
+                    <DataTable 
+                      columns={productColumns} 
+                      data={displayedProducts}
+                      searchKey="name"
+                      rowSelection={rowSelection}
+                      onRowSelectionChange={setRowSelection}
+                      getRowId={(row) => row.id}
+                    />
+                  </>
                 )}
               </CardContent>
             </Card>

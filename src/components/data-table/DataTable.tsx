@@ -37,6 +37,9 @@ interface DataTableProps<TData, TValue> {
   searchKey?: string
   searchPlaceholder?: string
   className?: string
+  rowSelection?: Record<string, boolean>
+  onRowSelectionChange?: (selection: Record<string, boolean>) => void
+  getRowId?: (row: TData) => string
 }
 
 export function DataTable<TData, TValue>({
@@ -45,11 +48,18 @@ export function DataTable<TData, TValue>({
   searchKey,
   searchPlaceholder = "Search...",
   className,
+  rowSelection: externalRowSelection,
+  onRowSelectionChange: externalOnRowSelectionChange,
+  getRowId,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
-  const [rowSelection, setRowSelection] = React.useState({})
+  const [internalRowSelection, setInternalRowSelection] = React.useState({})
+  
+  // Use external row selection if provided, otherwise use internal
+  const rowSelection = externalRowSelection ?? internalRowSelection;
+  const onRowSelectionChange = externalOnRowSelectionChange ?? setInternalRowSelection;
 
   const table = useReactTable({
     data,
@@ -61,7 +71,8 @@ export function DataTable<TData, TValue>({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
+    onRowSelectionChange,
+    getRowId: getRowId ? getRowId : undefined,
     state: {
       sorting,
       columnFilters,
