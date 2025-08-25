@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useProducts, useSearchProducts, useDeleteProducts } from '@/hooks/useProducts';
 import { useProductCandidates } from '@/hooks/useProductCandidates';
 import { usePushProductsToSquare, usePullProductsFromSquare, useActiveSyncRun, useActiveImportRun } from '@/hooks/useProductSync';
@@ -70,24 +70,34 @@ export default function ProductsPage() {
   const displayedProducts = searchQuery.trim() ? searchResults || [] : products || [];
   const localOnlyCount = products?.filter(product => product.sync_state === 'LOCAL_ONLY').length || 0;
 
-  // Ensure selection never references rows that no longer exist
-  useEffect(() => {
-    const list = displayedProducts || [];
-    if (list.length === 0) {
-      if (Object.keys(rowSelection).length) {
-        setRowSelection({});
-      }
-      return;
+  // Memoized selection reconciliation to prevent feedback loops
+  const reconcileSelection = useCallback((products: any[], currentSelection: Record<string, boolean>) => {
+    if (products.length === 0) {
+      return Object.keys(currentSelection).length > 0 ? {} : currentSelection;
     }
-    const ids = new Set(list.map((p: any) => p.id));
+    
+    const ids = new Set(products.map(p => p.id));
     const next: Record<string, boolean> = {};
     let changed = false;
-    for (const key of Object.keys(rowSelection)) {
-      if (ids.has(key)) next[key] = true;
-      else changed = true;
+    
+    for (const key of Object.keys(currentSelection)) {
+      if (ids.has(key)) {
+        next[key] = true;
+      } else {
+        changed = true;
+      }
     }
-    if (changed) setRowSelection(next);
-  }, [displayedProducts, rowSelection]);
+    
+    return changed ? next : currentSelection;
+  }, []);
+
+  // Ensure selection never references rows that no longer exist
+  useEffect(() => {
+    const reconciledSelection = reconcileSelection(displayedProducts || [], rowSelection);
+    if (reconciledSelection !== rowSelection) {
+      setRowSelection(reconciledSelection);
+    }
+  }, [displayedProducts, reconcileSelection]);
 
   // Selection helpers
   const selectedProductIds = Object.keys(rowSelection).filter(key => rowSelection[key]);
@@ -125,6 +135,8 @@ export default function ProductsPage() {
         handleClearSelection();
         await deleteProducts.mutateAsync(selectedProductIds);
         await refetchProducts();
+        // Small delay to let React Table settle
+        await new Promise(resolve => setTimeout(resolve, 100));
       } catch (err) {
         // Error toasts are handled in useDeleteProducts
       }
@@ -594,14 +606,18 @@ export default function ProductsPage() {
                         </div>
                       )}
                       
-                      <DataTable 
-                        columns={productColumns} 
-                        data={displayedProducts}
-                        searchKey="name"
-                        rowSelection={rowSelection}
-                        onRowSelectionChange={setRowSelection}
-                        getRowId={(row) => row.id}
-                      />
+                      {/* Data Table with stability key */}
+                      {displayedProducts.length >= 0 && (
+                        <DataTable 
+                          key={`products-${displayedProducts.length}-${selectedProductIds.length}`}
+                          columns={productColumns} 
+                          data={displayedProducts}
+                          searchKey="name"
+                          rowSelection={rowSelection}
+                          onRowSelectionChange={setRowSelection}
+                          getRowId={(row) => row.id}
+                        />
+                      )}
                     </>
                   )}
                 </CardContent>
@@ -651,6 +667,7 @@ export default function ProductsPage() {
                       ) : (
                         <>
                           <DataTable 
+                            key={`staging-${displayedStagingData.length}`}
                             columns={stagingColumns} 
                             data={displayedStagingData}
                             searchKey="name"
