@@ -49,8 +49,8 @@ export default function ProductsPage() {
   const isSafeMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('safe') === '1';
   
   // Product hooks - now filtered by catalog status
-  const { data: products, isLoading: isLoadingProducts, refetch: refetchProducts } = useProducts('ACTIVE');
-  const { data: searchResults, isLoading: isSearching } = useSearchProducts(searchQuery, 'ACTIVE');
+  const { data: products = [], isLoading: isLoadingProducts, refetch: refetchProducts } = useProducts('ACTIVE');
+  const { data: searchResults = [], isLoading: isSearching } = useSearchProducts(searchQuery, 'ACTIVE');
   
   // Staging hooks
   const { data: stagingData, isLoading: isLoadingStaging, refetch: refetchStaging } = useStagingData(!isSafeMode && activeTab === 'staging');
@@ -94,7 +94,7 @@ export default function ProductsPage() {
   const selectedProducts = selectedProductIds.map(id => displayedProducts.find(p => p.id === id)).filter(Boolean);
   const isAllSelected = displayedProducts.length > 0 && selectedProductIds.length === displayedProducts.length;
   const isIndeterminate = selectedProductIds.length > 0 && selectedProductIds.length < displayedProducts.length;
-
+  console.log('Render diagnostic', { productsCount: products.length, displayedCount: displayedProducts.length, searchQuery, activeTab, selectedCount: selectedProductIds.length });
   const handleSelectAll = () => {
     if (isAllSelected) {
       setRowSelection({});
@@ -169,11 +169,12 @@ export default function ProductsPage() {
       accessorKey: 'name',
       header: 'Name',
       cell: ({ row }) => {
-        const product = row.original;
+        const product = row.original as Product | undefined;
+        if (!product) return null;
         return (
           <div className="space-y-1">
-            <div className="font-medium">{product.name}</div>
-            {product.brand && <div className="text-sm text-muted-foreground">{product.brand}</div>}
+            <div className="font-medium">{product?.name ?? 'Unnamed'}</div>
+            {product?.brand && <div className="text-sm text-muted-foreground">{product.brand}</div>}
           </div>
         );
       },
@@ -181,11 +182,14 @@ export default function ProductsPage() {
     {
       accessorKey: 'upc',
       header: 'UPC/PLU',
-      cell: ({ row }) => (
-        <div className="font-mono text-sm">
-          {row.original.upc || row.original.plu || 'N/A'}
-        </div>
-      ),
+      cell: ({ row }) => {
+        const p = row.original as Product | undefined;
+        return (
+          <div className="font-mono text-sm">
+            {p?.upc || p?.plu || 'N/A'}
+          </div>
+        );
+      },
     },
     {
       accessorKey: 'unit_of_sale',
@@ -239,7 +243,8 @@ export default function ProductsPage() {
       id: 'actions',
       header: 'Actions',
       cell: ({ row }) => {
-        const product = row.original;
+        const product = row.original as Product | undefined;
+        if (!product) return null;
         const canPush = product.sync_state === 'LOCAL_ONLY' || product.sync_state === 'DIVERGED';
         
         return (
@@ -286,7 +291,8 @@ export default function ProductsPage() {
       accessorKey: 'name',
       header: 'Name',
       cell: ({ row }) => {
-        const item = row.original;
+        const item = row.original as StagingItem | undefined;
+        if (!item) return null;
         return (
           <div className="space-y-1">
             <div className="font-medium">{item.name || 'Unnamed'}</div>
@@ -303,7 +309,8 @@ export default function ProductsPage() {
       accessorKey: 'upc',
       header: 'UPC/PLU',
       cell: ({ row }) => {
-        const item = row.original;
+        const item = row.original as StagingItem | undefined;
+        if (!item) return null;
         return (
           <div className="font-mono text-sm">
             {item.upc || item.plu || 'N/A'}
@@ -315,7 +322,8 @@ export default function ProductsPage() {
       accessorKey: 'unit_of_sale',
       header: 'Unit',
       cell: ({ row }) => {
-        const item = row.original;
+        const item = row.original as StagingItem | undefined;
+        if (!item) return null;
         return item.unit_of_sale ? (
           <Badge variant="outline">{item.unit_of_sale}</Badge>
         ) : 'N/A';
@@ -325,7 +333,8 @@ export default function ProductsPage() {
       accessorKey: 'suggested_cost_cents',
       header: 'Cost',
       cell: ({ row }) => {
-        const item = row.original;
+        const item = row.original as StagingItem | undefined;
+        if (!item) return null;
         const cents = item.suggested_cost_cents;
         return cents ? `$${(cents / 100).toFixed(2)}` : 'N/A';
       },
@@ -334,7 +343,8 @@ export default function ProductsPage() {
       accessorKey: 'status',
       header: 'Status',
       cell: ({ row }) => {
-        const item = row.original;
+        const item = row.original as StagingItem | undefined;
+        if (!item) return null;
         const getVariant = (status: string) => {
           switch (status) {
             case 'APPROVED': return 'default';
@@ -353,7 +363,8 @@ export default function ProductsPage() {
       id: 'actions',
       header: 'Actions',
       cell: ({ row }) => {
-        const item = row.original;
+        const item = row.original as StagingItem | undefined;
+        if (!item) return null;
         
         if (item.type === 'CANDIDATE') {
           return <CandidateActions candidate={item.original_data} />;
