@@ -341,10 +341,10 @@ export default function ProductsPage() {
               
               <Button
                 onClick={handleRefresh}
-                disabled={isLoadingProducts || isLoadingStaging}
+                disabled={isLoadingProducts}
                 variant="outline"
               >
-                <RefreshCw className={`h-4 w-4 mr-2 ${(isLoadingProducts || isLoadingStaging) ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingProducts ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
             </div>
