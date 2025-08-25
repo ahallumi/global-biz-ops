@@ -61,9 +61,18 @@ export function DataTable<TData, TValue>({
   const rowSelection = externalRowSelection ?? internalRowSelection;
   const onRowSelectionChange = externalOnRowSelectionChange ?? setInternalRowSelection;
 
+  // Defensive guards for table instantiation
+  const safeData = React.useMemo(() => {
+    return Array.isArray(data) ? data : [];
+  }, [data]);
+  
+  const safeColumns = React.useMemo(() => {
+    return Array.isArray(columns) ? columns : [];
+  }, [columns]);
+
   const table = useReactTable({
-    data,
-    columns,
+    data: safeData,
+    columns: safeColumns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
@@ -77,7 +86,7 @@ export function DataTable<TData, TValue>({
       sorting,
       columnFilters,
       columnVisibility,
-      rowSelection,
+      rowSelection: rowSelection || {},
     },
   })
 
@@ -148,26 +157,36 @@ export function DataTable<TData, TValue>({
           </TableHeader>
           <TableBody>
             {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                  className="hover:bg-muted/50"
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+              table.getRowModel().rows.map((row) => {
+                // Additional safety check for row data
+                if (!row || !row.id) return null;
+                
+                return (
+                  <TableRow
+                    key={row.id}
+                    data-state={row.getIsSelected() && "selected"}
+                    className="hover:bg-muted/50"
+                  >
+                    {row.getVisibleCells().map((cell) => {
+                      // Safety check for cell rendering
+                      if (!cell || !cell.id) return null;
+                      
+                      return (
+                        <TableCell key={cell.id}>
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext()
+                          )}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={safeColumns.length}
                   className="h-24 text-center"
                 >
                   No results.

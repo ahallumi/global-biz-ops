@@ -60,6 +60,9 @@ export default function ProductsPage() {
   const pullFromSquare = usePullProductsFromSquare();
   const deleteProducts = useDeleteProducts();
   
+  // Busy state prevents crashes during heavy operations
+  const isBusy = deleteProducts.isPending || pushToSquare.isPending || pullFromSquare.isPending;
+  
   // Active operation detection
   const { data: activeSyncRun } = useActiveSyncRun();
   const { data: activeImportRun } = useActiveImportRun();
@@ -91,13 +94,15 @@ export default function ProductsPage() {
     return changed ? next : currentSelection;
   }, []);
 
-  // Ensure selection never references rows that no longer exist
+  // Ensure selection never references rows that no longer exist (skip during busy operations)
   useEffect(() => {
+    if (isBusy) return; // Skip reconciliation during busy operations
+    
     const reconciledSelection = reconcileSelection(displayedProducts || [], rowSelection);
     if (reconciledSelection !== rowSelection) {
       setRowSelection(reconciledSelection);
     }
-  }, [displayedProducts, reconcileSelection]);
+  }, [displayedProducts, reconcileSelection, isBusy]);
 
   // Selection helpers
   const selectedProductIds = Object.keys(rowSelection).filter(key => rowSelection[key]);
@@ -429,29 +434,43 @@ export default function ProductsPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <SplitButton
-                onClick={() => pullFromSquare.mutate()}
-                disabled={pullFromSquare.isPending}
-                variant="outline"
-                isActive={!!activeImportRun}
-                activeLabel={activeImportRun?.status === 'RUNNING' ? 'Importing...' : 'Queued'}
-                popoverContent={isSafeMode ? undefined : () => <ImportStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
-              >
-                <Package className={`h-4 w-4 mr-2 ${pullFromSquare.isPending ? 'animate-spin' : ''}`} />
-                Import from Square
-              </SplitButton>
+              {!isBusy ? (
+                <SplitButton
+                  onClick={() => pullFromSquare.mutate()}
+                  disabled={pullFromSquare.isPending}
+                  variant="outline"
+                  isActive={!!activeImportRun}
+                  activeLabel={activeImportRun?.status === 'RUNNING' ? 'Importing...' : 'Queued'}
+                  popoverContent={isSafeMode ? undefined : () => <ImportStatusPopover onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
+                >
+                  <Package className={`h-4 w-4 mr-2 ${pullFromSquare.isPending ? 'animate-spin' : ''}`} />
+                  Import from Square
+                </SplitButton>
+              ) : (
+                <Button disabled variant="outline">
+                  <Package className="h-4 w-4 mr-2" />
+                  Import from Square
+                </Button>
+              )}
               
-              <SplitButton
-                onClick={handlePushAll}
-                disabled={pushToSquare.isPending}
-                variant="outline"
-                isActive={!!activeSyncRun}
-                activeLabel={activeSyncRun?.status === 'RUNNING' ? 'Syncing...' : 'Queued'}
-                popoverContent={isSafeMode ? undefined : () => <SyncStatusPopover localOnlyCount={localOnlyCount} onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
-              >
-                <Upload className={`h-4 w-4 mr-2 ${pushToSquare.isPending ? 'animate-spin' : ''}`} />
-                Push All Local
-              </SplitButton>
+              {!isBusy ? (
+                <SplitButton
+                  onClick={handlePushAll}
+                  disabled={pushToSquare.isPending}
+                  variant="outline"
+                  isActive={!!activeSyncRun}
+                  activeLabel={activeSyncRun?.status === 'RUNNING' ? 'Syncing...' : 'Queued'}
+                  popoverContent={isSafeMode ? undefined : () => <SyncStatusPopover localOnlyCount={localOnlyCount} onNavigateToSyncQueue={handleNavigateToSyncQueue} />}
+                >
+                  <Upload className={`h-4 w-4 mr-2 ${pushToSquare.isPending ? 'animate-spin' : ''}`} />
+                  Push All Local
+                </SplitButton>
+              ) : (
+                <Button disabled variant="outline">
+                  <Upload className="h-4 w-4 mr-2" />
+                  Push All Local
+                </Button>
+              )}
               
               <Button
                 onClick={handleRefresh}
@@ -606,18 +625,25 @@ export default function ProductsPage() {
                         </div>
                       )}
                       
-                      {/* Data Table with stability key */}
-                      {displayedProducts.length >= 0 && (
-                        <DataTable 
-                          key={`products-${displayedProducts.length}-${selectedProductIds.length}`}
-                          columns={productColumns} 
-                          data={displayedProducts}
-                          searchKey="name"
-                          rowSelection={rowSelection}
-                          onRowSelectionChange={setRowSelection}
-                          getRowId={(row) => row.id}
-                        />
-                      )}
+                      {/* Data Table with stability key and busy state handling */}
+                      {isBusy ? (
+                        <div className="space-y-4">
+                          <Skeleton className="h-12 w-full" />
+                          <Skeleton className="h-64 w-full" />
+                        </div>
+                      ) : displayedProducts.length >= 0 ? (
+                        <ErrorBoundary fallback={<div className="p-4 text-center text-muted-foreground">Error loading table</div>}>
+                          <DataTable 
+                            key={`products-${displayedProducts.length}-${selectedProductIds.length}`}
+                            columns={productColumns} 
+                            data={displayedProducts}
+                            searchKey="name"
+                            rowSelection={rowSelection}
+                            onRowSelectionChange={setRowSelection}
+                            getRowId={(row) => row.id}
+                          />
+                        </ErrorBoundary>
+                      ) : null}
                     </>
                   )}
                 </CardContent>

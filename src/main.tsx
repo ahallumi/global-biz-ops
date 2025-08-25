@@ -2,13 +2,40 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 
-// Global error diagnostics
+// Enhanced global error diagnostics
 window.addEventListener('error', (event) => {
-  console.error('Global error:', event.message, 'at', event.filename, event.lineno + ':' + event.colno, 'error:', event.error);
+  console.error('🚨 Global Error:', {
+    message: event.message,
+    filename: event.filename,
+    location: `${event.lineno}:${event.colno}`,
+    error: event.error,
+    stack: event.error?.stack,
+    timestamp: new Date().toISOString(),
+    url: window.location.href,
+    userAgent: navigator.userAgent.substring(0, 100)
+  });
 });
 
 window.addEventListener('unhandledrejection', (event) => {
-  console.error('Unhandled promise rejection:', event.reason);
+  console.error('🚨 Unhandled Promise Rejection:', {
+    reason: event.reason,
+    stack: event.reason?.stack,
+    timestamp: new Date().toISOString(),
+    url: window.location.href
+  });
 });
+
+// Catch resource loading errors specifically
+window.addEventListener('error', (event) => {
+  if (event.target && event.target !== window) {
+    const target = event.target as any; // Type cast for resource elements
+    console.error('🚨 Resource Load Error:', {
+      element: target.tagName || 'Unknown',
+      src: target.src || target.href || 'No source',
+      message: event.message || 'Load failed',
+      timestamp: new Date().toISOString()
+    });
+  }
+}, true); // Use capture phase to catch all resource errors
 
 createRoot(document.getElementById("root")!).render(<App />);

@@ -2,6 +2,7 @@ import { Component, ReactNode } from 'react';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
+  fallback?: ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -31,6 +32,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   render() {
     if (this.state.hasError) {
+      // Use custom fallback if provided
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+      
       return (
         <div className="p-4 rounded border border-destructive/20 bg-destructive/5 text-destructive">
           <div className="font-semibold">Something went wrong loading this section.</div>
