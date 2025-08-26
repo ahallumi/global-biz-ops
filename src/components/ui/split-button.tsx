@@ -68,7 +68,7 @@ export function SplitButton({
           align="end" 
           className="w-80 p-3"
         >
-          {typeof popoverContent === 'function' ? popoverContent() : popoverContent}
+          {isOpen && (typeof popoverContent === 'function' ? popoverContent() : popoverContent)}
         </PopoverContent>
       </Popover>
     </div>

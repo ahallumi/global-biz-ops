@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useProducts, useSearchProducts, useDeleteProducts } from '@/hooks/useProducts';
 import { useProductCandidates } from '@/hooks/useProductCandidates';
 import { usePushProductsToSquare, usePullProductsFromSquare, useActiveSyncRun, useActiveImportRun } from '@/hooks/useProductSync';
@@ -37,6 +38,7 @@ const StagingTab = lazy(() => import('./products/StagingTab'));
 type Product = Database['public']['Tables']['products']['Row'];
 
 export default function ProductsPage() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('catalog');
   const [rowSelection, setRowSelection] = useState({});
@@ -216,7 +218,8 @@ export default function ProductsPage() {
       accessorKey: 'origin',
       header: 'Origin',
       cell: ({ row }) => {
-        const origin = row.getValue('origin') as string;
+        const origin = row.getValue('origin') as string | null | undefined;
+        if (!origin) return <Badge variant="outline">Unknown</Badge>;
         const variant = origin === 'SQUARE' ? 'default' : origin === 'MERGED' ? 'secondary' : 'outline';
         return <Badge variant={variant}>{origin}</Badge>;
       },
@@ -225,7 +228,8 @@ export default function ProductsPage() {
       accessorKey: 'sync_state',
       header: 'Sync State',
       cell: ({ row }) => {
-        const state = row.getValue('sync_state') as string;
+        const state = row.getValue('sync_state') as string | null | undefined;
+        if (!state) return <Badge variant="outline">Unknown</Badge>;
         const getVariant = (state: string) => {
           switch (state) {
             case 'SYNCED': return 'default';
@@ -284,7 +288,7 @@ export default function ProductsPage() {
 
   const handleNavigateToSyncQueue = () => {
     // Navigate to the dedicated sync queue page
-    window.location.href = '/sync-queue';
+    navigate('/sync-queue');
   };
 
   const activeIntegration = integrations?.find(i => i.provider === 'SQUARE');
