@@ -177,13 +177,19 @@ export function useDeleteProducts() {
 
   return useMutation({
     mutationFn: async (productIds: string[]) => {
-      const { error } = await supabase
-        .from('products')
-        .delete()
-        .in('id', productIds);
-      
-      if (error) throw error;
-      return productIds;
+      const ids = Array.isArray(productIds) ? productIds : [];
+      const CHUNK = 100;
+
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const slice = ids.slice(i, i + CHUNK);
+        const { error } = await supabase
+          .from('products')
+          .delete()
+          .in('id', slice);
+        if (error) throw error;
+      }
+
+      return ids;
     },
     onSuccess: (productIds) => {
       queryClient.invalidateQueries({ queryKey: ['products'] });

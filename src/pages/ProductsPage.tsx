@@ -42,6 +42,7 @@ export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('catalog');
   const [rowSelection, setRowSelection] = useState({});
+  const [pageRowIds, setPageRowIds] = useState<string[]>([]);
   
   // Safe mode disables heavy popovers and staging UI to isolate issues
   const isSafeMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('safe') === '1';
@@ -102,19 +103,25 @@ export default function ProductsPage() {
   // Selection helpers
   const selectedProductIds = Object.keys(rowSelection).filter(key => rowSelection[key]);
   const selectedProducts = selectedProductIds.map(id => displayedProducts.find(p => p.id === id)).filter(Boolean);
-  const isAllSelected = displayedProducts.length > 0 && selectedProductIds.length === displayedProducts.length;
-  const isIndeterminate = selectedProductIds.length > 0 && selectedProductIds.length < displayedProducts.length;
+  const selectedOnPage = pageRowIds.filter(id => (rowSelection as any)[id]);
+  const isAllSelected = pageRowIds.length > 0 && selectedOnPage.length === pageRowIds.length;
+  const isIndeterminate = selectedOnPage.length > 0 && selectedOnPage.length < pageRowIds.length;
   console.log('Render diagnostic', { productsCount: products.length, displayedCount: displayedProducts.length, searchQuery, activeTab, selectedCount: selectedProductIds.length });
   const handleSelectAll = () => {
-    if (isAllSelected) {
-      setRowSelection({});
-    } else {
-      const newSelection = {};
-      displayedProducts.forEach(product => {
-        newSelection[product.id] = true;
+    const next: Record<string, boolean> = { ...(rowSelection as any) };
+    const shouldSelectAll = !(pageRowIds.length > 0 && selectedOnPage.length === pageRowIds.length);
+
+    if (shouldSelectAll) {
+      pageRowIds.forEach(id => {
+        next[id] = true;
       });
-      setRowSelection(newSelection);
+    } else {
+      pageRowIds.forEach(id => {
+        if (next[id]) delete next[id];
+      });
     }
+
+    setRowSelection(next);
   };
 
   const handleClearSelection = () => {
@@ -512,6 +519,7 @@ export default function ProductsPage() {
                             searchKey="name"
                             rowSelection={rowSelection}
                             onRowSelectionChange={setRowSelection}
+                            onPageRowsChange={setPageRowIds}
                             getRowId={(row, idx) => (row && (row as any).id) ? (row as any).id : `row-${idx}`}
                           />
                         </ErrorBoundary>
