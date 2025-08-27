@@ -194,9 +194,10 @@ export default function ProductsPage() {
     {
       accessorKey: 'unit_of_sale',
       header: 'Unit',
-      cell: ({ row }) => (
-        <Badge variant="outline">{row.getValue('unit_of_sale')}</Badge>
-      ),
+      cell: ({ row }) => {
+        const unit = row.getValue('unit_of_sale') as string | null | undefined;
+        return unit ? <Badge variant="outline">{unit}</Badge> : 'N/A';
+      },
     },
     {
       accessorKey: 'retail_price_cents',
@@ -511,7 +512,7 @@ export default function ProductsPage() {
                             searchKey="name"
                             rowSelection={rowSelection}
                             onRowSelectionChange={setRowSelection}
-                            getRowId={(row) => row.id}
+                            getRowId={(row, idx) => (row && (row as any).id) ? (row as any).id : `row-${idx}`}
                           />
                         </ErrorBoundary>
                       ) : null}

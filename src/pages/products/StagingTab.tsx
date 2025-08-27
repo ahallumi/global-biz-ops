@@ -185,6 +185,7 @@ export default function StagingTab() {
                   columns={stagingColumns} 
                   data={displayedStagingData}
                   searchKey="name"
+                  getRowId={(row, idx) => (row as any)?.id ?? `row-${idx}`}
                 />
                 {stagingData && stagingData.length > 0 && displayedStagingData.length === 0 && (
                   <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
