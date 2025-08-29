@@ -45,7 +45,7 @@ export function useProducts(catalogStatus: CatalogStatus = 'ACTIVE') {
     },
     retry: 0,
     refetchOnWindowFocus: false,
-    staleTime: 5000,
+    staleTime: 1000, // Reduced from 5000 to allow faster updates after mutations
   });
 }
 
@@ -191,8 +191,15 @@ export function useDeleteProducts() {
 
       return ids;
     },
-    onSuccess: (productIds) => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+    onSuccess: async (productIds) => {
+      // Invalidate all product-related queries
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['products'] }),
+        queryClient.invalidateQueries({ queryKey: ['products', 'search'] }),
+        queryClient.refetchQueries({ queryKey: ['products', 'ACTIVE'] }),
+        queryClient.refetchQueries({ queryKey: ['products', 'PLACEHOLDER'] }),
+      ]);
+      
       toast({
         title: 'Success',
         description: `${productIds.length} product${productIds.length === 1 ? '' : 's'} deleted successfully`,

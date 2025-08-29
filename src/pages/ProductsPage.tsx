@@ -136,17 +136,15 @@ export default function ProductsPage() {
   };
 
   const handleDeleteSelected = async () => {
-    if (selectedProductIds.length > 0) {
-      try {
-        // Clear selection first to avoid rendering stale selections on empty data
-        handleClearSelection();
-        await deleteProducts.mutateAsync(selectedProductIds);
-        await refetchProducts();
-        // Small delay to let React Table settle
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (err) {
-        // Error toasts are handled in useDeleteProducts
-      }
+    if (selectedProductIds.length === 0) return;
+    
+    try {
+      await deleteProducts.mutateAsync(selectedProductIds);
+      setRowSelection({});
+      // Force immediate refetch of the products query
+      await refetchProducts();
+    } catch (error) {
+      console.error('Delete failed:', error);
     }
   };
 
