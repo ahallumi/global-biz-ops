@@ -46,10 +46,10 @@ serve(async (req) => {
 
     if (!updatedRun) {
       return new Response(
-        JSON.stringify({ error: 'Import run not found or not currently running' }),
+        JSON.stringify({ error: 'Import run not found or not currently running. Only RUNNING imports can be aborted.' }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 404 
+          status: 400 
         }
       )
     }

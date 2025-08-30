@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/data-table/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
-import { useProductSyncRuns, useProductImportRuns, useActiveImportRun, useAbortImport } from '@/hooks/useProductSync';
+import { useProductSyncRuns, useProductImportRuns, useActiveImportRun, useRunningImportRun, useAbortImport } from '@/hooks/useProductSync';
 import { useInventoryIntegrations } from '@/hooks/useInventoryIntegrations';
 import { Skeleton } from '@/components/ui/skeleton';
 import { History, Package, Upload, Download, Clock, CheckCircle, XCircle, AlertTriangle, StopCircle } from 'lucide-react';
@@ -21,6 +21,7 @@ export default function SyncQueuePage() {
   const { data: syncRuns, isLoading: isLoadingSyncRuns } = useProductSyncRuns();
   const { data: importRuns, isLoading: isLoadingImportRuns } = useProductImportRuns();
   const { data: activeImportRun } = useActiveImportRun();
+  const { data: runningImportRun } = useRunningImportRun();
   const abortImport = useAbortImport();
   
   // Integration
@@ -45,8 +46,8 @@ export default function SyncQueuePage() {
         description: `${data.cleaned_count || 0} stale runs were cleaned up.`
       })
       
-      // If no runs were cleaned but there's still an active run, suggest using abort
-      if ((data.cleaned_count || 0) === 0 && activeImportRun) {
+      // If no runs were cleaned but there's still a running import, suggest using abort
+      if ((data.cleaned_count || 0) === 0 && runningImportRun) {
         toast({
           title: "No stale runs found",
           description: "There's an active import that might need to be manually aborted.",
@@ -65,10 +66,10 @@ export default function SyncQueuePage() {
   }
 
   const handleAbortActiveImport = async () => {
-    if (!activeImportRun?.id) return;
+    if (!runningImportRun?.id) return;
     
     try {
-      await abortImport.mutateAsync(activeImportRun.id);
+      await abortImport.mutateAsync(runningImportRun.id);
     } catch (error) {
       // Error is handled by the mutation's onError callback
     }
@@ -154,7 +155,7 @@ export default function SyncQueuePage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {activeImportRun && (
+            {runningImportRun && (
               <Button
                 size="sm"
                 variant="destructive"

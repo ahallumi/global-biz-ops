@@ -276,6 +276,39 @@ export function useActiveImportRun() {
   });
 }
 
+// Hook to detect only truly running imports (for abort button)
+export function useRunningImportRun() {
+  return useQuery({
+    queryKey: ['running-import-run'],
+    queryFn: async () => {
+      try {
+        const { data, error } = await supabase
+          .from('product_import_runs')
+          .select('*')
+          .in('status', ['RUNNING', 'PENDING', 'PARTIAL'])
+          .is('finished_at', null)
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          console.warn('Running import run polling error:', error);
+          return null;
+        }
+        
+        return data ?? null;
+      } catch (err) {
+        console.warn('Running import run polling exception:', err);
+        return null;
+      }
+    },
+    refetchInterval: 2000,
+    retry: 0,
+    refetchOnWindowFocus: false,
+    staleTime: 1000,
+  });
+}
+
 // Utility functions for popover summaries
 export function getSyncRunSummary(runs: ProductSyncRun[]) {
   const lastRun = runs.find(run => run.direction === 'OUT');
