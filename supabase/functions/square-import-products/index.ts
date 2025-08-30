@@ -8,6 +8,7 @@ const corsHeaders = {
 
 const SQUARE_API_VERSION = '2024-12-18'
 const BATCH_SIZE = 100
+const MAX_SEGMENT_DURATION_MS = 7 * 60 * 1000 // 7 minutes max per segment
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -21,13 +22,49 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { integrationId, mode = 'FULL' } = await req.json()
+    const { integrationId, mode = 'FULL', runId } = await req.json()
 
     if (!integrationId) {
       throw new Error('Missing integration ID')
     }
 
-    // Check if there's already a running import for this integration
+    // Handle resume mode - use existing run instead of creating new one
+    if (mode === 'RESUME' && runId) {
+      console.log('Resuming product import for run:', runId)
+      
+      // Verify the run exists and is in RUNNING state
+      const { data: existingRun } = await supabase
+        .from('product_import_runs')
+        .select('id, integration_id, status')
+        .eq('id', runId)
+        .eq('integration_id', integrationId)
+        .single()
+
+      if (!existingRun) {
+        throw new Error('Import run not found or does not belong to this integration')
+      }
+
+      if (existingRun.status !== 'RUNNING') {
+        throw new Error(`Cannot resume import with status: ${existingRun.status}`)
+      }
+
+      // Resume the background import task
+      EdgeRuntime.waitUntil(performImport(runId, integrationId, mode))
+
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          run_id: runId,
+          message: 'Import resumed in background'
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200 
+        }
+      )
+    }
+
+    // Check if there's already a running import for this integration (new imports only)
     const { data: existingRun } = await supabase
       .from('product_import_runs')
       .select('id, status')
@@ -100,12 +137,34 @@ async function performImport(importRunId: string, integrationId: string, mode: s
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   )
 
+  const segmentStartTime = Date.now()
+
   try {
-    // Update status to RUNNING
-    await supabase
-      .from('product_import_runs')
-      .update({ status: 'RUNNING' })
-      .eq('id', importRunId)
+    // Update status to RUNNING (for new imports) or get existing state (for resumed imports)
+    let currentRun
+    if (mode === 'RESUME') {
+      const { data } = await supabase
+        .from('product_import_runs')
+        .select('*')
+        .eq('id', importRunId)
+        .single()
+      
+      currentRun = data
+      console.log(`Resuming import from cursor: ${currentRun?.cursor || 'beginning'}`)
+    } else {
+      await supabase
+        .from('product_import_runs')
+        .update({ status: 'RUNNING' })
+        .eq('id', importRunId)
+      
+      const { data } = await supabase
+        .from('product_import_runs')
+        .select('*')
+        .eq('id', importRunId)
+        .single()
+      
+      currentRun = data
+    }
 
     // Get integration details and credentials
     const appCryptKey = Deno.env.get('APP_CRYPT_KEY2')
@@ -128,27 +187,49 @@ async function performImport(importRunId: string, integrationId: string, mode: s
       ? 'https://connect.squareupsandbox.com' 
       : 'https://connect.squareup.com'
 
-    let cursor: string | undefined = undefined
-    let totalProcessed = 0
-    let totalCreated = 0
-    let totalUpdated = 0
-    const errors: string[] = []
+    // Initialize from existing run state
+    let cursor: string | undefined = currentRun?.cursor || undefined
+    let totalProcessed = currentRun?.processed_count || 0
+    let totalCreated = currentRun?.created_count || 0
+    let totalUpdated = currentRun?.updated_count || 0
+    let errors: string[] = currentRun?.errors || []
 
-    console.log('🚀 Background import started for run:', importRunId)
+    console.log(`🚀 Background import ${mode === 'RESUME' ? 'resumed' : 'started'} for run: ${importRunId}`)
 
-    // Import products in batches
+    // Import products in batches with time limit
     while (true) {
       try {
         // Check for cancellation before each batch
-        const { data: currentRun } = await supabase
+        const { data: runCheck } = await supabase
           .from('product_import_runs')
           .select('status')
           .eq('id', importRunId)
           .single()
 
-        if (currentRun?.status !== 'RUNNING') {
+        if (runCheck?.status !== 'RUNNING') {
           console.log('Import was cancelled, stopping...')
           break
+        }
+
+        // Check if we're approaching the time limit
+        const elapsedTime = Date.now() - segmentStartTime
+        if (elapsedTime > MAX_SEGMENT_DURATION_MS) {
+          console.log(`Time limit reached (${elapsedTime}ms), scheduling continuation...`)
+          
+          // Update progress and schedule next segment
+          await supabase
+            .from('product_import_runs')
+            .update({
+              processed_count: totalProcessed,
+              created_count: totalCreated,
+              updated_count: totalUpdated,
+              cursor: cursor
+            })
+            .eq('id', importRunId)
+
+          // Self-invoke to continue import in next segment
+          await continueImport(integrationId, importRunId)
+          return
         }
 
         // Build query parameters
@@ -272,13 +353,23 @@ async function performImport(importRunId: string, integrationId: string, mode: s
   } catch (error) {
     console.error('Background import failed:', error)
     
-    // Mark import as failed
+    // Mark import as failed with more context
+    const errorMessage = error.message || String(error)
+    const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('CPU Time exceeded')
+    
     await supabase
       .from('product_import_runs')
       .update({
-        status: 'FAILED',
+        status: isTimeout ? 'PARTIAL' : 'FAILED',
         finished_at: new Date().toISOString(),
-        errors: [error.message]
+        errors: [errorMessage],
+        // Preserve progress on timeout
+        ...(isTimeout && {
+          processed_count: currentRun?.processed_count || 0,
+          created_count: currentRun?.created_count || 0,
+          updated_count: currentRun?.updated_count || 0,
+          cursor: currentRun?.cursor || null
+        })
       })
       .eq('id', importRunId)
 
@@ -286,9 +377,53 @@ async function performImport(importRunId: string, integrationId: string, mode: s
     await supabase
       .from('inventory_integrations')
       .update({
-        last_error: error.message
+        last_error: errorMessage
       })
       .eq('id', integrationId)
+  }
+}
+
+// Helper function to continue import in next segment
+async function continueImport(integrationId: string, runId: string) {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    
+    const response = await fetch(`${supabaseUrl}/functions/v1/square-import-products`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+      },
+      body: JSON.stringify({
+        integrationId,
+        runId,
+        mode: 'RESUME'
+      })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Failed to continue import: ${response.status} - ${errorText}`)
+    }
+
+    console.log('Successfully scheduled import continuation')
+  } catch (error) {
+    console.error('Failed to schedule import continuation:', error)
+    
+    // Mark the import as failed if we can't continue
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+    
+    await supabase
+      .from('product_import_runs')
+      .update({
+        status: 'FAILED',
+        finished_at: new Date().toISOString(),
+        errors: [`Failed to schedule continuation: ${error.message}`]
+      })
+      .eq('id', runId)
   }
 }
 
