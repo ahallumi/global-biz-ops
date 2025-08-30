@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
-import { Clock, Info, XCircle, AlertCircle, StopCircle } from "lucide-react"
+import { Clock, Info, XCircle, AlertCircle, StopCircle, CheckCircle2, Loader2 } from "lucide-react"
 import { useState } from "react"
 import { supabase } from "@/integrations/supabase/client"
 import { toast } from "@/hooks/use-toast"
@@ -26,16 +26,28 @@ export function LiveImportStatusPanel({ importRun, title }: LiveImportStatusPane
     return `${minutes}m ${seconds}s`
   }
 
-  const getStatusIcon = () => {
-    switch (importRun?.status) {
-      case 'RUNNING':
-        return <Clock className="h-4 w-4 text-blue-500 animate-spin" />
-      case 'PENDING':
-        return <AlertCircle className="h-4 w-4 text-yellow-500" />
-      default:
-        return <XCircle className="h-4 w-4 text-red-500" />
-    }
+  const statusConfig = {
+    PENDING: { label: 'Queued', icon: AlertCircle, color: 'text-yellow-500', tone: 'neutral' },
+    RUNNING: { label: 'Importing...', icon: Loader2, color: 'text-blue-500', tone: 'progress' },
+    PARTIAL: { label: 'Importing (resuming)...', icon: Loader2, color: 'text-blue-500', tone: 'progress' },
+    SUCCESS: { label: 'Completed', icon: CheckCircle2, color: 'text-green-500', tone: 'success' },
+    FAILED: { label: 'Failed', icon: XCircle, color: 'text-red-500', tone: 'error' },
   }
+
+  const status = importRun?.status || 'PENDING'
+  const config = statusConfig[status] || statusConfig.PENDING
+  const StatusIcon = config.icon
+
+  const getStatusIcon = () => {
+    const isAnimated = status === 'RUNNING' || status === 'PARTIAL'
+    return <StatusIcon className={`h-4 w-4 ${config.color} ${isAnimated ? 'animate-spin' : ''}`} />
+  }
+
+  // Detect no-op runs (completed but did nothing)
+  const created = importRun?.created_count ?? 0
+  const updated = importRun?.updated_count ?? 0
+  const processed = importRun?.processed_count ?? 0
+  const isNoOp = (status === 'SUCCESS') && created === 0 && updated === 0 && processed === 0
 
   const handleAbort = async () => {
     if (!importRun?.id || isAborting) return
@@ -73,8 +85,11 @@ export function LiveImportStatusPanel({ importRun, title }: LiveImportStatusPane
           {getStatusIcon()}
           <span className="font-medium text-sm">{title}</span>
         </div>
-        <Badge variant="secondary" className="animate-pulse">
-          {importRun?.status || 'PENDING'}
+        <Badge 
+          variant={config.tone === 'success' ? 'default' : config.tone === 'error' ? 'destructive' : 'secondary'}
+          className={config.tone === 'progress' ? 'animate-pulse' : ''}
+        >
+          {config.label}
         </Badge>
       </div>
 
@@ -82,7 +97,7 @@ export function LiveImportStatusPanel({ importRun, title }: LiveImportStatusPane
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Status</span>
           <span className="font-medium">
-            {importRun?.status === 'RUNNING' ? 'Import in progress...' : 'Queued for processing'}
+            {isNoOp ? 'No changes needed' : config.label}
           </span>
         </div>
         
@@ -100,13 +115,17 @@ export function LiveImportStatusPanel({ importRun, title }: LiveImportStatusPane
               </span>
             </div>
             
-            {importRun.created_count !== undefined && (
+            {isNoOp ? (
+              <div className="text-sm text-muted-foreground">
+                No new items found or all items were already up to date.
+              </div>
+            ) : importRun.created_count !== undefined && (
               <div className="flex items-center gap-4 text-xs">
                 <span className="text-green-600">
-                  ✓ {importRun.created_count || 0} created
+                  ✓ {created} created
                 </span>
                 <span className="text-blue-600">
-                  ↻ {importRun.updated_count || 0} updated
+                  ↻ {updated} updated
                 </span>
               </div>
             )}

@@ -153,43 +153,61 @@ export function useActiveImportRun() {
     queryKey: ['active-import-run'],
     queryFn: async () => {
       try {
-        // First check for truly active runs
-        const { data: activeData, error: activeError } = await supabase
+        // Get the last few runs to make smart selection
+        const { data: runs, error } = await supabase
           .from('product_import_runs')
           .select('*')
-          .is('finished_at', null)
-          .in('status', ['RUNNING', 'PENDING'])
           .order('started_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(5);
 
-        if (activeError) {
-          console.warn('Active import run polling error:', activeError);
+        if (error) {
+          console.warn('Active import run polling error:', error);
           return null;
         }
 
-        if (activeData) {
-          return activeData;
+        if (!runs || runs.length === 0) {
+          return null;
         }
 
-        // If no active runs, check for recent failed runs (within last 30 seconds)
-        // This helps users see error states briefly before they disappear
+        // 1. First priority: truly active runs
+        const activeRun = runs.find(r => 
+          (r.status === 'RUNNING' || r.status === 'PENDING' || r.status === 'PARTIAL') && !r.finished_at
+        );
+        
+        if (activeRun) {
+          return activeRun;
+        }
+
+        // 2. Second priority: recent completed runs (within last 2 minutes)
+        const twoMinutesAgo = new Date(Date.now() - 120000).toISOString();
+        const recentCompleted = runs.find(r => 
+          r.status === 'SUCCESS' && 
+          r.finished_at && 
+          r.finished_at >= twoMinutesAgo
+        );
+        
+        if (recentCompleted) {
+          return recentCompleted;
+        }
+
+        // 3. Third priority: recent failed runs (within last 30 seconds)
         const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
-        const { data: failedData, error: failedError } = await supabase
-          .from('product_import_runs')
-          .select('*')
-          .eq('status', 'FAILED')
-          .gte('finished_at', thirtySecondsAgo)
-          .order('finished_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (failedError) {
-          console.warn('Failed import run polling error:', failedError);
-          return null;
+        const recentFailed = runs.find(r => 
+          r.status === 'FAILED' && 
+          r.finished_at && 
+          r.finished_at >= thirtySecondsAgo
+        );
+        
+        if (recentFailed) {
+          return recentFailed;
         }
 
-        return failedData ?? null;
+        // 4. Fallback: show the most meaningful recent run (one that did work)
+        const meaningfulRun = runs.find(r => 
+          ((r.created_count ?? 0) + (r.updated_count ?? 0)) > 0
+        );
+
+        return meaningfulRun ?? null;
       } catch (err) {
         console.warn('Active import run polling exception:', err);
         return null;
