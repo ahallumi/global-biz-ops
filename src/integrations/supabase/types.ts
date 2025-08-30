@@ -401,7 +401,7 @@ export type Database = {
           line_total_cents: number | null
           lot_number: string | null
           photo_url: string | null
-          product_id: string
+          product_id: string | null
           quantity: number
           quantity_boxes: number
           unit_cost_cents: number
@@ -419,7 +419,7 @@ export type Database = {
           line_total_cents?: number | null
           lot_number?: string | null
           photo_url?: string | null
-          product_id: string
+          product_id?: string | null
           quantity?: number
           quantity_boxes: number
           unit_cost_cents?: number
@@ -437,7 +437,7 @@ export type Database = {
           line_total_cents?: number | null
           lot_number?: string | null
           photo_url?: string | null
-          product_id?: string
+          product_id?: string | null
           quantity?: number
           quantity_boxes?: number
           unit_cost_cents?: number
