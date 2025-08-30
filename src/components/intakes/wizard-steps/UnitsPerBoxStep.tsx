@@ -180,17 +180,24 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
 
       // No duplicate found - create new intake item
       try {
-        await createIntakeItem.mutateAsync({
+        const intakeItemData: any = {
           intake_id: intakeId,
-          product_id: productId,
-          candidate_id: candidateId,
           quantity: data.totalUnits,
           quantity_boxes: data.boxCount,
           units_per_box: data.unitsPerBox,
           unit_cost_cents: 0, // Default cost
           upc: data.barcode,
           photo_url: photoUrl,
-        });
+        };
+
+        // Only include product_id or candidate_id, not both
+        if (productId) {
+          intakeItemData.product_id = productId;
+        } else if (candidateId) {
+          intakeItemData.candidate_id = candidateId;
+        }
+
+        await createIntakeItem.mutateAsync(intakeItemData);
 
         onNext();
       } catch (err: any) {
@@ -251,16 +258,22 @@ export function UnitsPerBoxStep({ intakeId, data, onUpdate, onNext, onBack }: Un
         }
       }
 
-      await createIntakeItem.mutateAsync({
+      const intakeItemData: any = {
         intake_id: intakeId,
-        product_id: productId!,
         quantity: data.totalUnits,
         quantity_boxes: data.boxCount,
         units_per_box: data.unitsPerBox,
         unit_cost_cents: 0,
         upc: data.barcode,
         photo_url: photoUrl,
-      });
+      };
+
+      // Only include product_id if it exists
+      if (productId) {
+        intakeItemData.product_id = productId;
+      }
+
+      await createIntakeItem.mutateAsync(intakeItemData);
 
       toast({
         title: 'Product Added',
