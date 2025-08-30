@@ -90,8 +90,24 @@ export function usePullProductsFromSquare() {
 
   return useMutation({
     mutationFn: async () => {
+      // Fetch Square integration ID
+      const { data: integrations, error: integrationError } = await supabase
+        .from('inventory_integrations')
+        .select('id')
+        .eq('provider', 'SQUARE')
+        .limit(1)
+        .maybeSingle();
+
+      if (integrationError) {
+        throw new Error(`Failed to fetch integration: ${integrationError.message}`);
+      }
+
+      if (!integrations) {
+        throw new Error('No Square integration found. Please configure Square integration first.');
+      }
+
       const { data, error } = await supabase.functions.invoke('square-import-products', {
-        body: {}
+        body: { integrationId: integrations.id }
       });
       
       if (error) throw error;
@@ -105,10 +121,50 @@ export function usePullProductsFromSquare() {
         description: `Import from Square initiated. Check sync queue for progress.`,
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      let errorMessage = error.message;
+      
+      // Handle specific error cases with better messaging
+      if (error.message?.includes('Import already in progress')) {
+        errorMessage = 'An import is already running. Use "Abort Active Import" to cancel it first.';
+      } else if (error.message?.includes('No Square integration')) {
+        errorMessage = 'No Square integration configured. Please set up Square integration first.';
+      }
+      
       toast({
-        title: 'Error',
-        description: `Failed to import from Square: ${error.message}`,
+        title: 'Import Failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    }
+  });
+}
+
+// Hook to abort an active import
+export function useAbortImport() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (runId: string) => {
+      const { data, error } = await supabase.functions.invoke('import-abort', {
+        body: { runId }
+      });
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product-import-runs'] });
+      toast({
+        title: 'Import Aborted',
+        description: 'The active import has been cancelled.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Abort Failed',
+        description: `Failed to abort import: ${error.message}`,
         variant: 'destructive',
       });
     }

@@ -4,20 +4,24 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/data-table/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
-import { useProductSyncRuns, useProductImportRuns } from '@/hooks/useProductSync';
+import { useProductSyncRuns, useProductImportRuns, useActiveImportRun, useAbortImport } from '@/hooks/useProductSync';
 import { useInventoryIntegrations } from '@/hooks/useInventoryIntegrations';
 import { Skeleton } from '@/components/ui/skeleton';
-import { History, Package, Upload, Download, Clock, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { History, Package, Upload, Download, Clock, CheckCircle, XCircle, AlertTriangle, StopCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function SyncQueuePage() {
   const [isUnsticking, setIsUnsticking] = useState(false)
+  const queryClient = useQueryClient();
   
   // Sync hooks
   const { data: syncRuns, isLoading: isLoadingSyncRuns } = useProductSyncRuns();
   const { data: importRuns, isLoading: isLoadingImportRuns } = useProductImportRuns();
+  const { data: activeImportRun } = useActiveImportRun();
+  const abortImport = useAbortImport();
   
   // Integration
   const { data: integrations } = useInventoryIntegrations();
@@ -33,10 +37,21 @@ export default function SyncQueuePage() {
         throw error
       }
       
+      // Refresh the import runs data
+      await queryClient.invalidateQueries({ queryKey: ['product-import-runs'] });
+      
       toast({
         title: "Watchdog complete",
-        description: `${data.cleaned_count} stale runs were cleaned up.`
+        description: `${data.cleaned_count || 0} stale runs were cleaned up.`
       })
+      
+      // If no runs were cleaned but there's still an active run, suggest using abort
+      if ((data.cleaned_count || 0) === 0 && activeImportRun) {
+        toast({
+          title: "No stale runs found",
+          description: "There's an active import that might need to be manually aborted.",
+        })
+      }
     } catch (error) {
       console.error('Failed to run watchdog:', error)
       toast({
@@ -46,6 +61,16 @@ export default function SyncQueuePage() {
       })
     } finally {
       setIsUnsticking(false)
+    }
+  }
+
+  const handleAbortActiveImport = async () => {
+    if (!activeImportRun?.id) return;
+    
+    try {
+      await abortImport.mutateAsync(activeImportRun.id);
+    } catch (error) {
+      // Error is handled by the mutation's onError callback
     }
   }
 
@@ -129,6 +154,17 @@ export default function SyncQueuePage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {activeImportRun && (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={handleAbortActiveImport}
+                disabled={abortImport.isPending}
+              >
+                <StopCircle className="h-4 w-4 mr-2" />
+                {abortImport.isPending ? 'Aborting...' : 'Abort Active Import'}
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"

@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
   try {
     const payload = (await req.json()) as StartPayload;
     const mode = payload.mode || (payload.runId ? "RESUME" : "START");
-    const integrationId = payload.integrationId;
+    let integrationId = payload.integrationId;
     const runId = payload.runId;
 
     if (mode === "RESUME" && runId) {
@@ -111,8 +111,24 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Auto-select Square integration if not provided (backward compatibility)
     if (!integrationId) {
-      return json(400, { error: "Missing integrationId" });
+      const { data: integrations } = await db
+        .from('inventory_integrations')
+        .select('id')
+        .eq('provider', 'SQUARE')
+        .limit(2);
+      
+      if (!integrations?.length) {
+        return json(400, { error: "No Square integration found. Please configure Square integration first." });
+      }
+      
+      if (integrations.length > 1) {
+        return json(400, { error: "Multiple Square integrations found. Please specify integrationId." });
+      }
+      
+      integrationId = integrations[0].id;
+      console.log('Auto-selected Square integration:', integrationId);
     }
 
     // Check if there's already a running import for this integration
@@ -445,10 +461,12 @@ async function persistAndMaybeResume(
   status: "PARTIAL" | "RUNNING",
   errorMsg?: string
 ) {
+  const run = await getRun(run_id);
   await updateRun(run_id, {
     cursor,
     created_count: created,
     updated_count: updated,
+    processed_count: (run?.processed_count || 0) + created + updated,
     status,
     errors: errorMsg ? [errorMsg] : null,
   });
