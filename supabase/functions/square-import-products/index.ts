@@ -27,14 +27,35 @@ serve(async (req) => {
       throw new Error('Missing integration ID')
     }
 
+    // Check if there's already a running import for this integration
+    const { data: existingRun } = await supabase
+      .from('product_import_runs')
+      .select('id, status')
+      .eq('integration_id', integrationId)
+      .in('status', ['RUNNING', 'PENDING'])
+      .single()
+
+    if (existingRun) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Import already in progress',
+          existing_run_id: existingRun.id
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 409 
+        }
+      )
+    }
+
     console.log('Starting product import for integration:', integrationId, 'mode:', mode)
 
-    // Create import run record
+    // Create import run record with PENDING status
     const { data: importRun, error: runError } = await supabase
       .from('product_import_runs')
       .insert({
         integration_id: integrationId,
-        status: 'RUNNING'
+        status: 'PENDING'
       })
       .select()
       .single()
@@ -43,34 +64,62 @@ serve(async (req) => {
       throw new Error(`Failed to create import run: ${runError.message}`)
     }
 
-    // Get integration details and credentials
-    console.log('🔐 [square-import-products] APP_CRYPT_KEY exists:', !!Deno.env.get('APP_CRYPT_KEY'))
-    console.log('🔐 [square-import-products] APP_CRYPT_KEY2 exists:', !!Deno.env.get('APP_CRYPT_KEY2'))
-    console.log('🔐 [square-import-products] ENV keys:', Object.keys(Deno.env.toObject()).filter(k => k.includes('CRYPT')))
+    // Start the background import task
+    EdgeRuntime.waitUntil(performImport(importRun.id, integrationId, mode))
 
+    // Return immediate response
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        run_id: importRun.id,
+        message: 'Import started in background'
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200 
+      }
+    )
+
+  } catch (error) {
+    console.error('Import initialization failed:', error)
+
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400 
+      }
+    )
+  }
+})
+
+// Background task function
+async function performImport(importRunId: string, integrationId: string, mode: string) {
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  )
+
+  try {
+    // Update status to RUNNING
+    await supabase
+      .from('product_import_runs')
+      .update({ status: 'RUNNING' })
+      .eq('id', importRunId)
+
+    // Get integration details and credentials
     const appCryptKey = Deno.env.get('APP_CRYPT_KEY2')
     if (!appCryptKey) {
       throw new Error('APP_CRYPT_KEY2 not configured')
     }
-
-    console.log('🔐 [square-import-products] Using encryption key: APP_CRYPT_KEY2')
 
     const { data: credentialsData, error: credentialsError } = await supabase.rpc('get_decrypted_credentials', {
       p_integration_id: integrationId,
       p_crypt_key: appCryptKey
     })
 
-    if (credentialsError || !credentialsData) {
+    if (credentialsError || !credentialsData || !Array.isArray(credentialsData) || credentialsData.length === 0) {
       throw new Error('Failed to retrieve credentials')
-    }
-
-    // RPC functions return an array, so we need to access the first element
-    console.log('🔐 [square-import-products] RPC result type:', typeof credentialsData, 'Array?', Array.isArray(credentialsData))
-    console.log('🔐 [square-import-products] RPC result length:', credentialsData?.length)
-    
-    if (!Array.isArray(credentialsData) || credentialsData.length === 0) {
-      console.error('No credentials found for integration:', integrationId)
-      throw new Error('No credentials found for this integration')
     }
 
     const { access_token, environment } = credentialsData[0]
@@ -85,6 +134,8 @@ serve(async (req) => {
     let totalUpdated = 0
     const errors: string[] = []
 
+    console.log('🚀 Background import started for run:', importRunId)
+
     // Import products in batches
     while (true) {
       try {
@@ -92,7 +143,7 @@ serve(async (req) => {
         const { data: currentRun } = await supabase
           .from('product_import_runs')
           .select('status')
-          .eq('id', importRun.id)
+          .eq('id', importRunId)
           .single()
 
         if (currentRun?.status !== 'RUNNING') {
@@ -169,9 +220,9 @@ serve(async (req) => {
             updated_count: totalUpdated,
             cursor: cursor
           })
-          .eq('id', importRun.id)
+          .eq('id', importRunId)
 
-        console.log(`Processed ${totalProcessed} products so far...`)
+        console.log(`Background import progress: ${totalProcessed} products processed...`)
 
         if (!cursor) {
           break // No more pages
@@ -180,7 +231,14 @@ serve(async (req) => {
       } catch (batchError) {
         console.error('Batch processing error:', batchError)
         errors.push(`Batch error: ${batchError.message}`)
-        break
+        
+        // Continue processing other batches instead of breaking completely
+        if (cursor) {
+          console.log('Continuing with next batch after error...')
+          continue
+        } else {
+          break
+        }
       }
     }
 
@@ -198,7 +256,7 @@ serve(async (req) => {
         errors: errors,
         cursor: cursor || null
       })
-      .eq('id', importRun.id)
+      .eq('id', importRunId)
 
     // Update integration success status
     await supabase
@@ -209,35 +267,30 @@ serve(async (req) => {
       })
       .eq('id', integrationId)
 
-    console.log(`Import completed: ${totalProcessed} processed, ${totalCreated} created, ${totalUpdated} updated`)
-
-    return new Response(
-      JSON.stringify({ 
-        success: true,
-        run_id: importRun.id,
-        processed_count: totalProcessed,
-        created_count: totalCreated,
-        updated_count: totalUpdated,
-        errors
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
-      }
-    )
+    console.log(`Background import completed: ${totalProcessed} processed, ${totalCreated} created, ${totalUpdated} updated`)
 
   } catch (error) {
-    console.error('Import failed:', error)
+    console.error('Background import failed:', error)
+    
+    // Mark import as failed
+    await supabase
+      .from('product_import_runs')
+      .update({
+        status: 'FAILED',
+        finished_at: new Date().toISOString(),
+        errors: [error.message]
+      })
+      .eq('id', importRunId)
 
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400 
-      }
-    )
+    // Update integration error status
+    await supabase
+      .from('inventory_integrations')
+      .update({
+        last_error: error.message
+      })
+      .eq('id', integrationId)
   }
-})
+}
 
 async function processProduct(
   supabase: any, 

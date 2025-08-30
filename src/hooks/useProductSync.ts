@@ -153,7 +153,8 @@ export function useActiveImportRun() {
     queryKey: ['active-import-run'],
     queryFn: async () => {
       try {
-        const { data, error } = await supabase
+        // First check for truly active runs
+        const { data: activeData, error: activeError } = await supabase
           .from('product_import_runs')
           .select('*')
           .is('finished_at', null)
@@ -162,11 +163,33 @@ export function useActiveImportRun() {
           .limit(1)
           .maybeSingle();
 
-        if (error) {
-          console.warn('Active import run polling error:', error);
+        if (activeError) {
+          console.warn('Active import run polling error:', activeError);
           return null;
         }
-        return data ?? null;
+
+        if (activeData) {
+          return activeData;
+        }
+
+        // If no active runs, check for recent failed runs (within last 30 seconds)
+        // This helps users see error states briefly before they disappear
+        const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
+        const { data: failedData, error: failedError } = await supabase
+          .from('product_import_runs')
+          .select('*')
+          .eq('status', 'FAILED')
+          .gte('finished_at', thirtySecondsAgo)
+          .order('finished_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (failedError) {
+          console.warn('Failed import run polling error:', failedError);
+          return null;
+        }
+
+        return failedData ?? null;
       } catch (err) {
         console.warn('Active import run polling exception:', err);
         return null;
@@ -175,7 +198,7 @@ export function useActiveImportRun() {
     refetchInterval: 2000,
     retry: 0,
     refetchOnWindowFocus: false,
-    staleTime: 5000,
+    staleTime: 1000, // Reduced stale time for faster error state updates
   });
 }
 
