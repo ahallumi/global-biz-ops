@@ -536,6 +536,7 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          integration_id: string
           location_id: string | null
           pos_item_id: string
           pos_variation_id: string | null
@@ -546,6 +547,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
+          integration_id: string
           location_id?: string | null
           pos_item_id: string
           pos_variation_id?: string | null
@@ -556,6 +558,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
+          integration_id?: string
           location_id?: string | null
           pos_item_id?: string
           pos_variation_id?: string | null
@@ -564,6 +567,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "product_pos_links_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_integrations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "product_pos_links_product_id_fkey"
             columns: ["product_id"]

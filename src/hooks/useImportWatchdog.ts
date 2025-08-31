@@ -27,10 +27,15 @@ export function useImportWatchdog() {
       queryClient.removeQueries({ queryKey: ['running-import-run'] });
       
       const cleanedCount = data?.cleaned_count || 0;
+      const updatedRuns = data?.updated_runs || [];
+      
       if (cleanedCount > 0) {
+        const runDetails = updatedRuns.length > 0 
+          ? ` (${updatedRuns.map((r: any) => `${r.old_status}→${r.new_status}`).join(', ')})` 
+          : '';
         toast({
           title: 'Stale Imports Cleared',
-          description: `${cleanedCount} stale import runs have been cleaned up.`,
+          description: `${cleanedCount} stale import runs have been cleaned up${runDetails}.`,
         });
       } else {
         toast({

@@ -55,7 +55,7 @@ serve(async (req) => {
           ? `Cleaned ${cleanedCount} stale import runs` 
           : 'No stale import runs found',
         cleaned_count: cleanedCount,
-        details: staleResults || []
+        updated_runs: staleResults || []
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
