@@ -76,6 +76,91 @@ export default function SyncQueuePage() {
     }
   }
 
+  // Import runs columns - different structure than sync runs
+  const importRunColumns: ColumnDef<any>[] = [
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ row }) => {
+        const status = row.getValue('status') as string;
+        const getVariant = (status: string) => {
+          switch (status) {
+            case 'SUCCESS': return 'default';
+            case 'FAILED': return 'destructive';
+            case 'RUNNING': 
+            case 'PARTIAL': return 'secondary';
+            case 'PENDING': return 'outline';
+            default: return 'outline';
+          }
+        };
+        const getIcon = (status: string) => {
+          switch (status) {
+            case 'SUCCESS': return <CheckCircle className="h-3 w-3" />;
+            case 'FAILED': return <XCircle className="h-3 w-3" />;
+            case 'RUNNING':
+            case 'PARTIAL':
+            case 'PENDING': return <Clock className="h-3 w-3" />;
+            default: return null;
+          }
+        };
+        return (
+          <Badge variant={getVariant(status)} className="gap-1">
+            {getIcon(status)}
+            {status}
+          </Badge>
+        );
+      },
+    },
+    {
+      accessorKey: 'started_at',
+      header: 'Started',
+      cell: ({ row }) => {
+        const date = row.getValue('started_at') as string;
+        return new Date(date).toLocaleString();
+      },
+    },
+    {
+      accessorKey: 'processed_count',
+      header: 'Processed',
+    },
+    {
+      accessorKey: 'created_count',
+      header: 'Created',
+    },
+    {
+      accessorKey: 'updated_count',
+      header: 'Updated',
+    },
+    {
+      accessorKey: 'failed_count',
+      header: 'Failed',
+      cell: ({ row }) => {
+        const failed = row.getValue('failed_count') as number || 0;
+        return failed > 0 ? <span className="text-red-600">{failed}</span> : <span className="text-muted-foreground">0</span>;
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      cell: ({ row }) => {
+        const run = row.original;
+        if (run.status === 'PARTIAL') {
+          return (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => resumeImport.mutate(run.id)}
+              disabled={resumeImport.isPending}
+            >
+              {resumeImport.isPending ? 'Resuming...' : 'Resume'}
+            </Button>
+          );
+        }
+        return null;
+      },
+    },
+  ];
+
   // Sync runs columns
   const syncRunColumns: ColumnDef<any>[] = [
     {
@@ -140,6 +225,14 @@ export default function SyncQueuePage() {
     {
       accessorKey: 'updated_count',
       header: 'Updated',
+    },
+    {
+      accessorKey: 'failed_count',
+      header: 'Failed',
+      cell: ({ row }) => {
+        const failed = row.getValue('failed_count') as number || 0;
+        return failed > 0 ? <span className="text-red-600">{failed}</span> : <span className="text-muted-foreground">0</span>;
+      },
     },
     {
       id: 'actions',
@@ -272,7 +365,7 @@ export default function SyncQueuePage() {
                 </div>
               ) : (
                 <DataTable 
-                  columns={syncRunColumns} 
+                  columns={importRunColumns} 
                   data={importRuns || []}
                 />
               )}

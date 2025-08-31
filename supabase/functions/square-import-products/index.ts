@@ -500,21 +500,25 @@ async function performImport(integrationId: string, runId: string) {
       merged.push({ item, variations: vars });
     }
 
-    const result = await upsertItemsWithVariations(merged, integrationId);
+    const result = await upsertItemsWithVariations(merged, integrationId, runId);
     created += result.created;
     updated += result.updated;
+    const failedCount = result.failed;
 
+    const finalStatus = failedCount > 0 && created === 0 && updated === 0 ? "FAILED" : "SUCCESS";
+    
     await updateRun(runId, {
       processed_count: processed,
       created_count: created,
       updated_count: updated,
-      status: "SUCCESS",
+      failed_count: failedCount,
+      status: finalStatus,
       finished_at: new Date().toISOString(),
     });
 
     await updateIntegrationLastError(integrationId, null);
-    console.log(`✅ Import completed: ${created} created, ${updated} updated`);
-    return { ok: true, done: true, processed, created, updated };
+    console.log(`✅ Import completed: ${created} created, ${updated} updated, ${failedCount} failed`);
+    return { ok: true, done: true, processed, created, updated, failed: failedCount };
 
   } catch (e) {
     const errorMessage = e instanceof Error ? e.message : String(e);
@@ -536,8 +540,9 @@ async function updateIntegrationLastError(integrationId: string, msg: string | n
 async function upsertItemsWithVariations(
   merged: Array<{ item: any; variations: any[] }>,
   integrationId: string,
-): Promise<{ created: number; updated: number }> {
-  let created = 0, updated = 0;
+  runId: string
+): Promise<{ created: number; updated: number; failed: number }> {
+  let created = 0, updated = 0, failed = 0;
   
   for (const { item, variations } of merged) {
     const sqItemId = item.id;
@@ -554,91 +559,184 @@ async function upsertItemsWithVariations(
         const varUpc = variation?.item_variation_data?.upc ?? upc;
         const varPrice = variation?.item_variation_data?.price_money?.amount ?? null;
 
-        // Check for existing link by variation id
-        const { data: link, error: linkErr } = await supabaseAdmin
-          .from("product_pos_links")
-          .select("product_id")
-          .eq("pos_item_id", sqItemId)
-          .eq("pos_variation_id", varId)
-          .eq("source", "SQUARE")
-          .maybeSingle();
-        
-        if (linkErr) throw linkErr;
-
-        if (link?.product_id) {
-          // Update existing product
-          const { error: upErr } = await supabaseAdmin
-            .from("products")
-            .update({ 
-              name: varName, 
-              sku: varSku, 
-              upc: varUpc,
-              retail_price_cents: varPrice 
-            })
-            .eq("id", link.product_id);
-          if (upErr) throw upErr;
-          updated++;
-        } else {
-          // Create new product
-          const { data: prod, error: insErr } = await supabaseAdmin
-            .from("products")
-            .insert({ 
-              name: varName, 
-              sku: varSku, 
-              upc: varUpc,
-              retail_price_cents: varPrice,
-              origin: "SQUARE"
-            })
-            .select("id")
-            .single();
-          if (insErr) throw insErr;
-          
-          // Create link
-          const { error: linkInsErr } = await supabaseAdmin
-            .from("product_pos_links")
-            .insert({ 
-              product_id: prod.id, 
-              source: "SQUARE", 
-              pos_item_id: sqItemId,
-              pos_variation_id: varId
-            });
-          if (linkInsErr) throw linkInsErr;
-          created++;
+        try {
+          const result = await upsertSingleProduct(
+            sqItemId, varId, varName, varSku, varUpc, varPrice, runId
+          );
+          if (result.created) created++;
+          else if (result.updated) updated++;
+        } catch (e) {
+          failed++;
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          await appendError(runId, "ITEM_FAILED", `Variation ${varId}: ${errorMessage}`);
+          console.error(`Failed to process variation ${varId}:`, e);
         }
       }
     } else {
       // Single product (no variations)
-      const { data: link, error: linkErr } = await supabaseAdmin
-        .from("product_pos_links")
-        .select("product_id")
-        .eq("pos_item_id", sqItemId)
-        .eq("source", "SQUARE")
-        .is("pos_variation_id", null)
+      try {
+        const result = await upsertSingleProduct(
+          sqItemId, null, name, sku, upc, null, runId
+        );
+        if (result.created) created++;
+        else if (result.updated) updated++;
+      } catch (e) {
+        failed++;
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        await appendError(runId, "ITEM_FAILED", `Item ${sqItemId}: ${errorMessage}`);
+        console.error(`Failed to process item ${sqItemId}:`, e);
+      }
+    }
+  }
+
+  return { created, updated, failed };
+}
+
+async function upsertSingleProduct(
+  sqItemId: string, 
+  varId: string | null, 
+  name: string, 
+  sku: string | null, 
+  upc: string | null, 
+  price: number | null,
+  runId: string
+): Promise<{ created?: boolean; updated?: boolean }> {
+  
+  // Step 1: Check for existing Square ID link (highest priority)
+  const linkQuery = supabaseAdmin
+    .from("product_pos_links")
+    .select("product_id")
+    .eq("pos_item_id", sqItemId)
+    .eq("source", "SQUARE");
+    
+  if (varId) {
+    linkQuery.eq("pos_variation_id", varId);
+  } else {
+    linkQuery.is("pos_variation_id", null);
+  }
+  
+  const { data: link, error: linkErr } = await linkQuery.maybeSingle();
+  if (linkErr) throw linkErr;
+
+  let productId: string | null = null;
+  
+  if (link?.product_id) {
+    productId = link.product_id;
+  } else {
+    // Step 2: Check for UPC match (if UPC exists)
+    if (upc) {
+      const { data: upcProduct } = await supabaseAdmin
+        .from("products")
+        .select("id")
+        .eq("upc", upc)
         .maybeSingle();
       
-      if (linkErr) throw linkErr;
-
-      if (link?.product_id) {
-        // Update existing product
-        const { error: upErr } = await supabaseAdmin
-          .from("products")
-          .update({ name, sku, upc })
-          .eq("id", link.product_id);
-        if (upErr) throw upErr;
-        updated++;
-      } else {
-        // Create new product
-        const { data: prod, error: insErr } = await supabaseAdmin
-          .from("products")
+      if (upcProduct?.id) {
+        productId = upcProduct.id;
+        // Create the missing link
+        await supabaseAdmin
+          .from("product_pos_links")
           .insert({ 
-            name, 
-            sku, 
-            upc,
-            origin: "SQUARE"
-          })
+            product_id: productId, 
+            source: "SQUARE", 
+            pos_item_id: sqItemId,
+            pos_variation_id: varId
+          });
+      }
+    }
+    
+    // Step 3: Check for SKU match (if SKU exists and no UPC match)
+    if (!productId && sku) {
+      const { data: skuProduct } = await supabaseAdmin
+        .from("products")
+        .select("id")
+        .eq("sku", sku)
+        .maybeSingle();
+      
+      if (skuProduct?.id) {
+        productId = skuProduct.id;
+        // Create the missing link
+        await supabaseAdmin
+          .from("product_pos_links")
+          .insert({ 
+            product_id: productId, 
+            source: "SQUARE", 
+            pos_item_id: sqItemId,
+            pos_variation_id: varId
+          });
+      }
+    }
+  }
+
+  if (productId) {
+    // Update existing product
+    const updateData: any = { name };
+    if (sku) updateData.sku = sku;
+    if (upc) updateData.upc = upc;
+    if (price !== null) updateData.retail_price_cents = price;
+    
+    try {
+      const { error: upErr } = await supabaseAdmin
+        .from("products")
+        .update(updateData)
+        .eq("id", productId);
+      if (upErr) throw upErr;
+      return { updated: true };
+    } catch (e) {
+      // Handle UPC uniqueness conflict
+      if (e instanceof Error && e.message?.includes('products_upc_key')) {
+        await appendError(runId, "UPC_CONFLICT", `UPC conflict for ${upc}, retrying without UPC`);
+        delete updateData.upc;
+        const { error: retryErr } = await supabaseAdmin
+          .from("products")
+          .update(updateData)
+          .eq("id", productId);
+        if (retryErr) throw retryErr;
+        return { updated: true };
+      }
+      throw e;
+    }
+  } else {
+    // Create new product
+    const insertData: any = { 
+      name, 
+      origin: "SQUARE",
+      sync_state: "SYNCED"
+    };
+    if (sku) insertData.sku = sku;
+    if (upc) insertData.upc = upc;
+    if (price !== null) insertData.retail_price_cents = price;
+    
+    try {
+      const { data: prod, error: insErr } = await supabaseAdmin
+        .from("products")
+        .insert(insertData)
+        .select("id")
+        .single();
+      if (insErr) throw insErr;
+      
+      // Create link
+      const { error: linkInsErr } = await supabaseAdmin
+        .from("product_pos_links")
+        .insert({ 
+          product_id: prod.id, 
+          source: "SQUARE", 
+          pos_item_id: sqItemId,
+          pos_variation_id: varId
+        });
+      if (linkInsErr) throw linkInsErr;
+      return { created: true };
+    } catch (e) {
+      // Handle UPC uniqueness conflict
+      if (e instanceof Error && e.message?.includes('products_upc_key')) {
+        await appendError(runId, "UPC_CONFLICT", `UPC conflict for ${upc}, retrying without UPC`);
+        delete insertData.upc;
+        const { data: prod, error: retryErr } = await supabaseAdmin
+          .from("products")
+          .insert(insertData)
           .select("id")
           .single();
-        if (insErr) throw insErr;
+        if (retryErr) throw retryErr;
         
         // Create link
         const { error: linkInsErr } = await supabaseAdmin
@@ -646,15 +744,15 @@ async function upsertItemsWithVariations(
           .insert({ 
             product_id: prod.id, 
             source: "SQUARE", 
-            pos_item_id: sqItemId
+            pos_item_id: sqItemId,
+            pos_variation_id: varId
           });
         if (linkInsErr) throw linkInsErr;
-        created++;
+        return { created: true };
       }
+      throw e;
     }
   }
-  
-  return { created, updated };
 }
 
 function sleep(ms: number) { 

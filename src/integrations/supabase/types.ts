@@ -346,6 +346,7 @@ export type Database = {
           created_count: number | null
           cursor: string | null
           errors: Json | null
+          failed_count: number
           finished_at: string | null
           id: string
           integration_id: string
@@ -360,6 +361,7 @@ export type Database = {
           created_count?: number | null
           cursor?: string | null
           errors?: Json | null
+          failed_count?: number
           finished_at?: string | null
           id?: string
           integration_id: string
@@ -374,6 +376,7 @@ export type Database = {
           created_count?: number | null
           cursor?: string | null
           errors?: Json | null
+          failed_count?: number
           finished_at?: string | null
           id?: string
           integration_id?: string

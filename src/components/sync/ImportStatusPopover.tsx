@@ -131,9 +131,28 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
                 <span className="text-blue-600">
                   ↻ {summary.lastRun.updated_count || 0} updated
                 </span>
-                {(summary.lastRun.processed_count || 0) - (summary.lastRun.created_count || 0) - (summary.lastRun.updated_count || 0) > 0 && (
+                {(summary.lastRun.failed_count || 0) > 0 && (
                   <span className="text-red-600">
-                    ✗ {(summary.lastRun.processed_count || 0) - (summary.lastRun.created_count || 0) - (summary.lastRun.updated_count || 0)} failed
+                    ✗ {summary.lastRun.failed_count} failed
+                  </span>
+                )}
+              </div>
+            )}
+            
+            {summary.lastRun.status === 'RUNNING' || summary.lastRun.status === 'PARTIAL' && (
+              <div className="flex items-center gap-4 text-xs">
+                <span className="text-muted-foreground">
+                  {summary.lastRun.processed_count || 0} processed
+                </span>
+                <span className="text-green-600">
+                  ✓ {summary.lastRun.created_count || 0} created
+                </span>
+                <span className="text-blue-600">
+                  ↻ {summary.lastRun.updated_count || 0} updated
+                </span>
+                {(summary.lastRun.failed_count || 0) > 0 && (
+                  <span className="text-red-600">
+                    ✗ {summary.lastRun.failed_count} failed
                   </span>
                 )}
               </div>
