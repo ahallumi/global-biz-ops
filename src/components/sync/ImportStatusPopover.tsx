@@ -1,13 +1,16 @@
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
-import { CheckCircle, XCircle, Clock, Download, RotateCcw, ExternalLink } from "lucide-react"
+import { CheckCircle, XCircle, Clock, Download, RotateCcw, ExternalLink, AlertTriangle } from "lucide-react"
 import { useNavigate } from "react-router-dom"
-import { useProductImportRuns, getImportRunSummary, useActiveImportRun } from "@/hooks/useProductSync"
+import { useProductImportRuns, getImportRunSummary, useActiveImportRun, useRunningImportRun } from "@/hooks/useProductSync"
 import { useInventoryIntegrations, useUpdateInventoryIntegration, useImportProducts } from "@/hooks/useInventoryIntegrations"
+import { useImportWatchdog } from "@/hooks/useImportWatchdog"
 import { LiveImportStatusPanel } from "./LiveImportStatusPanel"
+import { getImportStatusLabel } from "@/lib/importStatusLabels"
 
 interface ImportStatusPopoverProps {
   onNavigateToSyncQueue?: () => void
@@ -18,8 +21,10 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
   const { data: importRuns } = useProductImportRuns()
   const { data: integrations } = useInventoryIntegrations()
   const { data: activeImportRun } = useActiveImportRun()
+  const { data: runningImportRun } = useRunningImportRun()
   const updateIntegration = useUpdateInventoryIntegration()
   const importProducts = useImportProducts()
+  const watchdog = useImportWatchdog()
   
   const summary = getImportRunSummary(importRuns || [])
   const activeIntegration = integrations?.find(i => i.provider === 'SQUARE')
@@ -32,6 +37,7 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
         return <XCircle className="h-4 w-4 text-red-500" />
       case 'PENDING':
       case 'RUNNING':
+      case 'PARTIAL':
         return <Clock className="h-4 w-4 text-yellow-500" />
       default:
         return <Clock className="h-4 w-4 text-muted-foreground" />
@@ -47,6 +53,11 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
       />
     )
   }
+
+  // Check if there's a stale run that needs clearing
+  const hasStaleRun = summary.lastRun?.status === 'PARTIAL' && 
+    summary.lastRun.processed_count === 0 &&
+    new Date().getTime() - new Date(summary.lastRun.started_at).getTime() > 30 * 60 * 1000; // 30 minutes
 
   return (
     <div className="space-y-3">
@@ -64,7 +75,7 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
                 {getStatusIcon(summary.lastRun.status)}
                 <Badge variant={summary.lastRun.status === 'SUCCESS' ? 'default' : 
                                summary.lastRun.status === 'FAILED' ? 'destructive' : 'secondary'}>
-                  {summary.lastRun.status}
+                  {getImportStatusLabel(summary.lastRun.status)}
                 </Badge>
               </div>
             </div>
@@ -72,6 +83,14 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
             <div className="text-sm text-muted-foreground">
               {summary.timeAgo}
             </div>
+            
+            {/* Show stale run warning */}
+            {hasStaleRun && (
+              <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 p-2 rounded border">
+                <AlertTriangle className="h-3 w-3" />
+                <span>Stale import detected (0 processed). Use "Unstick" to clear it.</span>
+              </div>
+            )}
             
             {/* Show error if failed */}
             {summary.lastRun.status === 'FAILED' && activeIntegration?.last_error && (
@@ -135,12 +154,25 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
                 })
               }
             }}
-            disabled={importProducts.isPending || !activeIntegration}
+            disabled={importProducts.isPending || !activeIntegration || !!runningImportRun}
             className="flex-1"
           >
             <RotateCcw className="h-3 w-3 mr-1" />
             Import Now
           </Button>
+          
+          {/* Unstick button - show if there are potentially stale runs */}
+          {(hasStaleRun || summary.lastRun?.status === 'PARTIAL') && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => watchdog.mutate()}
+              disabled={watchdog.isPending}
+              title="Clear stale import runs"
+            >
+              <AlertTriangle className="h-3 w-3" />
+            </Button>
+          )}
           
           <Button 
             size="sm" 
