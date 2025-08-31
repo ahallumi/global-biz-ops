@@ -8,6 +8,7 @@ const corsHeaders = {
 
 const WATCHDOG_RUNNING_MIN = Number(Deno.env.get("WATCHDOG_RUNNING_MIN") ?? 15);
 const WATCHDOG_PENDING_MIN = Number(Deno.env.get("WATCHDOG_PENDING_MIN") ?? 5);
+const WATCHDOG_PARTIAL_MIN = Number(Deno.env.get("WATCHDOG_PARTIAL_MIN") ?? 30);
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -23,15 +24,17 @@ serve(async (req) => {
 
     const { 
       runningMinutes = WATCHDOG_RUNNING_MIN, 
-      pendingMinutes = WATCHDOG_PENDING_MIN 
+      pendingMinutes = WATCHDOG_PENDING_MIN,
+      partialMinutes = WATCHDOG_PARTIAL_MIN 
     } = await req.json().catch(() => ({}))
 
-    console.log(`Running import watchdog - RUNNING threshold: ${runningMinutes}m, PENDING threshold: ${pendingMinutes}m`)
+    console.log(`Running import watchdog - RUNNING threshold: ${runningMinutes}m, PENDING threshold: ${pendingMinutes}m, PARTIAL threshold: ${partialMinutes}m`)
 
     // Use enhanced database function to mark stale runs
     const { data: staleResults, error: markError } = await supabase.rpc('import_mark_stale', {
       running_minutes: runningMinutes,
-      pending_minutes: pendingMinutes
+      pending_minutes: pendingMinutes,
+      partial_minutes: partialMinutes
     })
 
     if (markError) {

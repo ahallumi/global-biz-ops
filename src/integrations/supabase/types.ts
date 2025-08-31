@@ -1100,13 +1100,11 @@ export type Database = {
         Returns: boolean
       }
       import_mark_stale: {
-        Args:
-          | {
-              partial_minutes?: number
-              pending_minutes?: number
-              running_minutes?: number
-            }
-          | { pending_minutes?: number; running_minutes?: number }
+        Args: {
+          partial_minutes?: number
+          pending_minutes?: number
+          running_minutes?: number
+        }
         Returns: {
           error_msg: string
           new_status: string
