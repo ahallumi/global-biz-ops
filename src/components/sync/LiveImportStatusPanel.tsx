@@ -117,7 +117,10 @@ export function LiveImportStatusPanel({ importRun, title }: LiveImportStatusPane
             
             {isNoOp ? (
               <div className="text-sm text-muted-foreground">
-                No new items found or all items were already up to date.
+                {processed === 0 
+                  ? "Importer fetched 0 items from Square. Open Sync Queue for details."
+                  : "No new items found or all items were already up to date."
+                }
               </div>
             ) : importRun.created_count !== undefined && (
               <div className="flex items-center gap-4 text-xs">

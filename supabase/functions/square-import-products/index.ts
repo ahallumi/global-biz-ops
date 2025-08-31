@@ -1,684 +1,468 @@
-// deno-lint-ignore-file no-explicit-any
-// Deno Edge Function (Supabase) — implements CPU-safe, variation-aware Square import
-// Requires env:
-// - SUPABASE_URL
-// - SUPABASE_ANON_KEY (used by clients that start the run; function uses SERVICE_ROLE for DB writes)
-// - SUPABASE_SERVICE_ROLE_KEY (self-invoke + privileged writes)
-// - SUPABASE_FUNCTION_URL (https://<project-ref>.functions.supabase.co/functions/v1)
-// - APP_CRYPT_KEY2 (for decrypting Square credentials)
+// Variation-aware Square Import Function
+// This implements the two-pass approach to fix the "0 processed items" issue
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-type RunMode = "START" | "RESUME";
-type Source = "SQUARE";
-
-const MAX_PRODUCTS_PER_SEGMENT = 600; // hard cap per segment, prevents CPU-time shutdowns
-const WALL_MS = 7 * 60 * 1000;        // soft wall-clock budget (we still rely mainly on MAX_PRODUCTS_PER_SEGMENT)
-const BATCH_COMMIT = 40;              // how often to persist counts/cursor mid-run
-const RESUME_DELAY_MS = 50;           // tiny delay before self-invoke (gives DB time to flush)
-
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SQUARE_API_BASE = Deno.env.get("SQUARE_API_BASE") ?? "https://connect.squareup.com/v2";
+const IMPORT_MAX_SECONDS = Number(Deno.env.get("IMPORT_MAX_SECONDS") ?? 50);
+const IMPORT_PAGE_SIZE = Number(Deno.env.get("IMPORT_PAGE_SIZE") ?? 100);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
-interface ImportRun {
-  id: string;
-  integration_id: string;
-  status: "PENDING" | "RUNNING" | "PARTIAL" | "SUCCESS" | "FAILED";
-  cursor: string | null;
-  created_count: number;
-  updated_count: number;
-  processed_count: number;
-  errors: string[] | null;
-}
+type Mode = "START" | "RESUME" | "CONTINUE";
 
-interface StartPayload {
-  mode?: RunMode;
-  integrationId?: string;
+interface StartBody {
+  integrationId: string;
+  mode?: Mode;
   runId?: string;
 }
 
-interface SquareListResponse {
-  objects?: any[]; // Catalog objects (ITEM, ITEM_VARIATION)
+interface SquareSearchResponse {
+  objects?: any[];
+  related_objects?: any[];
   cursor?: string;
-  errors?: { category: string; code: string; detail: string }[];
-}
-
-interface SquareItem {
-  id: string;
-  type: "ITEM";
-  item_data?: {
-    name?: string;
-    variations?: { id: string }[]; // minimal descriptors
-    category_id?: string;
-    is_deleted?: boolean;
-  };
-}
-
-interface SquareVariation {
-  id: string;
-  type: "ITEM_VARIATION";
-  item_variation_data?: {
-    item_id?: string;
-    name?: string;
-    sku?: string;
-    upc?: string;
-    plu?: string;
-    price_money?: { amount?: number };
-    measurement_unit_id?: string;
-    is_deleted?: boolean;
-  };
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const payload = (await req.json()) as StartPayload;
-    const mode = payload.mode || (payload.runId ? "RESUME" : "START");
-    let integrationId = payload.integrationId;
-    const runId = payload.runId;
+    const body = (await req.json()) as StartBody;
+    const mode: Mode = body.mode ?? "START";
 
-    if (mode === "RESUME" && runId) {
-      console.log('Resuming product import for run:', runId);
-      
-      // Verify the run exists and is in appropriate state
-      const run = await getRun(runId);
-      if (!run) {
-        return json(404, { error: "Run not found" });
-      }
+    if (!body.integrationId) return json({ error: "integrationId required" }, 400);
 
-      if (!['RUNNING', 'PARTIAL'].includes(run.status)) {
-        return json(400, { error: `Cannot resume import with status: ${run.status}` });
-      }
+    if (mode === "START") {
+      const active = await getActiveRun(body.integrationId);
+      if (active) return json({ error: "Import already in progress", runId: active.id }, 409);
 
-      // Resume the background import task
-      EdgeRuntime.waitUntil(performImport(runId, run.integration_id));
-
-      return json(200, { 
-        success: true,
-        run_id: runId,
-        message: 'Import resumed in background'
-      });
+      const runId = await createRun(body.integrationId);
+      // Start background import
+      await selfInvoke({ integrationId: body.integrationId, mode: "CONTINUE", runId });
+      return json({ ok: true, runId });
     }
 
-    // Auto-select Square integration if not provided (backward compatibility)
-    if (!integrationId) {
-      const { data: integrations } = await db
-        .from('inventory_integrations')
-        .select('id')
-        .eq('provider', 'SQUARE')
-        .limit(2);
-      
-      if (!integrations?.length) {
-        return json(400, { error: "No Square integration found. Please configure Square integration first." });
-      }
-      
-      if (integrations.length > 1) {
-        return json(400, { error: "Multiple Square integrations found. Please specify integrationId." });
-      }
-      
-      integrationId = integrations[0].id;
-      console.log('Auto-selected Square integration:', integrationId);
+    if (mode === "RESUME") {
+      if (!body.runId) return json({ error: "runId required for RESUME" }, 400);
+      const run = await getRun(body.runId);
+      if (!run) return json({ error: "run not found" }, 404);
+      if (run.status !== "PARTIAL") return json({ error: `cannot resume run in status ${run.status}` }, 400);
+      await selfInvoke({ integrationId: body.integrationId, mode: "CONTINUE", runId: body.runId });
+      return json({ ok: true, runId: body.runId });
     }
 
-    // Check if there's already a running import for this integration
-    const { data: existingRun } = await db
-      .from('product_import_runs')
-      .select('id, status')
-      .eq('integration_id', integrationId)
-      .in('status', ['RUNNING', 'PENDING'])
-      .maybeSingle();
-
-    if (existingRun) {
-      return json(409, { 
-        error: 'Import already in progress',
-        existing_run_id: existingRun.id
-      });
+    if (mode === "CONTINUE") {
+      if (!body.runId) return json({ error: "runId required for CONTINUE" }, 400);
+      const result = await performImport(body.integrationId, body.runId);
+      return json(result);
     }
 
-    console.log('Starting product import for integration:', integrationId);
-
-    // Create import run record with PENDING status
-    const { data: importRun, error: runError } = await db
-      .from('product_import_runs')
-      .insert({
-        integration_id: integrationId,
-        status: 'PENDING',
-        created_count: 0,
-        updated_count: 0,
-        processed_count: 0
-      })
-      .select()
-      .maybeSingle();
-
-    if (runError || !importRun) {
-      throw new Error(`Failed to create import run: ${runError?.message}`);
-    }
-
-    // Start the background import task
-    EdgeRuntime.waitUntil(performImport(importRun.id, integrationId));
-
-    // Return immediate response
-    return json(200, { 
-      success: true,
-      run_id: importRun.id,
-      message: 'Import started in background'
-    });
-
-  } catch (error) {
-    console.error('Import initialization failed:', error);
-    return json(400, { error: error.message });
+    return json({ error: "invalid mode" }, 400);
+  } catch (e) {
+    console.error(e);
+    return json({ error: String(e) }, 500);
   }
 });
 
-async function performImport(runId: string, integrationId: string) {
-  const startedAt = Date.now();
-  let processedThisSegment = 0;
-
-  try {
-    // Fetch run record (authoritative source of cursor/counters)
-    const run = await getRun(runId);
-    if (!run) {
-      console.error('Run not found:', runId);
-      return;
-    }
-
-    // Mark running if first segment
-    if (run.status === "PENDING") {
-      await updateRun(runId, { status: "RUNNING" });
-    }
-
-    // Get Square credentials
-    const { accessToken, environment } = await getSquareCredentials(integrationId);
-    const baseUrl = environment === 'SANDBOX' 
-      ? 'https://connect.squareupsandbox.com' 
-      : 'https://connect.squareup.com';
-
-    let cursor = run.cursor ?? null;
-    let created = run.created_count ?? 0;
-    let updated = run.updated_count ?? 0;
-
-    console.log(`🚀 Background import started for run: ${runId}`);
-
-    // Segment loop
-    segment: while (true) {
-      // Respect caps
-      if (processedThisSegment >= MAX_PRODUCTS_PER_SEGMENT) {
-        await persistAndMaybeResume(runId, cursor, created, updated, "PARTIAL");
-        break segment;
-      }
-      if (Date.now() - startedAt > WALL_MS) {
-        await persistAndMaybeResume(runId, cursor, created, updated, "PARTIAL");
-        break segment;
-      }
-
-      // Check for cancellation
-      const runCheck = await getRun(runId);
-      if (runCheck?.status !== 'RUNNING') {
-        console.log('Import was cancelled, stopping...');
-        break segment;
-      }
-
-      // Fetch a catalog page (ITEM + ITEM_VARIATION)
-      const page = await fetchSquareCatalogPage(cursor, accessToken, baseUrl);
-      if (page.errors?.length) {
-        // Backoff for transient errors; persist and continue next segment
-        await sleep(300);
-        await persistAndMaybeResume(runId, cursor, created, updated, "PARTIAL", `Square error: ${page.errors[0].code} ${page.errors[0].detail}`);
-        break segment;
-      }
-
-      const objects = page.objects ?? [];
-      if (objects.length === 0) {
-        // No more objects: finalize
-        await updateRun(runId, {
-          status: "SUCCESS",
-          cursor: null,
-          created_count: created,
-          updated_count: updated,
-          finished_at: new Date().toISOString(),
-          errors: null,
-        });
-        console.log(`Import completed: ${created} created, ${updated} updated`);
-        return;
-      }
-
-      // Split objects by type and build quick lookups
-      const items: SquareItem[] = objects.filter(o => o.type === "ITEM");
-      const variations: SquareVariation[] = objects.filter(o => o.type === "ITEM_VARIATION");
-
-      const variationsByItem = groupVariationsByItem(variations);
-
-      // Process each item according to variation rules
-      for (const item of items) {
-        if (processedThisSegment >= MAX_PRODUCTS_PER_SEGMENT) break;
-
-        const hasDeclaredVariations = !!item.item_data?.variations?.length;
-
-        if (hasDeclaredVariations) {
-          // Only process actual variations; if none from this page, SKIP for now
-          const onPageVars = variationsByItem.get(item.id) ?? [];
-          if (onPageVars.length === 0) {
-            console.log(`[SKIP] Item ${item.id} has variations, but none present on this page`);
-            continue;
-          }
-
-          for (const v of onPageVars) {
-            // Existing link check for (variation, location_id = null)
-            const existingLink = await getExistingLink({
-              source: "SQUARE",
-              pos_item_id: item.id,
-              pos_variation_id: v.id,
-              location_id_null: true,
-            });
-
-            if (existingLink) {
-              // Update product from item+variation data
-              const ok = await updateProductFromSquare(existingLink.product_id, item, v);
-              if (ok) updated++;
-            } else {
-              // Create new product, then create link; handle unique violation = UPDATE
-              const productId = await createProductFromSquare(item, v);
-              if (!productId) {
-                // If creation failed, continue safely
-                continue;
-              }
-              const linkRes = await createPosLink({
-                source: "SQUARE",
-                pos_item_id: item.id,
-                pos_variation_id: v.id,
-                location_id: null,
-                product_id: productId,
-              });
-
-              if (linkRes === "OK") {
-                created++;
-              } else if (linkRes === "UNIQUE_VIOLATION") {
-                const link = await getExistingLink({
-                  source: "SQUARE",
-                  pos_item_id: item.id,
-                  pos_variation_id: v.id,
-                  location_id_null: true,
-                });
-                if (link) {
-                  await updateProductFromSquare(link.product_id, item, v);
-                  updated++;
-                }
-              } // else other error already logged
-            }
-
-            processedThisSegment++;
-            if (processedThisSegment % BATCH_COMMIT === 0) {
-              await updateRun(runId, {
-                cursor,
-                created_count: created,
-                updated_count: updated,
-                processed_count: run.processed_count + processedThisSegment,
-                status: "RUNNING",
-              });
-            }
-            if (processedThisSegment >= MAX_PRODUCTS_PER_SEGMENT) break;
-            if (Date.now() - startedAt > WALL_MS) break;
-          }
-        } else {
-          // Single-product (no variations)
-          const existingLink = await getExistingLink({
-            source: "SQUARE",
-            pos_item_id: item.id,
-            pos_variation_id_null: true,
-            location_id_null: true,
-          });
-
-          if (existingLink) {
-            const ok = await updateProductFromSquare(existingLink.product_id, item, null);
-            if (ok) updated++;
-          } else {
-            const productId = await createProductFromSquare(item, null);
-            if (!productId) {
-              // If creation failed, continue safely
-              continue;
-            }
-            const linkRes = await createPosLink({
-              source: "SQUARE",
-              pos_item_id: item.id,
-              pos_variation_id: null,
-              location_id: null,
-              product_id: productId,
-            });
-
-            if (linkRes === "OK") {
-              created++;
-            } else if (linkRes === "UNIQUE_VIOLATION") {
-              const link = await getExistingLink({
-                source: "SQUARE",
-                pos_item_id: item.id,
-                pos_variation_id_null: true,
-                location_id_null: true,
-              });
-              if (link) {
-                await updateProductFromSquare(link.product_id, item, null);
-                updated++;
-              }
-            }
-          }
-
-          processedThisSegment++;
-          if (processedThisSegment % BATCH_COMMIT === 0) {
-            await updateRun(runId, {
-              cursor,
-              created_count: created,
-              updated_count: updated,
-              processed_count: run.processed_count + processedThisSegment,
-              status: "RUNNING",
-            });
-          }
-        }
-
-        // Soft exit checks inside item loop as well
-        if (processedThisSegment >= MAX_PRODUCTS_PER_SEGMENT) break;
-        if (Date.now() - startedAt > WALL_MS) break;
-      }
-
-      // Advance cursor and continue segment if allowed
-      cursor = page.cursor ?? null;
-
-      // If no cursor returned, finalize
-      if (!cursor) {
-        await updateRun(runId, {
-          status: "SUCCESS",
-          cursor: null,
-          created_count: created,
-          updated_count: updated,
-          processed_count: run.processed_count + processedThisSegment,
-          finished_at: new Date().toISOString(),
-          errors: null,
-        });
-        console.log(`Import completed: ${created} created, ${updated} updated`);
-        return;
-      }
-    }
-
-    // Update integration success status
-    await db
-      .from('inventory_integrations')
-      .update({
-        last_success_at: new Date().toISOString(),
-        last_error: null
-      })
-      .eq('id', integrationId);
-
-    // Segment cut happened inside loop (cap or time): response already handled in persistAndMaybeResume
-    console.log(`Segment completed: ${processedThisSegment} processed this segment`);
-  } catch (e) {
-    console.error("Fatal import error:", e);
-    await updateRun(runId, {
-      status: "FAILED",
-      finished_at: new Date().toISOString(),
-      errors: [String(e)]
-    });
-
-    // Update integration error status
-    await db
-      .from('inventory_integrations')
-      .update({
-        last_error: String(e)
-      })
-      .eq('id', integrationId);
-  }
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", ...corsHeaders } });
 }
 
-// ---------- Helpers ----------
-
-async function getRun(id: string): Promise<ImportRun | null> {
-  const { data, error } = await db.from("product_import_runs").select("*").eq("id", id).maybeSingle();
-  if (error) {
-    console.error("getRun error:", error);
-    return null;
-  }
-  return data as ImportRun | null;
-}
-
-async function updateRun(id: string, patch: Partial<ImportRun>) {
-  const { error } = await db.from("product_import_runs").update(patch).eq("id", id);
-  if (error) console.error("updateRun error:", error);
-}
-
-async function persistAndMaybeResume(
-  run_id: string,
-  cursor: string | null,
-  created: number,
-  updated: number,
-  status: "PARTIAL" | "RUNNING",
-  errorMsg?: string
-) {
-  const run = await getRun(run_id);
-  await updateRun(run_id, {
-    cursor,
-    created_count: created,
-    updated_count: updated,
-    processed_count: (run?.processed_count || 0) + created + updated,
-    status,
-    errors: errorMsg ? [errorMsg] : null,
-  });
-
-  // Self-invoke to continue (best-effort)
-  try {
-    await sleep(RESUME_DELAY_MS);
-    const functionsUrl = SUPABASE_URL.replace('.supabase.co', '.functions.supabase.co');
-    const res = await fetch(`${functionsUrl}/functions/v1/square-import-products`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
-      },
-      body: JSON.stringify({ mode: "RESUME", runId: run_id }),
-    });
-    if (!res.ok) {
-      console.warn("Self-invoke returned non-OK:", res.status, await safeText(res));
-    }
-  } catch (e) {
-    console.warn("Self-invoke failed (will rely on manual/cron resume):", e);
-  }
-}
-
-async function getSquareCredentials(integrationId: string) {
-  const appCryptKey = Deno.env.get('APP_CRYPT_KEY2');
-  if (!appCryptKey) {
-    throw new Error('APP_CRYPT_KEY2 not configured');
-  }
-
-  const { data: credentialsData, error: credentialsError } = await db.rpc('get_decrypted_credentials', {
-    p_integration_id: integrationId,
-    p_crypt_key: appCryptKey
-  });
-
-  if (credentialsError || !credentialsData || !Array.isArray(credentialsData) || credentialsData.length === 0) {
-    throw new Error('Failed to retrieve credentials');
-  }
-
-  const { access_token, environment } = credentialsData[0];
-  return { accessToken: access_token, environment };
-}
-
-function groupVariationsByItem(variations: SquareVariation[]) {
-  const m = new Map<string, SquareVariation[]>();
-  for (const v of variations) {
-    const itemId = v.item_variation_data?.item_id;
-    if (!itemId) continue;
-    if (!m.has(itemId)) m.set(itemId, []);
-    m.get(itemId)!.push(v);
-  }
-  return m;
-}
-
-async function fetchSquareCatalogPage(cursor: string | null, accessToken: string, baseUrl: string): Promise<SquareListResponse> {
-  const params = new URLSearchParams();
-  params.set("types", "ITEM,ITEM_VARIATION");
-  params.set("limit", "100");
-  if (cursor) params.set("cursor", cursor);
-
-  // Square ListCatalog
-  const url = `${baseUrl}/v2/catalog/list?${params.toString()}`;
-  const res = await fetchWithBackoff(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      "Square-Version": "2024-12-18",
-    },
-  });
-
-  if (!res.ok) {
-    const body = await safeText(res);
-    console.warn("Square list error:", res.status, body);
-    return { errors: [{ category: "API_ERROR", code: String(res.status), detail: body.slice(0, 300) }] };
-  }
-  return await res.json();
-}
-
-async function fetchWithBackoff(url: string, init: RequestInit, attempt = 0): Promise<Response> {
-  const r = await fetch(url, init);
-  if (r.status === 429 || r.status >= 500) {
-    if (attempt < 3) {
-      const wait = 200 + attempt * 300;
-      await sleep(wait);
-      return fetchWithBackoff(url, init, attempt + 1);
-    }
-  }
-  return r;
-}
-
-function sleep(ms: number) {
-  return new Promise((res) => setTimeout(res, ms));
-}
-
-async function safeText(res: Response) {
-  try {
-    return await res.text();
-  } catch {
-    return "<no-text>";
-  }
-}
-
-// ----- Product + Link IO -----
-
-async function getExistingLink(opts: {
-  source: Source;
-  pos_item_id: string;
-  pos_variation_id?: string;
-  pos_variation_id_null?: boolean;
-  location_id_null?: boolean;
-}) {
-  let q = db.from("product_pos_links").select("*")
-    .eq("source", opts.source)
-    .eq("pos_item_id", opts.pos_item_id);
-
-  if (opts.pos_variation_id_null) q = q.is("pos_variation_id", null);
-  else if (opts.pos_variation_id) q = q.eq("pos_variation_id", opts.pos_variation_id);
-
-  if (opts.location_id_null) q = q.is("location_id", null);
-
-  const { data, error } = await q.maybeSingle();
-  if (error) {
-    console.error("getExistingLink error:", error);
-    return null;
-  }
+async function getActiveRun(integrationId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("product_import_runs")
+    .select("id, status")
+    .eq("integration_id", integrationId)
+    .in("status", ["RUNNING","PENDING","PARTIAL"])
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
   return data;
 }
 
-async function createPosLink(link: {
-  source: Source;
-  pos_item_id: string;
-  pos_variation_id: string | null;
-  location_id: string | null;
-  product_id: string;
-}): Promise<"OK" | "UNIQUE_VIOLATION" | "ERROR"> {
-  const { error } = await db.from("product_pos_links").insert(link);
-  if (error) {
-    // Postgres unique violation
-    if ((error as any).code === "23505") {
-      console.warn("createPosLink unique violation:", error.message);
-      return "UNIQUE_VIOLATION";
-    }
-    console.error("createPosLink error:", error);
-    return "ERROR";
-  }
-  return "OK";
+async function createRun(integrationId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("product_import_runs")
+    .insert({ integration_id: integrationId, status: "PENDING" })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data.id as string;
 }
 
-// Map Square item/variation -> your product fields
-function makeProductPayload(item: SquareItem, variation: SquareVariation | null) {
-  const itemData = item.item_data || {};
-  const variationData = variation?.item_variation_data || {};
-  
-  const name = variationData.name || itemData.name || "Unnamed Product";
-  const sku = variationData.sku || null;
-  const upc = variationData.upc || null;
-  const plu = variationData.plu || null;
-  
-  // Determine unit of sale based on measurement unit or other indicators
-  let unitOfSale = 'EACH';
-  if (variationData.measurement_unit_id || 
-      name.toLowerCase().includes('lb') ||
-      name.toLowerCase().includes('pound')) {
-    unitOfSale = 'WEIGHT';
-  }
-
-  return {
-    name,
-    sku,
-    upc,
-    plu,
-    unit_of_sale: unitOfSale,
-    weight_unit: unitOfSale === 'WEIGHT' ? 'LB' : null,
-    retail_price_cents: variationData.price_money?.amount || null,
-    category: itemData.category_id || null,
-    size: (variationData.name !== itemData.name) ? variationData.name : null,
-    catalog_status: (itemData.is_deleted || variationData.is_deleted) ? 'ARCHIVED' : 'ACTIVE',
-    origin: 'SQUARE',
-    sync_state: 'SYNCED',
-    updated_at: new Date().toISOString()
-  };
+async function getRun(runId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("product_import_runs")
+    .select("*")
+    .eq("id", runId)
+    .maybeSingle();
+  if (error) throw error;
+  return data as any;
 }
 
-async function createProductFromSquare(item: SquareItem, variation: SquareVariation | null): Promise<string | null> {
-  const payload = makeProductPayload(item, variation);
-  const { data, error } = await db.from("products").insert(payload).select("id").maybeSingle();
-  if (error) {
-    console.error("createProduct error:", error);
-    return null;
-  }
-  return data?.id ?? null;
+async function updateRun(runId: string, patch: Record<string, unknown>) {
+  const { error } = await supabaseAdmin
+    .from("product_import_runs")
+    .update({ ...patch, last_progress_at: new Date().toISOString() })
+    .eq("id", runId);
+  if (error) throw error;
 }
 
-async function updateProductFromSquare(product_id: string, item: SquareItem, variation: SquareVariation | null): Promise<boolean> {
-  const payload = makeProductPayload(item, variation);
-  const { error } = await db.from("products").update(payload).eq("id", product_id);
-  if (error) {
-    console.error("updateProduct error:", error);
-    return false;
-  }
-  return true;
+async function appendError(runId: string, code: string, msg: string) {
+  const run = await getRun(runId);
+  const errors = Array.isArray(run?.errors) ? run.errors : [];
+  errors.push({ ts: new Date().toISOString(), code, msg });
+  await updateRun(runId, { errors });
 }
 
-// ----- Small utils -----
-
-function json(status: number, body: unknown) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 
+async function selfInvoke(payload: StartBody) {
+  const url = new URL("/functions/v1/square-import-products", SUPABASE_URL).toString();
+  await fetch(url, {
+    method: "POST",
+    headers: {
       "Content-Type": "application/json",
-      ...corsHeaders
+      "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
     },
+    body: JSON.stringify(payload),
   });
+}
+
+async function getAccessToken(integrationId: string): Promise<string> {
+  // Try RPC first
+  try {
+    const { data } = await supabaseAdmin.rpc("get_decrypted_credentials", { _integration_id: integrationId });
+    if (data && !data.error && data.access_token) return data.access_token as string;
+  } catch (e) {
+    console.warn("RPC credentials failed, trying fallback:", e);
+  }
+
+  // Fallback: read credentials JSONB
+  const { data, error } = await supabaseAdmin
+    .from("inventory_integrations")
+    .select("credentials")
+    .eq("id", integrationId)
+    .maybeSingle();
+  if (error) throw error;
+  const token = (data?.credentials as any)?.access_token;
+  if (!token) throw new Error("Missing Square access token");
+  return token;
+}
+
+async function squareWhoAmI(accessToken: string) {
+  const resp = await fetch(`${SQUARE_API_BASE}/merchants/me`, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Square whoami failed: ${resp.status} ${text}`);
+  }
+  const data = await resp.json();
+  const m = data.merchant || data.merchants?.[0] || {};
+  return { merchantId: m.id, businessName: m.business_name, country: m.country }; 
+}
+
+async function searchCatalog(accessToken: string, cursor?: string): Promise<SquareSearchResponse> {
+  const url = `${SQUARE_API_BASE}/catalog/search-catalog-objects`;
+  const body: any = {
+    object_types: ["ITEM"],
+    include_related_objects: true,
+    limit: IMPORT_PAGE_SIZE,
+  };
+  if (cursor) body.cursor = cursor;
+
+  let attempt = 0;
+  while (true) {
+    attempt++;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    
+    if (resp.status === 429 || resp.status >= 500) {
+      await sleep(Math.min(1000 * Math.pow(2, attempt), 8000));
+      continue;
+    }
+    
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`Square searchCatalog failed: ${resp.status} ${text}`);
+    }
+    
+    const result = await resp.json();
+    return {
+      objects: result.objects ?? [],
+      related_objects: result.related_objects ?? [],
+      cursor: result.cursor
+    };
+  }
+}
+
+async function performImport(integrationId: string, runId: string) {
+  const started = Date.now();
+
+  try {
+    const run = await getRun(runId);
+    if (!run) throw new Error("run not found");
+    if (run.status === "FAILED" || run.status === "SUCCESS") return { ok: true, done: true };
+    if (run.status !== "RUNNING") await updateRun(runId, { status: "RUNNING" });
+
+    // Get access token and verify merchant
+    let accessToken: string;
+    try {
+      accessToken = await getAccessToken(integrationId);
+      const who = await squareWhoAmI(accessToken);
+      await appendError(runId, "INFO", `Square merchant: ${who.merchantId} (${who.businessName || "?"}) @ ${SQUARE_API_BASE}`);
+    } catch (e) {
+      await appendError(runId, "CREDENTIALS", String(e));
+      await updateRun(runId, { status: "FAILED", finished_at: new Date().toISOString() });
+      await updateIntegrationLastError(integrationId, String(e));
+      return { ok: false, error: String(e) };
+    }
+
+    // Continue from checkpoint
+    let cursor: string | undefined = run.cursor ?? undefined;
+    let processed = run.processed_count ?? 0;
+    let created = run.created_count ?? 0;
+    let updated = run.updated_count ?? 0;
+
+    // Collection maps for two-pass approach
+    const itemMap = new Map<string, any>();
+    const variationMap = new Map<string, any>();
+
+    console.log("🔄 Starting Collection Pass...");
+    
+    // PHASE 1: Collection Pass - gather all items and variations
+    while (true) {
+      const fresh = await getRun(runId);
+      if (fresh?.status === "FAILED") {
+        return { ok: false, aborted: true };
+      }
+
+      const page = await searchCatalog(accessToken, cursor);
+      const items = page.objects || [];
+      const related = page.related_objects || [];
+
+      // Accumulate in memory
+      for (const item of items) itemMap.set(item.id, item);
+      for (const variation of related) {
+        if (variation.type === "ITEM_VARIATION") {
+          variationMap.set(variation.id, variation);
+        }
+      }
+
+      processed += items.length + related.length;
+
+      // Update progress
+      cursor = page.cursor;
+      await updateRun(runId, {
+        cursor: cursor ?? null,
+        processed_count: processed,
+        created_count: created,
+        updated_count: updated,
+      });
+
+      // Yield if time budget exceeded
+      const elapsed = (Date.now() - started) / 1000;
+      if (elapsed > IMPORT_MAX_SECONDS - 5) {
+        await updateRun(runId, { status: cursor ? "PARTIAL" : "RUNNING" });
+        if (cursor) await selfInvoke({ integrationId, mode: "CONTINUE", runId });
+        return { ok: true, yielded: Boolean(cursor), processed, created, updated };
+      }
+
+      if (!cursor) break; // Collection complete
+    }
+
+    console.log(`📦 Collection complete: ${itemMap.size} items, ${variationMap.size} variations`);
+
+    // Check for empty catalog
+    if (itemMap.size === 0) {
+      await appendError(runId, "EMPTY_CATALOG", "No items found in Square catalog. Check permissions or environment.");
+      await updateRun(runId, { status: "SUCCESS", finished_at: new Date().toISOString() });
+      await updateIntegrationLastError(integrationId, "Empty catalog - no items found");
+      return { ok: true, done: true, processed, created: 0, updated: 0 };
+    }
+
+    console.log("⚙️ Starting Processing Pass...");
+    
+    // PHASE 2: Processing Pass - create/update products
+    const merged: Array<{ item: any; variations: any[] }> = [];
+    for (const [id, item] of itemMap) {
+      const vIds = item?.item_data?.variations?.map((v: any) => v.id).filter(Boolean) || [];
+      const vars = vIds.map((vid: string) => variationMap.get(vid)).filter(Boolean);
+      merged.push({ item, variations: vars });
+    }
+
+    const result = await upsertItemsWithVariations(merged, integrationId);
+    created += result.created;
+    updated += result.updated;
+
+    await updateRun(runId, {
+      processed_count: processed,
+      created_count: created,
+      updated_count: updated,
+      status: "SUCCESS",
+      finished_at: new Date().toISOString(),
+    });
+
+    await updateIntegrationLastError(integrationId, null);
+    console.log(`✅ Import completed: ${created} created, ${updated} updated`);
+    return { ok: true, done: true, processed, created, updated };
+
+  } catch (e) {
+    await appendError(runId, "FATAL", String(e));
+    await updateRun(runId, { status: "FAILED", finished_at: new Date().toISOString() });
+    await updateIntegrationLastError(integrationId, String(e));
+    return { ok: false, error: String(e) };
+  }
+}
+
+async function updateIntegrationLastError(integrationId: string, msg: string | null) {
+  const { error } = await supabaseAdmin
+    .from("inventory_integrations")
+    .update({ last_error: msg })
+    .eq("id", integrationId);
+  if (error) console.error("updateIntegrationLastError", error);
+}
+
+async function upsertItemsWithVariations(
+  merged: Array<{ item: any; variations: any[] }>,
+  integrationId: string,
+): Promise<{ created: number; updated: number }> {
+  let created = 0, updated = 0;
+  
+  for (const { item, variations } of merged) {
+    const sqItemId = item.id;
+    const name = item?.item_data?.name ?? "Unnamed";
+    const sku = item?.item_data?.sku ?? null;
+    const upc = item?.item_data?.upc ?? null;
+
+    // If item has variations, process each variation as a separate product
+    if (variations.length > 0) {
+      for (const variation of variations) {
+        const varId = variation.id;
+        const varName = variation?.item_variation_data?.name ?? name;
+        const varSku = variation?.item_variation_data?.sku ?? sku;
+        const varUpc = variation?.item_variation_data?.upc ?? upc;
+        const varPrice = variation?.item_variation_data?.price_money?.amount ?? null;
+
+        // Check for existing link by variation id
+        const { data: link, error: linkErr } = await supabaseAdmin
+          .from("product_pos_links")
+          .select("product_id")
+          .eq("pos_item_id", sqItemId)
+          .eq("pos_variation_id", varId)
+          .eq("source", "SQUARE")
+          .maybeSingle();
+        
+        if (linkErr) throw linkErr;
+
+        if (link?.product_id) {
+          // Update existing product
+          const { error: upErr } = await supabaseAdmin
+            .from("products")
+            .update({ 
+              name: varName, 
+              sku: varSku, 
+              upc: varUpc,
+              retail_price_cents: varPrice 
+            })
+            .eq("id", link.product_id);
+          if (upErr) throw upErr;
+          updated++;
+        } else {
+          // Create new product
+          const { data: prod, error: insErr } = await supabaseAdmin
+            .from("products")
+            .insert({ 
+              name: varName, 
+              sku: varSku, 
+              upc: varUpc,
+              retail_price_cents: varPrice,
+              origin: "SQUARE"
+            })
+            .select("id")
+            .single();
+          if (insErr) throw insErr;
+          
+          // Create link
+          const { error: linkInsErr } = await supabaseAdmin
+            .from("product_pos_links")
+            .insert({ 
+              product_id: prod.id, 
+              source: "SQUARE", 
+              pos_item_id: sqItemId,
+              pos_variation_id: varId
+            });
+          if (linkInsErr) throw linkInsErr;
+          created++;
+        }
+      }
+    } else {
+      // Single product (no variations)
+      const { data: link, error: linkErr } = await supabaseAdmin
+        .from("product_pos_links")
+        .select("product_id")
+        .eq("pos_item_id", sqItemId)
+        .eq("source", "SQUARE")
+        .is("pos_variation_id", null)
+        .maybeSingle();
+      
+      if (linkErr) throw linkErr;
+
+      if (link?.product_id) {
+        // Update existing product
+        const { error: upErr } = await supabaseAdmin
+          .from("products")
+          .update({ name, sku, upc })
+          .eq("id", link.product_id);
+        if (upErr) throw upErr;
+        updated++;
+      } else {
+        // Create new product
+        const { data: prod, error: insErr } = await supabaseAdmin
+          .from("products")
+          .insert({ 
+            name, 
+            sku, 
+            upc,
+            origin: "SQUARE"
+          })
+          .select("id")
+          .single();
+        if (insErr) throw insErr;
+        
+        // Create link
+        const { error: linkInsErr } = await supabaseAdmin
+          .from("product_pos_links")
+          .insert({ 
+            product_id: prod.id, 
+            source: "SQUARE", 
+            pos_item_id: sqItemId
+          });
+        if (linkInsErr) throw linkInsErr;
+        created++;
+      }
+    }
+  }
+  
+  return { created, updated };
+}
+
+function sleep(ms: number) { 
+  return new Promise((r) => setTimeout(r, ms)); 
 }
