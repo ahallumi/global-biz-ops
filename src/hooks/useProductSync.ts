@@ -90,11 +90,12 @@ export function usePullProductsFromSquare() {
 
   return useMutation({
     mutationFn: async () => {
-      // Fetch Square integration ID
+      // Fetch Square integration ID (newest first to avoid old encryption keys)
       const { data: integrations, error: integrationError } = await supabase
         .from('inventory_integrations')
         .select('id')
         .eq('provider', 'SQUARE')
+        .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 

@@ -189,9 +189,18 @@ export function useImportProducts() {
       });
     },
     onError: (error: Error) => {
+      let description = error.message;
+      
+      // Handle specific error cases with friendlier messages
+      if (error.message.includes('Import already in progress') || error.message.includes('409')) {
+        description = 'An import is already in progress. Please wait for it to complete or use the Unstick button if it appears stale.';
+      } else if (error.message.includes('Wrong key or corrupt data')) {
+        description = 'Square credentials need to be re-saved. Please check your integration settings.';
+      }
+      
       toast({
         title: 'Import Error',
-        description: error.message,
+        description,
         variant: 'destructive',
       });
     }

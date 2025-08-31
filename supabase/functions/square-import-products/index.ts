@@ -5,7 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const SQUARE_API_BASE = Deno.env.get("SQUARE_API_BASE") ?? "https://connect.squareup.com/v2";
+const SQUARE_API_BASE = "https://connect.squareup.com/v2";
 const IMPORT_MAX_SECONDS = Number(Deno.env.get("IMPORT_MAX_SECONDS") ?? 50);
 const IMPORT_PAGE_SIZE = Number(Deno.env.get("IMPORT_PAGE_SIZE") ?? 100);
 
@@ -201,7 +201,11 @@ async function getAccessToken(integrationId: string): Promise<string> {
 
 async function squareWhoAmI(accessToken: string) {
   const resp = await fetch(`${SQUARE_API_BASE}/merchants/me`, {
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+    headers: { 
+      Authorization: `Bearer ${accessToken}`, 
+      Accept: "application/json",
+      "Square-Version": "2023-10-18"
+    },
   });
   if (!resp.ok) {
     const text = await resp.text();
@@ -230,6 +234,7 @@ async function searchCatalog(accessToken: string, cursor?: string): Promise<Squa
         Authorization: `Bearer ${accessToken}`,
         Accept: "application/json",
         "Content-Type": "application/json",
+        "Square-Version": "2023-10-18"
       },
       body: JSON.stringify(body),
     });
