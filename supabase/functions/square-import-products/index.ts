@@ -72,10 +72,11 @@ Deno.serve(async (req) => {
 
         return json({ ok: true, runId, kickstarted: true, processed });
       } catch (e) {
-        await appendError(runId, "KICKSTART", String(e));
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        await appendError(runId, "KICKSTART", errorMessage);
         await updateRun(runId, { status: "FAILED", finished_at: new Date().toISOString() });
-        await updateIntegrationLastError(body.integrationId, String(e));
-        return json({ error: String(e), runId }, 500);
+        await updateIntegrationLastError(body.integrationId, errorMessage);
+        return json({ error: errorMessage, runId }, 500);
       }
     }
 
@@ -166,24 +167,26 @@ async function selfInvoke(payload: StartBody) {
 }
 
 async function getAccessToken(integrationId: string): Promise<string> {
-  // Try RPC first
   try {
-    const { data } = await supabaseAdmin.rpc("get_decrypted_credentials", { _integration_id: integrationId });
-    if (data && !data.error && data.access_token) return data.access_token as string;
+    const { data, error } = await supabaseAdmin.rpc("get_decrypted_credentials", { 
+      p_integration_id: integrationId 
+    });
+    
+    if (error) {
+      console.error("RPC credentials error:", error);
+      throw new Error(`Failed to retrieve credentials: ${error.message || error}`);
+    }
+    
+    if (!data || !data.access_token) {
+      throw new Error("No access token found for this integration. Please check your Square credentials.");
+    }
+    
+    return data.access_token as string;
   } catch (e) {
-    console.warn("RPC credentials failed, trying fallback:", e);
+    console.error("getAccessToken failed:", e);
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    throw new Error(`Square credentials error: ${errorMessage}`);
   }
-
-  // Fallback: read credentials JSONB
-  const { data, error } = await supabaseAdmin
-    .from("inventory_integrations")
-    .select("credentials")
-    .eq("id", integrationId)
-    .maybeSingle();
-  if (error) throw error;
-  const token = (data?.credentials as any)?.access_token;
-  if (!token) throw new Error("Missing Square access token");
-  return token;
 }
 
 async function squareWhoAmI(accessToken: string) {
@@ -256,10 +259,11 @@ async function performImport(integrationId: string, runId: string) {
       const who = await squareWhoAmI(accessToken);
       await appendError(runId, "INFO", `Square merchant: ${who.merchantId} (${who.businessName || "?"}) @ ${SQUARE_API_BASE}`);
     } catch (e) {
-      await appendError(runId, "CREDENTIALS", String(e));
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      await appendError(runId, "CREDENTIALS", errorMessage);
       await updateRun(runId, { status: "FAILED", finished_at: new Date().toISOString() });
-      await updateIntegrationLastError(integrationId, String(e));
-      return { ok: false, error: String(e) };
+      await updateIntegrationLastError(integrationId, errorMessage);
+      return { ok: false, error: errorMessage };
     }
 
     // Continue from checkpoint
@@ -352,10 +356,11 @@ async function performImport(integrationId: string, runId: string) {
     return { ok: true, done: true, processed, created, updated };
 
   } catch (e) {
-    await appendError(runId, "FATAL", String(e));
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    await appendError(runId, "FATAL", errorMessage);
     await updateRun(runId, { status: "FAILED", finished_at: new Date().toISOString() });
-    await updateIntegrationLastError(integrationId, String(e));
-    return { ok: false, error: String(e) };
+    await updateIntegrationLastError(integrationId, errorMessage);
+    return { ok: false, error: errorMessage };
   }
 }
 
