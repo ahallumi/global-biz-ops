@@ -639,6 +639,7 @@ export type Database = {
           catalog_status: Database["public"]["Enums"]["catalog_status"]
           category: string | null
           created_at: string | null
+          currency_code: string | null
           default_cost_cents: number | null
           id: string
           image_url: string | null
@@ -663,6 +664,7 @@ export type Database = {
           catalog_status?: Database["public"]["Enums"]["catalog_status"]
           category?: string | null
           created_at?: string | null
+          currency_code?: string | null
           default_cost_cents?: number | null
           id?: string
           image_url?: string | null
@@ -687,6 +689,7 @@ export type Database = {
           catalog_status?: Database["public"]["Enums"]["catalog_status"]
           category?: string | null
           created_at?: string | null
+          currency_code?: string | null
           default_cost_cents?: number | null
           id?: string
           image_url?: string | null
