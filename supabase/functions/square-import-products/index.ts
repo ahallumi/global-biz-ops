@@ -5,9 +5,19 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const SQUARE_API_BASE = "https://connect.squareup.com/v2";
 const IMPORT_MAX_SECONDS = Number(Deno.env.get("IMPORT_MAX_SECONDS") ?? 50);
 const IMPORT_PAGE_SIZE = Number(Deno.env.get("IMPORT_PAGE_SIZE") ?? 100);
+
+// Dynamic Square API base resolution
+function resolveSquareBase(environment?: string | null): string {
+  const env = (environment || "").toLowerCase();
+  if (env === "sandbox" || env === "test") return "https://connect.squareupsandbox.com/v2";
+  return "https://connect.squareup.com/v2"; // production default
+}
+
+class SearchNotSupportedError extends Error { 
+  code = "SEARCH_NOT_SUPPORTED"; 
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -53,12 +63,25 @@ Deno.serve(async (req) => {
       await updateRun(runId, { status: "RUNNING" });
 
       try {
-        const accessToken = await getAccessToken(body.integrationId);
-        const who = await squareWhoAmI(accessToken);
-        await appendError(runId, "INFO", `Square merchant: ${who.merchantId} (${who.businessName || "?"}) @ ${SQUARE_API_BASE}`);
+        const creds = await getSquareCreds(body.integrationId);
+        const who = await squareWhoAmI(creds.accessToken, creds.baseUrl);
+        await appendError(runId, "INFO", `Square merchant: ${who.merchantId} (${who.businessName || "?"}) @ ${creds.baseUrl} (${creds.environment || 'production'})`);
+
+        // Test catalog access first
+        await testCatalogAccess(creds.accessToken, creds.baseUrl);
 
         // First page fetch to kickstart and avoid "PENDING forever"
-        const first = await searchCatalog(accessToken, undefined);
+        let first: SquareSearchResponse;
+        try {
+          first = await searchCatalog(creds.accessToken, creds.baseUrl, undefined);
+        } catch (e) {
+          if (e instanceof SearchNotSupportedError) {
+            await appendError(runId, "FALLBACK", "Using list catalog due to search not supported");
+            first = await listCatalog(creds.accessToken, creds.baseUrl, undefined);
+          } else {
+            throw e;
+          }
+        }
         const processed = (first.objects?.length || 0) + (first.related_objects?.length || 0);
 
         await updateRun(runId, {
@@ -168,7 +191,7 @@ async function selfInvoke(payload: StartBody) {
   });
 }
 
-async function getAccessToken(integrationId: string): Promise<string> {
+async function getSquareCreds(integrationId: string): Promise<{ accessToken: string; environment: string | null; baseUrl: string }> {
   try {
     const cryptKey = Deno.env.get("APP_CRYPT_KEY2");
     if (!cryptKey) {
@@ -190,17 +213,27 @@ async function getAccessToken(integrationId: string): Promise<string> {
       throw new Error("No access token found for this integration. Please check your Square credentials.");
     }
     
-    console.log("Successfully retrieved Square credentials");
-    return data[0].access_token as string;
+    const accessToken = data[0].access_token as string;
+    const environment = data[0].environment as string | null;
+    const baseUrl = resolveSquareBase(environment);
+    
+    console.log(`Successfully retrieved Square credentials for ${environment || 'production'} environment`);
+    return { accessToken, environment, baseUrl };
   } catch (e) {
-    console.error("getAccessToken failed:", e);
+    console.error("getSquareCreds failed:", e);
     const errorMessage = e instanceof Error ? e.message : String(e);
     throw new Error(`Square credentials error: ${errorMessage}`);
   }
 }
 
-async function squareWhoAmI(accessToken: string) {
-  const resp = await fetch(`${SQUARE_API_BASE}/merchants/me`, {
+// Legacy wrapper for backward compatibility
+async function getAccessToken(integrationId: string): Promise<string> {
+  const creds = await getSquareCreds(integrationId);
+  return creds.accessToken;
+}
+
+async function squareWhoAmI(accessToken: string, baseUrl: string) {
+  const resp = await fetch(`${baseUrl}/merchants/me`, {
     headers: { 
       Authorization: `Bearer ${accessToken}`, 
       Accept: "application/json",
@@ -216,9 +249,9 @@ async function squareWhoAmI(accessToken: string) {
   return { merchantId: m.id, businessName: m.business_name, country: m.country }; 
 }
 
-async function testCatalogAccess(accessToken: string): Promise<void> {
+async function testCatalogAccess(accessToken: string, baseUrl: string): Promise<void> {
   console.log("🔍 Testing catalog access with /v2/catalog/list endpoint...");
-  const url = `${SQUARE_API_BASE}/catalog/list`;
+  const url = `${baseUrl}/catalog/list`;
   
   const resp = await fetch(url, {
     method: "GET",
@@ -231,7 +264,6 @@ async function testCatalogAccess(accessToken: string): Promise<void> {
   
   if (!resp.ok) {
     const text = await resp.text();
-    const parsed = tryParseJson(text);
     
     if (resp.status === 404) {
       throw new Error(`Catalog access denied (404): This usually means your Square application lacks the 'ITEMS_READ' permission scope. Please check your Square app configuration. Response: ${text}`);
@@ -248,13 +280,8 @@ async function testCatalogAccess(accessToken: string): Promise<void> {
   console.log(`✅ Catalog access test passed. Found ${result.objects?.length || 0} catalog objects.`);
 }
 
-async function searchCatalog(accessToken: string, cursor?: string): Promise<SquareSearchResponse> {
-  // Test catalog access on first call (when no cursor)
-  if (!cursor) {
-    await testCatalogAccess(accessToken);
-  }
-  
-  const url = `${SQUARE_API_BASE}/catalog/search-catalog-objects`;
+async function searchCatalog(accessToken: string, baseUrl: string, cursor?: string): Promise<SquareSearchResponse> {
+  const url = `${baseUrl}/catalog/search-catalog-objects`;
   const body: any = {
     object_types: ["ITEM"],
     include_related_objects: true,
@@ -283,11 +310,10 @@ async function searchCatalog(accessToken: string, cursor?: string): Promise<Squa
     
     if (!resp.ok) {
       const text = await resp.text();
-      const parsed = tryParseJson(text);
       
-      // Enhanced error messages for common issues
+      // Treat 404 as search not supported for automatic fallback
       if (resp.status === 404) {
-        throw new Error(`Square catalog search failed (404): This usually indicates missing 'ITEMS_READ' permissions or wrong environment. Check your Square app configuration. Response: ${text}`);
+        throw new SearchNotSupportedError("search-catalog-objects returned 404 NOT_FOUND");
       } else if (resp.status === 403) {
         throw new Error(`Square catalog search forbidden (403): Check your Square app permissions for catalog access. Response: ${text}`);
       } else if (resp.status === 401) {
@@ -306,6 +332,48 @@ async function searchCatalog(accessToken: string, cursor?: string): Promise<Squa
   }
 }
 
+async function listCatalog(accessToken: string, baseUrl: string, cursor?: string): Promise<SquareSearchResponse> {
+  const url = new URL(`${baseUrl}/catalog/list`);
+  url.searchParams.set("types", "ITEM,ITEM_VARIATION");
+  url.searchParams.set("limit", String(IMPORT_PAGE_SIZE));
+  if (cursor) url.searchParams.set("cursor", cursor);
+
+  let attempt = 0;
+  while (true) {
+    attempt++;
+    const resp = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+        "Square-Version": "2023-10-18"
+      },
+    });
+    
+    if (resp.status === 429 || resp.status >= 500) {
+      await sleep(Math.min(1000 * Math.pow(2, attempt), 8000));
+      continue;
+    }
+    
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`Square listCatalog failed: ${resp.status} ${text}`);
+    }
+    
+    const result = await resp.json();
+    
+    // Separate items and variations for list endpoint
+    const objects = (result.objects || []).filter((obj: any) => obj.type === "ITEM");
+    const related_objects = (result.objects || []).filter((obj: any) => obj.type === "ITEM_VARIATION");
+    
+    return {
+      objects,
+      related_objects,
+      cursor: result.cursor
+    };
+  }
+}
+
 async function performImport(integrationId: string, runId: string) {
   const started = Date.now();
 
@@ -316,11 +384,11 @@ async function performImport(integrationId: string, runId: string) {
     if (run.status !== "RUNNING") await updateRun(runId, { status: "RUNNING" });
 
     // Get access token and verify merchant
-    let accessToken: string;
+    let creds: { accessToken: string; environment: string | null; baseUrl: string };
     try {
-      accessToken = await getAccessToken(integrationId);
-      const who = await squareWhoAmI(accessToken);
-      await appendError(runId, "INFO", `Square merchant: ${who.merchantId} (${who.businessName || "?"}) @ ${SQUARE_API_BASE}`);
+      creds = await getSquareCreds(integrationId);
+      const who = await squareWhoAmI(creds.accessToken, creds.baseUrl);
+      await appendError(runId, "INFO", `Square merchant: ${who.merchantId} (${who.businessName || "?"}) @ ${creds.baseUrl} (${creds.environment || 'production'})`);
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : String(e);
       await appendError(runId, "CREDENTIALS", errorMessage);
@@ -338,8 +406,20 @@ async function performImport(integrationId: string, runId: string) {
     // Collection maps for two-pass approach
     const itemMap = new Map<string, any>();
     const variationMap = new Map<string, any>();
+    let useListFallback = false;
 
     console.log("🔄 Starting Collection Pass...");
+    
+    // Test catalog access first
+    try {
+      await testCatalogAccess(creds.accessToken, creds.baseUrl);
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      await appendError(runId, "CATALOG_ACCESS", errorMessage);
+      await updateRun(runId, { status: "FAILED", finished_at: new Date().toISOString() });
+      await updateIntegrationLastError(integrationId, errorMessage);
+      return { ok: false, error: errorMessage };
+    }
     
     // PHASE 1: Collection Pass - gather all items and variations
     while (true) {
@@ -348,7 +428,25 @@ async function performImport(integrationId: string, runId: string) {
         return { ok: false, aborted: true };
       }
 
-      const page = await searchCatalog(accessToken, cursor);
+      let page: SquareSearchResponse;
+      
+      try {
+        if (useListFallback) {
+          page = await listCatalog(creds.accessToken, creds.baseUrl, cursor);
+        } else {
+          page = await searchCatalog(creds.accessToken, creds.baseUrl, cursor);
+        }
+      } catch (e) {
+        if (e instanceof SearchNotSupportedError && !useListFallback) {
+          console.log("🔄 Search not supported, falling back to list catalog...");
+          await appendError(runId, "FALLBACK", "Switching from search to list catalog due to 404 NOT_FOUND");
+          useListFallback = true;
+          page = await listCatalog(creds.accessToken, creds.baseUrl, cursor);
+        } else {
+          throw e;
+        }
+      }
+
       const items = page.objects || [];
       const related = page.related_objects || [];
 
