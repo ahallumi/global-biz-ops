@@ -37,7 +37,9 @@ Deno.serve(async (req) => {
 
   try {
     const body = (await req.json()) as StartBody;
-    const mode: Mode = body.mode ?? "START";
+    // Normalize mode - treat undefined, "FULL", or unknown modes as "START"  
+    const mode: Mode = body.mode === "RESUME" || body.mode === "CONTINUE" ? body.mode : "START";
+    console.log("Normalized mode:", mode, "from original:", body.mode);
 
     if (!body.integrationId) return json({ error: "integrationId required" }, 400);
 
@@ -168,8 +170,14 @@ async function selfInvoke(payload: StartBody) {
 
 async function getAccessToken(integrationId: string): Promise<string> {
   try {
+    const cryptKey = Deno.env.get("APP_CRYPT_KEY");
+    if (!cryptKey) {
+      throw new Error("APP_CRYPT_KEY not configured");
+    }
+    
     const { data, error } = await supabaseAdmin.rpc("get_decrypted_credentials", { 
-      p_integration_id: integrationId 
+      p_integration_id: integrationId,
+      p_crypt_key: cryptKey
     });
     
     if (error) {

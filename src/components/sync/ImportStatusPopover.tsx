@@ -174,7 +174,7 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
               if (activeIntegration) {
                 importProducts.mutate({ 
                   integrationId: activeIntegration.id, 
-                  mode: 'FULL' 
+                  mode: 'START' 
                 })
               }
             }}

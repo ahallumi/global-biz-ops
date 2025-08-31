@@ -39,7 +39,7 @@ export default function InventorySettingsPage() {
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionResult, setConnectionResult] = useState<any>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
-  const [importMode, setImportMode] = useState<'FULL' | 'DELTA'>('FULL');
+  const [importMode, setImportMode] = useState<'START' | 'RESUME'>('START');
 
   const { data: integrations, isLoading: isLoadingIntegrations } = useInventoryIntegrations();
   const updateIntegration = useUpdateInventoryIntegration();
@@ -100,7 +100,7 @@ export default function InventorySettingsPage() {
     }
   };
 
-  const handleImportProducts = async (mode: 'FULL' | 'DELTA') => {
+  const handleImportProducts = async (mode: 'START' | 'RESUME') => {
     try {
       if (!activeIntegration) {
         throw new Error('No integration configured. Save settings first.');
@@ -477,7 +477,7 @@ export default function InventorySettingsPage() {
             <CardContent className="space-y-4">
               <div className="flex gap-2">
                 <Button 
-                  onClick={() => handleImportProducts('FULL')} 
+                  onClick={() => handleImportProducts('START')} 
                   disabled={importProducts.isPending || isImporting}
                   className="flex-1"
                 >
@@ -489,12 +489,12 @@ export default function InventorySettingsPage() {
                   ) : (
                     <>
                       <Download className="h-4 w-4 mr-2" />
-                      Full Import
+                      Start Import
                     </>
                   )}
                 </Button>
                 <Button 
-                  onClick={() => handleImportProducts('DELTA')} 
+                  onClick={() => handleImportProducts('RESUME')} 
                   disabled={importProducts.isPending || isImporting} 
                   variant="outline"
                   className="flex-1"
@@ -507,7 +507,7 @@ export default function InventorySettingsPage() {
                   ) : (
                     <>
                       <Upload className="h-4 w-4 mr-2" />
-                      Delta Import
+                      Resume Import
                     </>
                   )}
                 </Button>
@@ -535,7 +535,7 @@ export default function InventorySettingsPage() {
               )}
               
               <p className="text-sm text-muted-foreground">
-                Full import will overwrite existing products. Delta import will only add new products.
+                Import products from Square into your catalog. Use Resume to continue partial imports.
               </p>
             </CardContent>
           </Card>

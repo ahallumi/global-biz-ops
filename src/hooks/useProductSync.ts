@@ -107,7 +107,7 @@ export function usePullProductsFromSquare() {
       }
 
       const { data, error } = await supabase.functions.invoke('square-import-products', {
-        body: { integrationId: integrations.id }
+        body: { integrationId: integrations.id, mode: 'START' }
       });
       
       if (error) throw error;

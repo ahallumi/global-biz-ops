@@ -172,7 +172,7 @@ export function useImportProducts() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ integrationId, mode = 'FULL' }: { integrationId: string; mode?: 'FULL' | 'DELTA' }) => {
+    mutationFn: async ({ integrationId, mode = 'START' }: { integrationId: string; mode?: 'START' | 'RESUME' }) => {
       const { data, error } = await supabase.functions.invoke('square-import-products', {
         body: { integrationId, mode }
       });

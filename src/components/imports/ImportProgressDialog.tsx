@@ -10,7 +10,7 @@ interface ImportProgressDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   integrationId: string;
-  mode: 'FULL' | 'DELTA';
+  mode: 'START' | 'RESUME';
 }
 
 interface ImportProgress {
