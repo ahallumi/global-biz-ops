@@ -454,7 +454,7 @@ async function performImport(integrationId: string, runId: string) {
 
     // Collection maps for two-pass approach
     const itemMap = new Map<string, any>();
-    const variationMap = new Map<string, any>();
+    const variationMap = new Map<string, any[]>(); // Group variations by parent item ID
     let useListFallback = false;
 
     console.log("🔄 Starting Collection Pass...");
@@ -503,7 +503,14 @@ async function performImport(integrationId: string, runId: string) {
       for (const item of items) itemMap.set(item.id, item);
       for (const variation of related) {
         if (variation.type === "ITEM_VARIATION") {
-          variationMap.set(variation.id, variation);
+          // Group variations by their parent item ID
+          const parentItemId = variation.item_variation_data?.item_id;
+          if (parentItemId) {
+            if (!variationMap.has(parentItemId)) {
+              variationMap.set(parentItemId, []);
+            }
+            variationMap.get(parentItemId)!.push(variation);
+          }
         }
       }
 
@@ -636,6 +643,7 @@ async function upsertItemsWithVariations(
   let processedCount = 0;
   let createdCount = 0;
   let updatedCount = 0;
+  let failedCount = 0;
   
   for (const merged of mergedProducts) {
     try {
@@ -653,6 +661,7 @@ async function upsertItemsWithVariations(
             processed_count: processedCount,
             created_count: createdCount,
             updated_count: updatedCount,
+            failed_count: failedCount,
             last_progress_at: new Date().toISOString()
           })
           .eq('id', runId);
@@ -660,11 +669,12 @@ async function upsertItemsWithVariations(
         if (progressError) {
           console.error('Failed to update progress:', progressError);
         } else {
-          console.log(`📈 Progress: ${processedCount}/${mergedProducts.length} (${createdCount} created, ${updatedCount} updated)`);
+          console.log(`📈 Progress: ${processedCount}/${mergedProducts.length} (${createdCount} created, ${updatedCount} updated, ${failedCount} failed)`);
         }
       }
     } catch (error) {
       console.error(`Failed to process item:`, error);
+      failedCount++; // Increment failed count for actual processing failures
       await appendError(runId, 'UPSERT_FAILED', `Failed to upsert product: ${error.message}`, {
         op: 'upsert_product',
         sq_item_id: merged.item?.id,
