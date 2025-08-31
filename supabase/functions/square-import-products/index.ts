@@ -216,7 +216,44 @@ async function squareWhoAmI(accessToken: string) {
   return { merchantId: m.id, businessName: m.business_name, country: m.country }; 
 }
 
+async function testCatalogAccess(accessToken: string): Promise<void> {
+  console.log("🔍 Testing catalog access with /v2/catalog/list endpoint...");
+  const url = `${SQUARE_API_BASE}/catalog/list`;
+  
+  const resp = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+      "Square-Version": "2023-10-18"
+    },
+  });
+  
+  if (!resp.ok) {
+    const text = await resp.text();
+    const parsed = tryParseJson(text);
+    
+    if (resp.status === 404) {
+      throw new Error(`Catalog access denied (404): This usually means your Square application lacks the 'ITEMS_READ' permission scope. Please check your Square app configuration. Response: ${text}`);
+    } else if (resp.status === 403) {
+      throw new Error(`Catalog access forbidden (403): Check your Square app permissions and environment. Response: ${text}`);
+    } else if (resp.status === 401) {
+      throw new Error(`Authentication failed (401): Check your Square access token. Response: ${text}`);
+    } else {
+      throw new Error(`Catalog access test failed: ${resp.status} ${text}`);
+    }
+  }
+  
+  const result = await resp.json();
+  console.log(`✅ Catalog access test passed. Found ${result.objects?.length || 0} catalog objects.`);
+}
+
 async function searchCatalog(accessToken: string, cursor?: string): Promise<SquareSearchResponse> {
+  // Test catalog access on first call (when no cursor)
+  if (!cursor) {
+    await testCatalogAccess(accessToken);
+  }
+  
   const url = `${SQUARE_API_BASE}/catalog/search-catalog-objects`;
   const body: any = {
     object_types: ["ITEM"],
@@ -246,7 +283,18 @@ async function searchCatalog(accessToken: string, cursor?: string): Promise<Squa
     
     if (!resp.ok) {
       const text = await resp.text();
-      throw new Error(`Square searchCatalog failed: ${resp.status} ${text}`);
+      const parsed = tryParseJson(text);
+      
+      // Enhanced error messages for common issues
+      if (resp.status === 404) {
+        throw new Error(`Square catalog search failed (404): This usually indicates missing 'ITEMS_READ' permissions or wrong environment. Check your Square app configuration. Response: ${text}`);
+      } else if (resp.status === 403) {
+        throw new Error(`Square catalog search forbidden (403): Check your Square app permissions for catalog access. Response: ${text}`);
+      } else if (resp.status === 401) {
+        throw new Error(`Square catalog search authentication failed (401): Check your access token validity. Response: ${text}`);
+      } else {
+        throw new Error(`Square searchCatalog failed: ${resp.status} ${text}`);
+      }
     }
     
     const result = await resp.json();
@@ -513,4 +561,12 @@ async function upsertItemsWithVariations(
 
 function sleep(ms: number) { 
   return new Promise((r) => setTimeout(r, ms)); 
+}
+
+function tryParseJson(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
