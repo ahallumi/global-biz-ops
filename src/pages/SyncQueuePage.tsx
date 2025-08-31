@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/data-table/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
-import { useProductSyncRuns, useProductImportRuns, useActiveImportRun, useRunningImportRun, useAbortImport } from '@/hooks/useProductSync';
+import { useProductSyncRuns, useProductImportRuns, useActiveImportRun, useRunningImportRun, useAbortImport, useResumeImport } from '@/hooks/useProductSync';
 import { useInventoryIntegrations } from '@/hooks/useInventoryIntegrations';
 import { Skeleton } from '@/components/ui/skeleton';
 import { History, Package, Upload, Download, Clock, CheckCircle, XCircle, AlertTriangle, StopCircle } from 'lucide-react';
@@ -23,6 +23,7 @@ export default function SyncQueuePage() {
   const { data: activeImportRun } = useActiveImportRun();
   const { data: runningImportRun } = useRunningImportRun();
   const abortImport = useAbortImport();
+  const resumeImport = useResumeImport();
   
   // Integration
   const { data: integrations } = useInventoryIntegrations();
@@ -139,6 +140,26 @@ export default function SyncQueuePage() {
     {
       accessorKey: 'updated_count',
       header: 'Updated',
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      cell: ({ row }) => {
+        const run = row.original;
+        if (run.status === 'PARTIAL') {
+          return (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => resumeImport.mutate(run.id)}
+              disabled={resumeImport.isPending}
+            >
+              {resumeImport.isPending ? 'Resuming...' : 'Resume'}
+            </Button>
+          );
+        }
+        return null;
+      },
     },
   ];
 

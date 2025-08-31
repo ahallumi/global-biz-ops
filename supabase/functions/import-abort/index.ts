@@ -18,35 +18,11 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { runId } = await req.json()
+    const { runId, integrationId } = await req.json()
 
-    if (!runId) {
-      throw new Error('Missing runId parameter')
-    }
-
-    console.log('Aborting import run:', runId)
-
-    // Update the import run to mark it as cancelled
-    const { data: updatedRun, error: updateError } = await supabase
-      .from('product_import_runs')
-      .update({
-        status: 'FAILED',
-        finished_at: new Date().toISOString(),
-        errors: ['Cancelled by user']
-      })
-      .eq('id', runId)
-      .eq('status', 'RUNNING') // Only abort if currently running
-      .select()
-      .single()
-
-    if (updateError) {
-      console.error('Failed to abort import run:', updateError)
-      throw new Error(`Failed to abort import: ${updateError.message}`)
-    }
-
-    if (!updatedRun) {
+    if (!runId && !integrationId) {
       return new Response(
-        JSON.stringify({ error: 'Import run not found or not currently running. Only RUNNING imports can be aborted.' }),
+        JSON.stringify({ error: "Either runId or integrationId is required" }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 400 
@@ -54,13 +30,86 @@ serve(async (req) => {
       )
     }
 
-    console.log('Import run aborted successfully:', runId)
+    let targetRunId = runId;
+
+    // If integrationId provided, find the active run
+    if (!targetRunId && integrationId) {
+      const { data: activeRun, error: findError } = await supabase
+        .from('product_import_runs')
+        .select('id')
+        .eq('integration_id', integrationId)
+        .in('status', ['RUNNING', 'PENDING', 'PARTIAL'])
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (findError) {
+        throw new Error(`Failed to find active run: ${findError.message}`)
+      }
+
+      if (!activeRun) {
+        return new Response(
+          JSON.stringify({ error: "No active import run found for this integration" }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 404 
+          }
+        )
+      }
+
+      targetRunId = activeRun.id;
+    }
+
+    console.log(`Aborting import run: ${targetRunId}`)
+
+    // Get current errors before updating
+    const { data: currentRun } = await supabase
+      .from('product_import_runs')
+      .select('errors')
+      .eq('id', targetRunId)
+      .maybeSingle();
+
+    // Mark the run as failed with cancellation message
+    const { data: updatedRun, error: updateError } = await supabase
+      .from('product_import_runs')
+      .update({
+        status: 'FAILED',
+        finished_at: new Date().toISOString(),
+        errors: [
+          ...(currentRun?.errors || []),
+          {
+            timestamp: new Date().toISOString(),
+            code: 'USER_CANCELLED',
+            message: 'Import cancelled by user'
+          }
+        ]
+      })
+      .eq('id', targetRunId)
+      .in('status', ['RUNNING', 'PENDING', 'PARTIAL'])
+      .select()
+      .maybeSingle()
+
+    if (updateError) {
+      throw new Error(`Failed to update run: ${updateError.message}`)
+    }
+
+    if (!updatedRun) {
+      return new Response(
+        JSON.stringify({ error: "Import run not found or not in abortable state" }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 404 
+        }
+      )
+    }
+
+    console.log(`Successfully aborted import run: ${targetRunId}`)
 
     return new Response(
       JSON.stringify({ 
         success: true,
         message: 'Import run aborted successfully',
-        run_id: runId
+        run_id: targetRunId
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -69,13 +118,16 @@ serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Abort failed:', error)
+    console.error('Import abort failed:', error)
 
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        success: false,
+        error: error.message 
+      }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400 
+        status: 500 
       }
     )
   }

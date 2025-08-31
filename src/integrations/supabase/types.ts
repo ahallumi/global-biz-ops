@@ -349,6 +349,7 @@ export type Database = {
           finished_at: string | null
           id: string
           integration_id: string
+          last_progress_at: string
           processed_count: number | null
           started_at: string | null
           status: Database["public"]["Enums"]["import_status"]
@@ -362,6 +363,7 @@ export type Database = {
           finished_at?: string | null
           id?: string
           integration_id: string
+          last_progress_at?: string
           processed_count?: number | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["import_status"]
@@ -375,6 +377,7 @@ export type Database = {
           finished_at?: string | null
           id?: string
           integration_id?: string
+          last_progress_at?: string
           processed_count?: number | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["import_status"]
@@ -1095,6 +1098,15 @@ export type Database = {
           p_uid: string
         }
         Returns: boolean
+      }
+      import_mark_stale: {
+        Args: { pending_minutes?: number; running_minutes?: number }
+        Returns: {
+          error_msg: string
+          new_status: string
+          old_status: string
+          run_id: string
+        }[]
       }
       is_admin: {
         Args: { p_uid: string }

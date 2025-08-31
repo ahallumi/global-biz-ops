@@ -73,6 +73,13 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
               {summary.timeAgo}
             </div>
             
+            {/* Show error if failed */}
+            {summary.lastRun.status === 'FAILED' && activeIntegration?.last_error && (
+              <div className="text-xs text-destructive bg-destructive/10 p-2 rounded border">
+                {activeIntegration.last_error}
+              </div>
+            )}
+            
             {summary.lastRun.status === 'SUCCESS' && (
               <div className="flex items-center gap-4 text-xs">
                 <span className="text-green-600">

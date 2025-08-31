@@ -171,6 +171,38 @@ export function useAbortImport() {
   });
 }
 
+// Hook to resume a PARTIAL import
+export function useResumeImport() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (runId: string) => {
+      const { data, error } = await supabase.functions.invoke('square-import-products', {
+        body: { mode: 'RESUME', runId }
+      });
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product-import-runs'] });
+      queryClient.invalidateQueries({ queryKey: ['active-import-run'] });
+      toast({
+        title: 'Import Resumed',
+        description: 'The import operation has been resumed in the background.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Resume Failed',
+        description: `Failed to resume import: ${error.message}`,
+        variant: 'destructive',
+      });
+    }
+  });
+}
+
 // Active sync detection hooks
 export function useActiveSyncRun() {
   return useQuery({
