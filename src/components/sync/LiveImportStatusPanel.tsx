@@ -7,6 +7,7 @@ import { Clock, Info, XCircle, AlertCircle, StopCircle, CheckCircle2, Loader2 } 
 import { useState } from "react"
 import { supabase } from "@/integrations/supabase/client"
 import { toast } from "@/hooks/use-toast"
+import { getImportStatusLabel, getImportStatusVariant } from "@/lib/importStatusLabels"
 
 interface LiveImportStatusPanelProps {
   importRun: any
@@ -27,11 +28,11 @@ export function LiveImportStatusPanel({ importRun, title }: LiveImportStatusPane
   }
 
   const statusConfig = {
-    PENDING: { label: 'Queued', icon: AlertCircle, color: 'text-yellow-500', tone: 'neutral' },
-    RUNNING: { label: 'Importing...', icon: Loader2, color: 'text-blue-500', tone: 'progress' },
-    PARTIAL: { label: 'Importing (resuming)...', icon: Loader2, color: 'text-blue-500', tone: 'progress' },
-    SUCCESS: { label: 'Completed', icon: CheckCircle2, color: 'text-green-500', tone: 'success' },
-    FAILED: { label: 'Failed', icon: XCircle, color: 'text-red-500', tone: 'error' },
+    PENDING: { label: getImportStatusLabel('PENDING'), icon: AlertCircle, color: 'text-yellow-500', tone: 'neutral' },
+    RUNNING: { label: getImportStatusLabel('RUNNING'), icon: Loader2, color: 'text-blue-500', tone: 'progress' },
+    PARTIAL: { label: getImportStatusLabel('PARTIAL'), icon: Loader2, color: 'text-blue-500', tone: 'progress' },
+    SUCCESS: { label: getImportStatusLabel('SUCCESS'), icon: CheckCircle2, color: 'text-green-500', tone: 'success' },
+    FAILED: { label: getImportStatusLabel('FAILED'), icon: XCircle, color: 'text-red-500', tone: 'error' },
   }
 
   const status = importRun?.status || 'PENDING'

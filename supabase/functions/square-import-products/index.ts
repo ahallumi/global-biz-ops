@@ -46,9 +46,37 @@ Deno.serve(async (req) => {
       if (active) return json({ error: "Import already in progress", runId: active.id }, 409);
 
       const runId = await createRun(body.integrationId);
-      // Start background import
-      await selfInvoke({ integrationId: body.integrationId, mode: "CONTINUE", runId });
-      return json({ ok: true, runId });
+
+      // Kickstart enhancement: immediately transition to RUNNING with preflight
+      await updateRun(runId, { status: "RUNNING" });
+
+      try {
+        const accessToken = await getAccessToken(body.integrationId);
+        const who = await squareWhoAmI(accessToken);
+        await appendError(runId, "INFO", `Square merchant: ${who.merchantId} (${who.businessName || "?"}) @ ${SQUARE_API_BASE}`);
+
+        // First page fetch to kickstart and avoid "PENDING forever"
+        const first = await searchCatalog(accessToken, undefined);
+        const processed = (first.objects?.length || 0) + (first.related_objects?.length || 0);
+
+        await updateRun(runId, {
+          cursor: first.cursor ?? null,
+          processed_count: processed,
+          status: first.cursor ? "PARTIAL" : "SUCCESS",
+          finished_at: first.cursor ? null : new Date().toISOString(),
+        });
+
+        // If more to do, chain a CONTINUE
+        if (first.cursor) await selfInvoke({ integrationId: body.integrationId, mode: "CONTINUE", runId });
+        else await updateIntegrationLastError(body.integrationId, null);
+
+        return json({ ok: true, runId, kickstarted: true, processed });
+      } catch (e) {
+        await appendError(runId, "KICKSTART", String(e));
+        await updateRun(runId, { status: "FAILED", finished_at: new Date().toISOString() });
+        await updateIntegrationLastError(body.integrationId, String(e));
+        return json({ error: String(e), runId }, 500);
+      }
     }
 
     if (mode === "RESUME") {
