@@ -4,13 +4,14 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
-import { CheckCircle, XCircle, Clock, Download, RotateCcw, ExternalLink, AlertTriangle } from "lucide-react"
+import { CheckCircle, XCircle, Clock, Download, RotateCcw, ExternalLink, AlertTriangle, RefreshCw } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { useProductImportRuns, getImportRunSummary, useActiveImportRun, useRunningImportRun } from "@/hooks/useProductSync"
 import { useInventoryIntegrations, useUpdateInventoryIntegration, useImportProducts } from "@/hooks/useInventoryIntegrations"
 import { useImportWatchdog } from "@/hooks/useImportWatchdog"
 import { LiveImportStatusPanel } from "./LiveImportStatusPanel"
 import { getImportStatusLabel } from "@/lib/importStatusLabels"
+import { useQueryClient } from "@tanstack/react-query"
 
 interface ImportStatusPopoverProps {
   onNavigateToSyncQueue?: () => void
@@ -18,9 +19,10 @@ interface ImportStatusPopoverProps {
 
 export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopoverProps) {
   const navigate = useNavigate()
-  const { data: importRuns } = useProductImportRuns()
+  const queryClient = useQueryClient()
+  const { data: importRuns, refetch: refetchImportRuns } = useProductImportRuns()
   const { data: integrations } = useInventoryIntegrations()
-  const { data: activeImportRun } = useActiveImportRun()
+  const { data: activeImportRun, refetch: refetchActiveImport } = useActiveImportRun()
   const { data: runningImportRun } = useRunningImportRun()
   const updateIntegration = useUpdateInventoryIntegration()
   const importProducts = useImportProducts()
@@ -29,6 +31,17 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
   const summary = getImportRunSummary(importRuns || [])
   const activeIntegration = integrations?.find(i => i.provider === 'SQUARE')
   
+  const handleManualRefresh = async () => {
+    // Force refresh all import-related queries
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['product-import-runs'] }),
+      queryClient.invalidateQueries({ queryKey: ['active-import-run'] }),
+      queryClient.invalidateQueries({ queryKey: ['running-import-run'] }),
+      refetchImportRuns(),
+      refetchActiveImport()
+    ])
+  }
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'SUCCESS':
@@ -61,9 +74,20 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <Download className="h-4 w-4 text-muted-foreground" />
-        <span className="font-medium text-sm">Import from Square</span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Download className="h-4 w-4 text-muted-foreground" />
+          <span className="font-medium text-sm">Import from Square</span>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={handleManualRefresh}
+          className="h-6 w-6 p-0"
+          title="Refresh status"
+        >
+          <RefreshCw className="h-3 w-3" />
+        </Button>
       </div>
       
       {summary.lastRun ? (

@@ -257,7 +257,7 @@ export function useActiveImportRun() {
           return null;
         }
 
-        // 1. First priority: truly active runs
+        // 1. First priority: truly active runs (not finished)
         const activeRun = runs.find(r => 
           (r.status === 'RUNNING' || r.status === 'PENDING' || r.status === 'PARTIAL') && !r.finished_at
         );
@@ -266,45 +266,52 @@ export function useActiveImportRun() {
           return activeRun;
         }
 
-        // 2. Second priority: recent completed runs (within last 2 minutes)
-        const twoMinutesAgo = new Date(Date.now() - 120000).toISOString();
+        // 2. Second priority: recent completed runs (within last 1 minute) - reduced from 2 minutes
+        const oneMinuteAgo = new Date(Date.now() - 60000).toISOString();
         const recentCompleted = runs.find(r => 
           r.status === 'SUCCESS' && 
           r.finished_at && 
-          r.finished_at >= twoMinutesAgo
+          r.finished_at >= oneMinuteAgo
         );
         
         if (recentCompleted) {
           return recentCompleted;
         }
 
-        // 3. Third priority: recent failed runs (within last 30 seconds)
-        const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
+        // 3. Third priority: recent failed runs (within last 15 seconds) - reduced from 30 seconds
+        const fifteenSecondsAgo = new Date(Date.now() - 15000).toISOString();
         const recentFailed = runs.find(r => 
           r.status === 'FAILED' && 
           r.finished_at && 
-          r.finished_at >= thirtySecondsAgo
+          r.finished_at >= fifteenSecondsAgo
         );
         
         if (recentFailed) {
           return recentFailed;
         }
 
-        // 4. Fallback: show the most meaningful recent run (one that did work)
-        const meaningfulRun = runs.find(r => 
-          ((r.created_count ?? 0) + (r.updated_count ?? 0)) > 0
-        );
-
-        return meaningfulRun ?? null;
+        // 4. Don't show old runs - return null to hide the active panel
+        return null;
       } catch (err) {
         console.warn('Active import run polling exception:', err);
         return null;
       }
     },
-    refetchInterval: 2000,
-    retry: 0,
+    refetchInterval: (query) => {
+      // Stop polling if there's no active data or if the last error was a network error
+      const hasActiveData = query.state.data;
+      const hasNetworkError = query.state.error?.message?.includes('Load failed');
+      return hasActiveData && !hasNetworkError ? 2000 : 5000; // Slower polling on errors
+    },
+    retry: (failureCount, error) => {
+      // Don't retry on network errors, but do retry on other errors
+      if (error?.message?.includes('Load failed')) {
+        return false;
+      }
+      return failureCount < 2;
+    },
     refetchOnWindowFocus: false,
-    staleTime: 1000, // Reduced stale time for faster error state updates
+    staleTime: 500, // Very short stale time to get fresh data quickly
   });
 }
 

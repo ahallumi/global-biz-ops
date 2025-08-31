@@ -15,9 +15,16 @@ export function useImportWatchdog() {
       return data;
     },
     onSuccess: (data) => {
+      // Force refresh all import-related queries to clear stale data
       queryClient.invalidateQueries({ queryKey: ['product-import-runs'] });
       queryClient.invalidateQueries({ queryKey: ['active-import-run'] });
       queryClient.invalidateQueries({ queryKey: ['running-import-run'] });
+      queryClient.invalidateQueries({ queryKey: ['latest-import-run'] });
+      queryClient.invalidateQueries({ queryKey: ['active-imports'] });
+      
+      // Force remove any stale data from cache
+      queryClient.removeQueries({ queryKey: ['active-import-run'] });
+      queryClient.removeQueries({ queryKey: ['running-import-run'] });
       
       const cleanedCount = data?.cleaned_count || 0;
       if (cleanedCount > 0) {
