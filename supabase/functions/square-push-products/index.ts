@@ -101,9 +101,9 @@ serve(async (req) => {
     }
 
     // Get decrypted credentials
-    const cryptKey = Deno.env.get('APP_CRYPT_KEY');
+    const cryptKey = Deno.env.get('APP_CRYPT_KEY2');
     if (!cryptKey) {
-      throw new Error('Encryption key not found');
+      throw new Error('APP_CRYPT_KEY2 not configured');
     }
 
     const { data: credentials, error: credentialsError } = await supabaseClient
@@ -112,10 +112,16 @@ serve(async (req) => {
         p_crypt_key: cryptKey
       });
 
-    if (credentialsError || !credentials || credentials.length === 0) {
-      throw new Error('Could not decrypt Square credentials');
+    if (credentialsError) {
+      console.error('RPC credentials error:', credentialsError);
+      throw new Error(`Failed to retrieve credentials: ${credentialsError.message}`);
     }
 
+    if (!credentials || !Array.isArray(credentials) || credentials.length === 0 || !credentials[0]?.access_token) {
+      throw new Error('No access token found for this integration. Please check your Square credentials.');
+    }
+
+    console.log('Successfully retrieved Square credentials');
     const accessToken = credentials[0].access_token;
     const environment = credentials[0].environment;
     const baseUrl = environment === 'PRODUCTION' 

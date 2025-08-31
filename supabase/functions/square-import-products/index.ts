@@ -170,9 +170,9 @@ async function selfInvoke(payload: StartBody) {
 
 async function getAccessToken(integrationId: string): Promise<string> {
   try {
-    const cryptKey = Deno.env.get("APP_CRYPT_KEY");
+    const cryptKey = Deno.env.get("APP_CRYPT_KEY2");
     if (!cryptKey) {
-      throw new Error("APP_CRYPT_KEY not configured");
+      throw new Error("APP_CRYPT_KEY2 not configured");
     }
     
     const { data, error } = await supabaseAdmin.rpc("get_decrypted_credentials", { 
@@ -185,11 +185,13 @@ async function getAccessToken(integrationId: string): Promise<string> {
       throw new Error(`Failed to retrieve credentials: ${error.message || error}`);
     }
     
-    if (!data || !data.access_token) {
+    // The RPC function returns an array of records
+    if (!data || !Array.isArray(data) || data.length === 0 || !data[0]?.access_token) {
       throw new Error("No access token found for this integration. Please check your Square credentials.");
     }
     
-    return data.access_token as string;
+    console.log("Successfully retrieved Square credentials");
+    return data[0].access_token as string;
   } catch (e) {
     console.error("getAccessToken failed:", e);
     const errorMessage = e instanceof Error ? e.message : String(e);
