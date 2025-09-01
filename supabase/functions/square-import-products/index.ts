@@ -8,11 +8,20 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const IMPORT_MAX_SECONDS = Number(Deno.env.get("IMPORT_MAX_SECONDS") ?? 50);
 const IMPORT_PAGE_SIZE = Number(Deno.env.get("IMPORT_PAGE_SIZE") ?? 100);
 
+// Configuration flags for strict policies
+const ALLOW_LIST_FALLBACK = Deno.env.get("ALLOW_LIST_FALLBACK") === "true";
+const ALLOW_ITEM_PRICE_FALLBACK = Deno.env.get("ALLOW_ITEM_PRICE_FALLBACK") === "true";
+const REQUIRE_ENVIRONMENT = Deno.env.get("REQUIRE_ENVIRONMENT") !== "false";
+const MAX_BATCH_RETRIEVE_IDS = Number(Deno.env.get("MAX_BATCH_RETRIEVE_IDS") ?? 200);
+
 // Dynamic Square API base resolution
 function resolveSquareBase(environment?: string | null): string {
+  if (REQUIRE_ENVIRONMENT && !environment) {
+    throw new Error("Environment is required but not specified in integration");
+  }
   const env = (environment || "").toLowerCase();
   if (env === "sandbox" || env === "test") return "https://connect.squareupsandbox.com/v2";
-  return "https://connect.squareup.com/v2"; // production default
+  return "https://connect.squareup.com/v2";
 }
 
 class SearchNotSupportedError extends Error { 
@@ -335,7 +344,7 @@ async function searchCatalog(accessToken: string, baseUrl: string, cursor?: stri
   const url = `${baseUrl}/catalog/search-catalog-objects`;
   const body: any = {
     object_types: ["ITEM"],
-    include_related_objects: true,
+    include_related_objects: false, // Changed to false for per-page processing
     limit: IMPORT_PAGE_SIZE,
   };
   if (cursor) body.cursor = cursor;
@@ -362,9 +371,12 @@ async function searchCatalog(accessToken: string, baseUrl: string, cursor?: stri
     if (!resp.ok) {
       const text = await resp.text();
       
-      // Treat 404 as search not supported for automatic fallback
       if (resp.status === 404) {
-        throw new SearchNotSupportedError("search-catalog-objects returned 404 NOT_FOUND");
+        if (ALLOW_LIST_FALLBACK) {
+          throw new SearchNotSupportedError("search-catalog-objects returned 404 NOT_FOUND");
+        } else {
+          throw new Error(`Square catalog search not supported (404). List fallback is disabled. Response: ${text}`);
+        }
       } else if (resp.status === 403) {
         throw new Error(`Square catalog search forbidden (403): Check your Square app permissions for catalog access. Response: ${text}`);
       } else if (resp.status === 401) {
@@ -377,7 +389,7 @@ async function searchCatalog(accessToken: string, baseUrl: string, cursor?: stri
     const result = await resp.json();
     return {
       objects: result.objects ?? [],
-      related_objects: result.related_objects ?? [],
+      related_objects: [], // Always empty since include_related_objects is false
       cursor: result.cursor
     };
   }
@@ -425,6 +437,56 @@ async function listCatalog(accessToken: string, baseUrl: string, cursor?: string
   }
 }
 
+async function batchRetrieveVariations(accessToken: string, baseUrl: string, variationIds: string[]): Promise<any[]> {
+  if (variationIds.length === 0) return [];
+  
+  const url = `${baseUrl}/catalog/batch-retrieve`;
+  const chunks = [];
+  
+  // Chunk variation IDs to avoid hitting API limits
+  for (let i = 0; i < variationIds.length; i += MAX_BATCH_RETRIEVE_IDS) {
+    chunks.push(variationIds.slice(i, i + MAX_BATCH_RETRIEVE_IDS));
+  }
+  
+  const allVariations = [];
+  
+  for (const chunk of chunks) {
+    let attempt = 0;
+    while (true) {
+      attempt++;
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "Square-Version": "2023-10-18"
+        },
+        body: JSON.stringify({
+          object_ids: chunk,
+          include_related_objects: false
+        }),
+      });
+      
+      if (resp.status === 429 || resp.status >= 500) {
+        await sleep(Math.min(1000 * Math.pow(2, attempt), 8000));
+        continue;
+      }
+      
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`Square batchRetrieveVariations failed: ${resp.status} ${text}`);
+      }
+      
+      const result = await resp.json();
+      allVariations.push(...(result.objects || []));
+      break;
+    }
+  }
+  
+  return allVariations;
+}
+
 async function performImport(integrationId: string, runId: string) {
   const started = Date.now();
 
@@ -448,17 +510,6 @@ async function performImport(integrationId: string, runId: string) {
       return { ok: false, error: errorMessage };
     }
 
-    // Continue from checkpoint
-    let cursor: string | undefined = run.cursor ?? undefined;
-    let processed = run.processed_count ?? 0;
-
-    // Collection maps for two-pass approach
-    const itemMap = new Map<string, any>();
-    const variationMap = new Map<string, any[]>(); // Group variations by parent item ID
-    let useListFallback = false;
-
-    console.log("🔄 Starting Collection Pass...");
-    
     // Test catalog access first
     try {
       await testCatalogAccess(creds.accessToken, creds.baseUrl);
@@ -469,27 +520,37 @@ async function performImport(integrationId: string, runId: string) {
       await updateIntegrationLastError(integrationId, errorMessage);
       return { ok: false, error: errorMessage };
     }
-    
-    // PHASE 1: Collection Pass - gather all items and variations
+
+    // Continue from checkpoint
+    let cursor: string | undefined = run.cursor ?? undefined;
+    let totalCreatedCount = run.created_count ?? 0;
+    let totalUpdatedCount = run.updated_count ?? 0;
+    let totalFailedCount = run.failed_count ?? 0;
+    let totalProcessedCount = run.processed_count ?? 0;
+
+    console.log("🔄 Starting Per-Page Processing Pipeline...");
+
+    // Track currency information for safety  
+    const currencyTracker = new Map<string, number>();
+    let pageCount = 0;
+
+    // Search + BatchRetrieve + Process Pipeline (per page)
     while (true) {
       const fresh = await getRun(runId);
       if (fresh?.status === "FAILED") {
         return { ok: false, aborted: true };
       }
 
+      pageCount++;
+
+      // Step 1: Search ITEMS only (no related objects)
       let page: SquareSearchResponse;
-      
       try {
-        if (useListFallback) {
-          page = await listCatalog(creds.accessToken, creds.baseUrl, cursor);
-        } else {
-          page = await searchCatalog(creds.accessToken, creds.baseUrl, cursor);
-        }
+        page = await searchCatalog(creds.accessToken, creds.baseUrl, cursor);
       } catch (e) {
-        if (e instanceof SearchNotSupportedError && !useListFallback) {
+        if (e instanceof SearchNotSupportedError && ALLOW_LIST_FALLBACK) {
           console.log("🔄 Search not supported, falling back to list catalog...");
           await appendError(runId, "FALLBACK", "Switching from search to list catalog due to 404 NOT_FOUND");
-          useListFallback = true;
           page = await listCatalog(creds.accessToken, creds.baseUrl, cursor);
         } else {
           throw e;
@@ -497,95 +558,148 @@ async function performImport(integrationId: string, runId: string) {
       }
 
       const items = page.objects || [];
-      const related = page.related_objects || [];
+      if (items.length === 0 && !cursor) {
+        console.log("📦 No items found in catalog");
+        break;
+      }
 
-      // Accumulate in memory
-      for (const item of items) itemMap.set(item.id, item);
-      for (const variation of related) {
-        if (variation.type === "ITEM_VARIATION") {
-          // Group variations by their parent item ID
-          const parentItemId = variation.item_variation_data?.item_id;
-          if (parentItemId) {
-            if (!variationMap.has(parentItemId)) {
-              variationMap.set(parentItemId, []);
-            }
-            variationMap.get(parentItemId)!.push(variation);
+      console.log(`📄 Page ${pageCount}: Found ${items.length} items`);
+
+      // Step 2: Collect variation IDs from items
+      const variationIds: string[] = [];
+      for (const item of items) {
+        const variations = item.item_data?.variations || [];
+        for (const variation of variations) {
+          if (variation.id) {
+            variationIds.push(variation.id);
           }
         }
       }
 
-      processed += items.length + related.length;
+      console.log(`🔍 Collecting ${variationIds.length} variations for ${items.length} items`);
 
-      // Update progress
+      // Step 3: Batch retrieve variations
+      let variations: any[] = [];
+      if (variationIds.length > 0) {
+        try {
+          variations = await batchRetrieveVariations(creds.accessToken, creds.baseUrl, variationIds);
+          console.log(`✅ Retrieved ${variations.length} variation records`);
+        } catch (e) {
+          console.error(`Failed to batch retrieve variations:`, e);
+          await appendError(runId, 'BATCH_RETRIEVE_FAILED', `Failed to retrieve variations: ${e.message}`, {
+            op: 'batch_retrieve_variations',
+            variation_count: variationIds.length,
+            detail: e.message
+          });
+          throw e;
+        }
+      }
+
+      // Step 4: Build variation map for this page
+      const pageVariationMap = new Map<string, any[]>();
+      for (const variation of variations) {
+        if (variation.type === "ITEM_VARIATION") {
+          const parentItemId = variation.item_variation_data?.item_id;
+          if (parentItemId) {
+            if (!pageVariationMap.has(parentItemId)) {
+              pageVariationMap.set(parentItemId, []);
+            }
+            pageVariationMap.get(parentItemId)!.push(variation);
+          }
+        }
+      }
+
+      // Step 5: Process this page immediately
+      const pageProducts = [];
+      for (const item of items) {
+        const itemVariations = pageVariationMap.get(item.id) || [];
+        
+        if (itemVariations.length === 0) {
+          // Item without variations - create a single product
+          pageProducts.push({
+            item,
+            variation: null,
+            isStandaloneItem: true
+          });
+        } else {
+          // Item with variations - create products for each variation
+          for (const variation of itemVariations) {
+            // Track currency from price_money
+            if (variation.item_variation_data?.price_money?.currency) {
+              const currency = variation.item_variation_data.price_money.currency;
+              currencyTracker.set(currency, (currencyTracker.get(currency) || 0) + 1);
+            }
+            
+            pageProducts.push({
+              item,
+              variation,
+              isStandaloneItem: false
+            });
+          }
+        }
+      }
+
+      console.log(`🔗 Built ${pageProducts.length} products for page ${pageCount}`);
+
+      // Step 6: Process products for this page
+      let pageCreatedCount = 0;
+      let pageUpdatedCount = 0;
+      let pageFailedCount = 0;
+      
+      for (const merged of pageProducts) {
+        try {
+          const result = await upsertSingleProduct(supabaseAdmin, integrationId, runId, merged);
+          
+          if (result.created) pageCreatedCount++;
+          if (result.updated) pageUpdatedCount++;
+          
+        } catch (error) {
+          console.error(`Failed to process item:`, error);
+          pageFailedCount++;
+          await appendError(runId, 'UPSERT_FAILED', `Failed to upsert product: ${error.message}`, {
+            op: 'upsert_product',
+            sq_item_id: merged.item?.id,
+            sq_variation_id: merged.variation?.id,
+            detail: error.message
+          });
+        }
+      }
+
+      // Update totals
+      totalCreatedCount += pageCreatedCount;
+      totalUpdatedCount += pageUpdatedCount;
+      totalFailedCount += pageFailedCount;
+      totalProcessedCount += pageProducts.length;
+
+      // Update progress after each page
       cursor = page.cursor;
       await updateRun(runId, {
         cursor: cursor ?? null,
-        processed_count: processed,
+        processed_count: totalProcessedCount,
+        created_count: totalCreatedCount,
+        updated_count: totalUpdatedCount,
+        failed_count: totalFailedCount,
       });
 
-      // Yield if time budget exceeded
+      console.log(`📈 Page ${pageCount} complete: ${pageCreatedCount} created, ${pageUpdatedCount} updated, ${pageFailedCount} failed`);
+      console.log(`📊 Total progress: ${totalProcessedCount} processed (${totalCreatedCount} created, ${totalUpdatedCount} updated, ${totalFailedCount} failed)`);
+
+      // Check time budget and cursor
       const elapsed = (Date.now() - started) / 1000;
       if (elapsed > IMPORT_MAX_SECONDS - 5) {
         if (cursor) {
           await updateRun(runId, { status: "PARTIAL" });
           await selfInvoke({ integrationId, mode: "CONTINUE", runId });
-          return { ok: true, yielded: true, processed };
+          return { ok: true, yielded: true, processed: totalProcessedCount };
         } else {
-          console.log("Time budget hit but no cursor — collection complete; proceeding to processing in same invocation.");
-          // Keep status RUNNING; ensure progress is already written via updateRun above
-          break; // Exit collection loop and continue to processing pass
+          console.log("Time budget hit but no cursor — import complete; proceeding to finalization.");
+          break;
         }
       }
 
-      if (!cursor) break; // Collection complete
-    }
-
-    const itemCount = itemMap.size;
-    const variationCount = variationMap.size;
-    console.log(`📦 Collection complete: ${itemCount} items, ${variationCount} variations`);
-
-    // Check for empty catalog
-    if (itemCount === 0) {
-      await appendError(runId, "EMPTY_CATALOG", "No items found in Square catalog. Check permissions or environment.");
-      await updateRun(runId, { status: "SUCCESS", finished_at: new Date().toISOString() });
-      await updateIntegrationLastError(integrationId, "Empty catalog - no items found");
-      return { ok: true, done: true, processed, created: 0, updated: 0 };
-    }
-
-    console.log("⚙️ Starting Processing Pass...");
-    
-    // Phase 2: Processing pass - merge items with variations and upsert
-    console.log(`📊 Processing ${itemCount} items with ${variationCount} variations...`);
-    
-    // Track currency information for safety
-    const currencyTracker = new Map<string, number>();
-    
-    const mergedProducts = [];
-    for (const [itemId, item] of itemMap) {
-      const variations = variationMap.get(itemId) || [];
-      
-      if (variations.length === 0) {
-        // Item without variations - create a single product
-        mergedProducts.push({
-          item,
-          variation: null,
-          isStandaloneItem: true
-        });
-      } else {
-        // Item with variations - create products for each variation
-        for (const variation of variations) {
-          // Track currency from price_money
-          if (variation.item_variation_data?.price_money?.currency) {
-            const currency = variation.item_variation_data.price_money.currency;
-            currencyTracker.set(currency, (currencyTracker.get(currency) || 0) + 1);
-          }
-          
-          mergedProducts.push({
-            item,
-            variation,
-            isStandaloneItem: false
-          });
-        }
+      if (!cursor) {
+        console.log("✅ All pages processed - import complete");
+        break;
       }
     }
 
@@ -600,20 +714,15 @@ async function performImport(integrationId: string, runId: string) {
       console.log(`💰 All items use currency: ${Array.from(currencyTracker.keys())[0]}`);
     }
 
-    console.log(`🔗 Created ${mergedProducts.length} product entries for processing`);
-    
-    await upsertItemsWithVariations(
-      integrationId,
-      runId,
-      mergedProducts
-    );
+    // Check for empty catalog
+    if (totalProcessedCount === 0) {
+      await appendError(runId, "EMPTY_CATALOG", "No items found in Square catalog. Check permissions or environment.");
+      await updateRun(runId, { status: "SUCCESS", finished_at: new Date().toISOString() });
+      await updateIntegrationLastError(integrationId, "Empty catalog - no items found");
+      return { ok: true, done: true, processed: 0, created: 0, updated: 0 };
+    }
 
-    const finalRun = await getRun(runId);
-    const createdCount = finalRun?.created_count || 0;
-    const updatedCount = finalRun?.updated_count || 0;
-    const failedCount = finalRun?.failed_count || 0;
-
-    const finalStatus = failedCount > 0 && createdCount === 0 && updatedCount === 0 ? "FAILED" : "SUCCESS";
+    const finalStatus = totalFailedCount > 0 && totalCreatedCount === 0 && totalUpdatedCount === 0 ? "FAILED" : "SUCCESS";
     
     await updateRun(runId, {
       status: finalStatus,
@@ -621,8 +730,15 @@ async function performImport(integrationId: string, runId: string) {
     });
 
     await updateIntegrationLastError(integrationId, null);
-    console.log(`✅ Import completed: ${createdCount} created, ${updatedCount} updated, ${failedCount} failed`);
-    return { ok: true, done: true, processed, created: createdCount, updated: updatedCount, failed: failedCount };
+    console.log(`✅ Import completed: ${totalCreatedCount} created, ${totalUpdatedCount} updated, ${totalFailedCount} failed`);
+    return { 
+      ok: true, 
+      done: true, 
+      processed: totalProcessedCount, 
+      created: totalCreatedCount, 
+      updated: totalUpdatedCount, 
+      failed: totalFailedCount 
+    };
 
   } catch (e) {
     const errorMessage = e instanceof Error ? e.message : String(e);
@@ -639,56 +755,6 @@ async function updateIntegrationLastError(integrationId: string, msg: string | n
     .update({ last_error: msg })
     .eq("id", integrationId);
   if (error) console.error("updateIntegrationLastError", error);
-}
-
-async function upsertItemsWithVariations(
-  integrationId: string,
-  runId: string,
-  mergedProducts: Array<{ item: any; variation: any; isStandaloneItem: boolean }>
-) {
-  let processedCount = 0;
-  let createdCount = 0;
-  let updatedCount = 0;
-  let failedCount = 0;
-  
-  for (const merged of mergedProducts) {
-    try {
-      const result = await upsertSingleProduct(supabaseAdmin, integrationId, runId, merged);
-      processedCount++;
-      
-      if (result.created) createdCount++;
-      if (result.updated) updatedCount++;
-      
-      // Update progress every 50 items for better performance
-      if (processedCount % 50 === 0 || processedCount === mergedProducts.length) {
-        const { error: progressError } = await supabaseAdmin
-          .from('product_import_runs')
-          .update({ 
-            processed_count: processedCount,
-            created_count: createdCount,
-            updated_count: updatedCount,
-            failed_count: failedCount,
-            last_progress_at: new Date().toISOString()
-          })
-          .eq('id', runId);
-          
-        if (progressError) {
-          console.error('Failed to update progress:', progressError);
-        } else {
-          console.log(`📈 Progress: ${processedCount}/${mergedProducts.length} (${createdCount} created, ${updatedCount} updated, ${failedCount} failed)`);
-        }
-      }
-    } catch (error) {
-      console.error(`Failed to process item:`, error);
-      failedCount++; // Increment failed count for actual processing failures
-      await appendError(runId, 'UPSERT_FAILED', `Failed to upsert product: ${error.message}`, {
-        op: 'upsert_product',
-        sq_item_id: merged.item?.id,
-        sq_variation_id: merged.variation?.id,
-        detail: error.message
-      });
-    }
-  }
 }
 
 async function upsertSingleProduct(
@@ -712,13 +778,18 @@ async function upsertSingleProduct(
     throw new Error("Square item ID is missing");
   }
 
-  // Extract price and currency (prefer variation price, fallback to item price)
+  // Extract price and currency - STRICT: variation price only
   let priceCents: number | null = null;
   let currencyCode = 'USD'; // Default fallback
   if (variation?.item_variation_data?.price_money?.amount) {
     priceCents = parseInt(variation.item_variation_data.price_money.amount, 10);
     currencyCode = variation.item_variation_data.price_money.currency || 'USD';
+  } else if (!ALLOW_ITEM_PRICE_FALLBACK) {
+    // Strict policy: no item price fallback
+    priceCents = null;
+    currencyCode = 'USD';
   } else if (item.item_data?.variations?.[0]?.item_variation_data?.price_money?.amount) {
+    // Fallback allowed
     priceCents = parseInt(item.item_data.variations[0].item_variation_data.price_money.amount, 10);
     currencyCode = item.item_data.variations[0].item_variation_data.price_money.currency || 'USD';
   }
@@ -794,9 +865,18 @@ async function upsertSingleProduct(
             .throwOnError();
 
         } catch (updateError: any) {
-          // Handle UPC uniqueness violation gracefully
+          // STRICT: Handle UPC uniqueness violation - no retry without UPC
           if (updateError.code === '23505' && updateError.message?.includes('upc')) {
             console.warn(`⚠️ UPC conflict updating product ${existingProductId}: ${upc} already exists`);
+            await appendError(runId, 'UPC_CONFLICT', `UPC conflict during update: ${upc}`, {
+              op: 'update_product',
+              sq_item_id: squareItemId,
+              sq_variation_id: squareVariationId,
+              product_id: existingProductId,
+              upc: upc,
+              detail: 'Skipped UPC update due to conflict'
+            });
+            
             // Continue without UPC update
             const updateWithoutUpc = { ...updateData };
             delete updateWithoutUpc.upc;
@@ -848,26 +928,19 @@ async function upsertSingleProduct(
 
     newProductId = newProduct.id;
   } catch (createError: any) {
-    // Handle UPC uniqueness violation during creation
+    // STRICT: Handle UPC uniqueness violation - no retry without UPC
     if (createError.code === '23505' && createError.message?.includes('upc')) {
-      console.warn(`⚠️ UPC conflict creating product: ${upc} already exists, creating without UPC`);
+      console.warn(`⚠️ UPC conflict creating product: ${upc} already exists`);
+      await appendError(runId, 'UPC_CONFLICT', `UPC conflict during creation: ${upc}`, {
+        op: 'create_product',
+        sq_item_id: squareItemId,
+        sq_variation_id: squareVariationId,
+        upc: upc,
+        detail: 'Product creation skipped due to UPC conflict'
+      });
       
-      const { data: fallbackProduct } = await supabase
-        .from('products')
-        .insert({
-          name: productName,
-          sku: sku,
-          retail_price_cents: priceCents,
-          currency_code: currencyCode,
-          origin: 'SQUARE',
-          sync_state: 'SYNCED',
-          catalog_status: 'ACTIVE'
-        })
-        .select('id')
-        .single()
-        .throwOnError();
-      
-      newProductId = fallbackProduct.id;
+      // Don't create without UPC - skip this product entirely
+      throw new Error(`UPC conflict: ${upc} already exists. Product creation skipped.`);
     } else {
       throw createError;
     }
