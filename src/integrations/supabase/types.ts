@@ -208,6 +208,7 @@ export type Database = {
           auto_import_enabled: boolean
           auto_import_interval_minutes: number
           auto_push_enabled: boolean
+          catalog_mode: string
           created_at: string | null
           created_by: string | null
           display_name: string | null
@@ -222,6 +223,7 @@ export type Database = {
           auto_import_enabled?: boolean
           auto_import_interval_minutes?: number
           auto_push_enabled?: boolean
+          catalog_mode?: string
           created_at?: string | null
           created_by?: string | null
           display_name?: string | null
@@ -236,6 +238,7 @@ export type Database = {
           auto_import_enabled?: boolean
           auto_import_interval_minutes?: number
           auto_push_enabled?: boolean
+          catalog_mode?: string
           created_at?: string | null
           created_by?: string | null
           display_name?: string | null

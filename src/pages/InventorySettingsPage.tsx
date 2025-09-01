@@ -29,6 +29,7 @@ import { Badge } from '@/components/ui/badge';
 
 const integrationSchema = z.object({
   environment: z.enum(['SANDBOX', 'PRODUCTION']),
+  catalog_mode: z.enum(['SEARCH', 'LIST']),
   access_token: z.string(),
   auto_import_enabled: z.boolean(),
   auto_import_interval_hours: z.number().min(0.25).max(24), // 15 minutes to 24 hours
@@ -56,6 +57,7 @@ export default function InventorySettingsPage() {
     resolver: zodResolver(integrationSchema),
     defaultValues: {
       environment: 'PRODUCTION',
+      catalog_mode: 'SEARCH',
       access_token: '',
       auto_import_enabled: false,
       auto_import_interval_hours: 3, // 3 hours (was 180 minutes)
@@ -67,6 +69,7 @@ export default function InventorySettingsPage() {
     if (activeIntegration) {
       form.reset({
         environment: activeIntegration.environment as 'SANDBOX' | 'PRODUCTION',
+        catalog_mode: (activeIntegration.catalog_mode as 'SEARCH' | 'LIST') || 'SEARCH',
         access_token: '',
         auto_import_enabled: activeIntegration.auto_import_enabled,
         auto_import_interval_hours: activeIntegration.auto_import_interval_minutes / 60, // Convert minutes to hours
@@ -125,6 +128,7 @@ export default function InventorySettingsPage() {
         await updateIntegration.mutateAsync({
           id: activeIntegration.id,
           environment: values.environment,
+          catalog_mode: values.catalog_mode,
           auto_import_enabled: values.auto_import_enabled,
           auto_import_interval_minutes: Math.round(values.auto_import_interval_hours * 60), // Convert hours to minutes
           auto_push_enabled: values.auto_push_enabled, // Use the real boolean flag
@@ -146,6 +150,7 @@ export default function InventorySettingsPage() {
         const newIntegration = await createIntegration.mutateAsync({
           provider: 'SQUARE',
           environment: values.environment,
+          catalog_mode: values.catalog_mode,
           auto_import_enabled: values.auto_import_enabled,
           auto_import_interval_minutes: Math.round(values.auto_import_interval_hours * 60), // Convert hours to minutes
           auto_push_enabled: values.auto_push_enabled, // Use the real boolean flag
@@ -201,15 +206,18 @@ export default function InventorySettingsPage() {
              ) : activeIntegration ? (
                <div className="space-y-3">
                  <div className="flex items-center gap-4 flex-wrap">
-                   <span className="text-sm text-muted-foreground">
-                     Environment: {activeIntegration.environment}
-                   </span>
-                   <span className="text-sm text-muted-foreground">
-                     Auto Import: {activeIntegration.auto_import_enabled ? 'Enabled' : 'Disabled'}
-                   </span>
-                   <span className="text-sm text-muted-foreground">
-                     Auto Push: {activeIntegration.auto_push_enabled ? 'Enabled' : 'Disabled'}
-                   </span>
+                    <span className="text-sm text-muted-foreground">
+                      Environment: {activeIntegration.environment}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      Catalog Mode: {activeIntegration.catalog_mode || 'SEARCH'}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      Auto Import: {activeIntegration.auto_import_enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      Auto Push: {activeIntegration.auto_push_enabled ? 'Enabled' : 'Disabled'}
+                    </span>
                  </div>
                  
                  {/* Credential Status */}
@@ -280,28 +288,52 @@ export default function InventorySettingsPage() {
           <CardContent className="space-y-6">
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                <FormField
-                  control={form.control}
-                  name="environment"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Environment</FormLabel>
-                      <FormControl>
-                        <select
-                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                          {...field}
-                        >
-                          <option value="PRODUCTION">Production</option>
-                          <option value="SANDBOX">Sandbox</option>
-                        </select>
-                      </FormControl>
-                      <FormDescription>
-                        Choose the Square environment to connect to
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                 <FormField
+                   control={form.control}
+                   name="environment"
+                   render={({ field }) => (
+                     <FormItem>
+                       <FormLabel>Environment</FormLabel>
+                       <FormControl>
+                         <select
+                           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                           {...field}
+                         >
+                           <option value="PRODUCTION">Production</option>
+                           <option value="SANDBOX">Sandbox</option>
+                         </select>
+                       </FormControl>
+                       <FormDescription>
+                         Choose the Square environment to connect to
+                       </FormDescription>
+                       <FormMessage />
+                     </FormItem>
+                   )}
+                 />
+
+                 <FormField
+                   control={form.control}
+                   name="catalog_mode"
+                   render={({ field }) => (
+                     <FormItem>
+                       <FormLabel>Catalog Source Mode</FormLabel>
+                       <FormControl>
+                         <select
+                           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                           {...field}
+                         >
+                           <option value="SEARCH">Search (strict)</option>
+                           <option value="LIST">List (compatible)</option>
+                         </select>
+                       </FormControl>
+                       <FormDescription>
+                         <strong>Search (strict)</strong>: Faster + deterministic; requires Square Catalog Search access.<br/>
+                         <strong>List (compatible)</strong>: Works on all Square accounts; deterministic per-page processing.
+                       </FormDescription>
+                       <FormMessage />
+                     </FormItem>
+                   )}
+                 />
 
                 <FormField
                   control={form.control}

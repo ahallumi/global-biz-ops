@@ -1,5 +1,5 @@
 // Variation-aware Square Import Function
-// This implements the two-pass approach to fix the "0 processed items" issue
+// This implements deterministic catalog mode system (SEARCH or LIST)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -20,7 +20,6 @@ function resolveSquareBase(environment?: string | null): string {
   return "https://connect.squareup.com/v2";
 }
 
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -39,6 +38,11 @@ interface StartBody {
 interface SquareSearchResponse {
   objects?: any[];
   related_objects?: any[];
+  cursor?: string;
+}
+
+interface SquareListResponse {
+  objects?: any[];
   cursor?: string;
 }
 
@@ -85,6 +89,10 @@ Deno.serve(async (req) => {
         const creds = await getSquareCreds(body.integrationId);
         const who = await squareWhoAmI(creds.accessToken, creds.baseUrl);
         
+        // Get catalog mode for this integration
+        const integrationSettings = await getIntegrationSettings(body.integrationId);
+        const catalogMode = integrationSettings.catalog_mode || 'SEARCH';
+        
         // Log configuration on startup
         console.log(`🚀 Square Import Configuration:`, {
           REQUIRE_ENVIRONMENT,
@@ -93,7 +101,8 @@ Deno.serve(async (req) => {
           MAX_BATCH_RETRIEVE_IDS,
           IMPORT_MAX_SECONDS,
           baseUrl: creds.baseUrl,
-          environment: creds.environment || 'production'
+          environment: creds.environment || 'production',
+          catalogMode
         });
         
         await appendError(runId, "INFO", `Square merchant: ${who.merchantId} (${who.businessName || "?"}) @ ${creds.baseUrl} (${creds.environment || 'production'})`);
@@ -141,6 +150,27 @@ function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", ...corsHeaders } });
 }
 
+// Integration settings helper
+async function getIntegrationSettings(integrationId: string): Promise<{ catalog_mode?: string }> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('inventory_integrations')
+      .select('catalog_mode')
+      .eq('id', integrationId)
+      .single();
+    
+    if (error) {
+      console.error('Failed to get integration settings:', error);
+      return { catalog_mode: 'SEARCH' };
+    }
+    return data || { catalog_mode: 'SEARCH' };
+  } catch (err) {
+    console.error('Error in getIntegrationSettings:', err);
+    return { catalog_mode: 'SEARCH' };
+  }
+}
+
+// Supabase interaction functions
 async function getActiveRun(integrationId: string) {
   const { data, error } = await supabaseAdmin
     .from("product_import_runs")
@@ -330,6 +360,32 @@ async function testCatalogAccess(accessToken: string, baseUrl: string): Promise<
   console.log(`✅ Catalog access test passed. Found ${result.objects?.length || 0} catalog objects.`);
 }
 
+// Square data fetching functions
+async function listCatalog(accessToken: string, baseUrl: string, cursor?: string): Promise<SquareListResponse> {
+  const queryParams = new URLSearchParams();
+  queryParams.append('types', 'ITEM,ITEM_VARIATION');
+  queryParams.append('limit', IMPORT_PAGE_SIZE.toString());
+  if (cursor) {
+    queryParams.append('cursor', cursor);
+  }
+
+  const response = await fetch(`${baseUrl}/catalog/list?${queryParams}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Square-Version': '2024-10-17',
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`List catalog failed (${response.status}): ${error}`);
+  }
+
+  return response.json();
+}
+
 async function searchCatalog(accessToken: string, baseUrl: string, cursor?: string): Promise<SquareSearchResponse> {
   const url = `${baseUrl}/catalog/search-catalog-objects`;
   const body: any = {
@@ -380,7 +436,6 @@ async function searchCatalog(accessToken: string, baseUrl: string, cursor?: stri
     };
   }
 }
-
 
 async function batchRetrieveVariations(accessToken: string, baseUrl: string, variationIds: string[]): Promise<any[]> {
   if (variationIds.length === 0) return [];
@@ -436,7 +491,15 @@ async function batchRetrieveVariations(accessToken: string, baseUrl: string, var
   return allVariations;
 }
 
-async function performImport(integrationId: string, runId: string) {
+// Main import processing logic
+async function performImport(integrationId: string, runId: string): Promise<any> {
+  // Get integration settings to determine catalog mode
+  const integrationSettings = await getIntegrationSettings(integrationId);
+  const catalogMode = integrationSettings.catalog_mode || 'SEARCH';
+  
+  console.log(`Mode: ${catalogMode}`);
+
+  const timeRemaining = () => IMPORT_MAX_SECONDS - (Date.now() - started) / 1000;
   const started = Date.now();
 
   try {
@@ -470,197 +533,192 @@ async function performImport(integrationId: string, runId: string) {
       return { ok: false, error: errorMessage };
     }
 
-    // Continue from checkpoint
-    let cursor: string | undefined = run.cursor ?? undefined;
-    let totalCreatedCount = run.created_count ?? 0;
-    let totalUpdatedCount = run.updated_count ?? 0;
-    let totalFailedCount = run.failed_count ?? 0;
-    let totalProcessedCount = run.processed_count ?? 0;
+    const { accessToken, baseUrl } = creds;
+    let processedCount = run.processed_count || 0;
+    let createdCount = run.created_count || 0;
+    let updatedCount = run.updated_count || 0;
+    let failedCount = run.failed_count || 0;
 
     console.log("🔄 Starting Per-Page Processing Pipeline...");
 
-    // Track currency information for safety  
-    const currencyTracker = new Map<string, number>();
     let pageCount = 0;
+    let cursor = run.cursor || undefined;
 
-    // Search + BatchRetrieve + Process Pipeline (per page)
-    while (true) {
-      const fresh = await getRun(runId);
-      if (fresh?.status === "FAILED") {
-        return { ok: false, aborted: true };
+    while (timeRemaining() > 0) {
+      pageCount++;
+      console.log(`\n📄 Processing page ${pageCount} (cursor: ${cursor || "start"})...`);
+      
+      const pageStart = Date.now();
+      
+      // Fetch a page of items from Square based on catalog mode
+      let catalogResult: SquareSearchResponse | SquareListResponse;
+      let itemsFromPage: any[] = [];
+      let relatedObjects: any[] = [];
+      
+      try {
+        if (catalogMode === 'LIST') {
+          const listResult = await listCatalog(accessToken, baseUrl, cursor);
+          catalogResult = listResult;
+          
+          // Separate items and variations from the list response
+          itemsFromPage = (listResult.objects || []).filter(obj => obj.type === 'ITEM');
+          relatedObjects = (listResult.objects || []).filter(obj => obj.type === 'ITEM_VARIATION');
+          
+        } else {
+          // SEARCH mode (default)
+          const searchResult = await searchCatalog(accessToken, baseUrl, cursor);
+          catalogResult = searchResult;
+          itemsFromPage = searchResult.objects || [];
+          relatedObjects = [];
+        }
+      } catch (err: any) {
+        console.error(`${catalogMode} catalog failed:`, err.message);
+        
+        // For search mode, check if it's a 404 and provide helpful error
+        if (catalogMode === 'SEARCH' && err.message.includes('404')) {
+          await appendError(runId, "SEARCH_NOT_SUPPORTED", "Square catalog search not supported. Enable Square Catalog Search API access or switch integration to LIST mode in settings.");
+        } else {
+          await appendError(runId, "CATALOG_FETCH_FAILED", err.message);
+        }
+        throw err;
       }
 
-      pageCount++;
-
-      // Step 1: Search ITEMS only (no related objects)  
-      const page = await searchCatalog(creds.accessToken, creds.baseUrl, cursor);
-
-      const items = page.objects || [];
-      if (items.length === 0 && !cursor) {
-        console.log("📦 No items found in catalog");
+      if (itemsFromPage.length === 0) {
+        console.log("✅ No more items to process");
         break;
       }
 
-      console.log(`📄 Page ${pageCount}: Found ${items.length} items`);
-
-      // Step 2: Collect variation IDs from items
-      const variationIds: string[] = [];
-      for (const item of items) {
-        const variations = item.item_data?.variations || [];
-        for (const variation of variations) {
-          if (variation.id) {
-            variationIds.push(variation.id);
-          }
-        }
-      }
-
-      console.log(`🔍 Collecting ${variationIds.length} variations for ${items.length} items`);
-
-      // Step 3: Batch retrieve variations
       let variations: any[] = [];
-      if (variationIds.length > 0) {
-        try {
-          variations = await batchRetrieveVariations(creds.accessToken, creds.baseUrl, variationIds);
-          console.log(`✅ Retrieved ${variations.length} variation records`);
-        } catch (e) {
-          console.error(`Failed to batch retrieve variations:`, e);
-          await appendError(runId, 'BATCH_RETRIEVE_FAILED', `Failed to retrieve variations: ${e.message}`, {
-            op: 'batch_retrieve_variations',
-            variation_count: variationIds.length,
-            detail: e.message
-          });
-          throw e;
-        }
-      }
-
-      // Step 4: Build variation map for this page
-      const pageVariationMap = new Map<string, any[]>();
-      for (const variation of variations) {
-        if (variation.type === "ITEM_VARIATION") {
-          const parentItemId = variation.item_variation_data?.item_id;
-          if (parentItemId) {
-            if (!pageVariationMap.has(parentItemId)) {
-              pageVariationMap.set(parentItemId, []);
+      let pageVariationMap: Record<string, any[]> = {};
+      
+      if (catalogMode === 'LIST') {
+        // For LIST mode, build variation map from related_objects
+        pageVariationMap = {};
+        for (const variation of relatedObjects) {
+          if (variation.item_variation_data?.item_id) {
+            const itemId = variation.item_variation_data.item_id;
+            if (!pageVariationMap[itemId]) {
+              pageVariationMap[itemId] = [];
             }
-            pageVariationMap.get(parentItemId)!.push(variation);
+            pageVariationMap[itemId].push(variation);
+          }
+        }
+        console.log(`LIST mode: Found ${relatedObjects.length} variations for ${itemsFromPage.length} items`);
+      } else {
+        // For SEARCH mode, collect and batch retrieve variations
+        const variationIds: string[] = [];
+        for (const item of itemsFromPage) {
+          if (item.item_data?.variations) {
+            for (const variation of item.item_data.variations) {
+              if (variation.id) {
+                variationIds.push(variation.id);
+              }
+            }
+          }
+        }
+
+        console.log(`SEARCH mode: Found ${variationIds.length} variation IDs from ${itemsFromPage.length} items`);
+
+        // Batch retrieve all variations for this page  
+        variations = variationIds.length > 0 
+          ? await batchRetrieveVariations(accessToken, baseUrl, variationIds)
+          : [];
+        
+        // Build variation map for search mode
+        pageVariationMap = {};
+        for (const variation of variations) {
+          if (variation.item_variation_data?.item_id) {
+            const itemId = variation.item_variation_data.item_id;
+            if (!pageVariationMap[itemId]) {
+              pageVariationMap[itemId] = [];
+            }
+            pageVariationMap[itemId].push(variation);
           }
         }
       }
 
-      // Step 5: Process this page immediately
-      const pageProducts = [];
-      for (const item of items) {
-        const itemVariations = pageVariationMap.get(item.id) || [];
+      // Process each item with its variations
+      for (const item of itemsFromPage) {
+        const itemVariations = pageVariationMap[item.id] || [];
         
-        if (itemVariations.length === 0) {
-          // Item without variations - create a single product
-          pageProducts.push({
-            item,
-            variation: null,
-            isStandaloneItem: true
-          });
-        } else {
-          // Item with variations - create products for each variation
+        if (itemVariations.length > 0) {
+          // Item with variations
           for (const variation of itemVariations) {
-            // Track currency from price_money
-            if (variation.item_variation_data?.price_money?.currency) {
-              const currency = variation.item_variation_data.price_money.currency;
-              currencyTracker.set(currency, (currencyTracker.get(currency) || 0) + 1);
+            try {
+              const result = await upsertSingleProduct(supabaseAdmin, integrationId, runId, {
+                item,
+                variation,
+                isStandaloneItem: false
+              });
+              
+              if (result.created) createdCount++;
+              if (result.updated) updatedCount++;
+              
+            } catch (error: any) {
+              console.error(`Failed to process variation:`, error);
+              failedCount++;
+              await appendError(runId, 'VARIATION_UPSERT_FAILED', `Failed to upsert variation: ${error.message}`, {
+                op: 'upsert_variation',
+                sq_item_id: item.id,
+                sq_variation_id: variation.id,
+                detail: error.message
+              });
             }
-            
-            pageProducts.push({
+            processedCount++;
+          }
+        } else {
+          // Standalone item (no variations)
+          try {
+            const result = await upsertSingleProduct(supabaseAdmin, integrationId, runId, {
               item,
-              variation,
-              isStandaloneItem: false
+              variation: null,
+              isStandaloneItem: true
+            });
+            
+            if (result.created) createdCount++;
+            if (result.updated) updatedCount++;
+            
+          } catch (error: any) {
+            console.error(`Failed to process standalone item:`, error);
+            failedCount++;
+            await appendError(runId, 'ITEM_UPSERT_FAILED', `Failed to upsert standalone item: ${error.message}`, {
+              op: 'upsert_item',
+              sq_item_id: item.id,
+              detail: error.message
             });
           }
+          processedCount++;
         }
       }
 
-      console.log(`🔗 Built ${pageProducts.length} products for page ${pageCount}`);
-
-      // Step 6: Process products for this page
-      let pageCreatedCount = 0;
-      let pageUpdatedCount = 0;
-      let pageFailedCount = 0;
-      
-      for (const merged of pageProducts) {
-        try {
-          const result = await upsertSingleProduct(supabaseAdmin, integrationId, runId, merged);
-          
-          if (result.created) pageCreatedCount++;
-          if (result.updated) pageUpdatedCount++;
-          
-        } catch (error) {
-          console.error(`Failed to process item:`, error);
-          pageFailedCount++;
-          await appendError(runId, 'UPSERT_FAILED', `Failed to upsert product: ${error.message}`, {
-            op: 'upsert_product',
-            sq_item_id: merged.item?.id,
-            sq_variation_id: merged.variation?.id,
-            detail: error.message
-          });
-        }
-      }
-
-      // Update totals
-      totalCreatedCount += pageCreatedCount;
-      totalUpdatedCount += pageUpdatedCount;
-      totalFailedCount += pageFailedCount;
-      totalProcessedCount += pageProducts.length;
-
-      // Update progress after each page
-      cursor = page.cursor;
-      await updateRun(runId, {
-        cursor: cursor ?? null,
-        processed_count: totalProcessedCount,
-        created_count: totalCreatedCount,
-        updated_count: totalUpdatedCount,
-        failed_count: totalFailedCount,
+      cursor = catalogResult.cursor;
+      await updateRun(runId, { 
+        cursor,
+        processed_count: processedCount,
+        created_count: createdCount,
+        updated_count: updatedCount,
+        failed_count: failedCount,
+        status: cursor ? "PARTIAL" : "SUCCESS"
       });
 
-      console.log(`📈 Page ${pageCount} complete: ${pageCreatedCount} created, ${pageUpdatedCount} updated, ${pageFailedCount} failed`);
-      console.log(`📊 Total progress: ${totalProcessedCount} processed (${totalCreatedCount} created, ${totalUpdatedCount} updated, ${totalFailedCount} failed)`);
-
-      // Check time budget and cursor
-      const elapsed = (Date.now() - started) / 1000;
-      if (elapsed > IMPORT_MAX_SECONDS - 5) {
-        if (cursor) {
-          await updateRun(runId, { status: "PARTIAL" });
-          await selfInvoke({ integrationId, mode: "CONTINUE", runId });
-          return { ok: true, yielded: true, processed: totalProcessedCount };
-        } else {
-          console.log("Time budget hit but no cursor — import complete; proceeding to finalization.");
-          break;
-        }
-      }
+      console.log(`Page ${pageCount}: processed ${itemsFromPage.length} items in ${Date.now() - pageStart}ms`);
+      console.log(`Running totals: ${processedCount} processed, ${createdCount} created, ${updatedCount} updated, ${failedCount} failed`);
 
       if (!cursor) {
         console.log("✅ All pages processed - import complete");
         break;
       }
+
+      // Check if we should yield for time
+      if (timeRemaining() <= 5) {
+        console.log(`⏰ Time budget reached, yielding with cursor`);
+        await updateRun(runId, { status: "PARTIAL" });
+        await selfInvoke({ integrationId, mode: "CONTINUE", runId });
+        return { ok: true, yielded: true, processed: processedCount };
+      }
     }
 
-    // Log currency information for safety
-    if (currencyTracker.size > 1) {
-      console.warn(`⚠️ Multiple currencies detected:`, Array.from(currencyTracker.entries()));
-      await appendError(runId, 'MIXED_CURRENCIES', 
-        `Multiple currencies found: ${Array.from(currencyTracker.keys()).join(', ')}`,
-        { currencies: Array.from(currencyTracker.entries()) }
-      );
-    } else if (currencyTracker.size === 1) {
-      console.log(`💰 All items use currency: ${Array.from(currencyTracker.keys())[0]}`);
-    }
-
-    // Check for empty catalog
-    if (totalProcessedCount === 0) {
-      await appendError(runId, "EMPTY_CATALOG", "No items found in Square catalog. Check permissions or environment.");
-      await updateRun(runId, { status: "SUCCESS", finished_at: new Date().toISOString() });
-      await updateIntegrationLastError(integrationId, "Empty catalog - no items found");
-      return { ok: true, done: true, processed: 0, created: 0, updated: 0 };
-    }
-
-    const finalStatus = totalFailedCount > 0 && totalCreatedCount === 0 && totalUpdatedCount === 0 ? "FAILED" : "SUCCESS";
+    const finalStatus = failedCount > 0 && createdCount === 0 && updatedCount === 0 ? "FAILED" : "SUCCESS";
     
     await updateRun(runId, {
       status: finalStatus,
@@ -668,14 +726,14 @@ async function performImport(integrationId: string, runId: string) {
     });
 
     await updateIntegrationLastError(integrationId, null);
-    console.log(`✅ Import completed: ${totalCreatedCount} created, ${totalUpdatedCount} updated, ${totalFailedCount} failed`);
+    console.log(`✅ Import completed: ${createdCount} created, ${updatedCount} updated, ${failedCount} failed`);
     return { 
       ok: true, 
       done: true, 
-      processed: totalProcessedCount, 
-      created: totalCreatedCount, 
-      updated: totalUpdatedCount, 
-      failed: totalFailedCount 
+      processed: processedCount, 
+      created: createdCount, 
+      updated: updatedCount, 
+      failed: failedCount 
     };
 
   } catch (e) {
