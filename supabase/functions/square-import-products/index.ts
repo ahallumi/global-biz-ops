@@ -761,354 +761,287 @@ async function upsertSingleProduct(
 ): Promise<{ created: boolean; updated: boolean; productId?: string }> {
   const { item, variation } = merged;
   
-  // Extract basic product info first
-  const productName = variation?.item_variation_data?.name || item?.item_data?.name || "Unnamed Item";
-  
-  // DEBUG: Log complete item and variation structure to find SKU/UPC fields
-  console.log(`🔍 RAW DATA STRUCTURE for ${productName}:`);
-  console.log('ITEM OBJECT:', JSON.stringify(item, null, 2));
-  if (variation) {
-    console.log('VARIATION OBJECT:', JSON.stringify(variation, null, 2));
-  }
-  
-  // Try multiple possible paths for SKU extraction based on Square API docs
-  let sku: string | null = null;
-  const skuPaths = [
-    variation?.item_variation_data?.sku,
-    variation?.sku, 
-    item?.item_data?.sku,
-    item?.sku,
-    variation?.item_variation_data?.item_variation_vendor_info?.vendor_code,
-    item?.item_data?.variations?.[0]?.item_variation_data?.sku
-  ];
-  
-  for (const path of skuPaths) {
-    if (path) {
-      sku = path;
-      console.log(`✅ Found SKU via path: ${path}`);
-      break;
-    }
-  }
-  
-  // Try multiple possible paths for UPC extraction 
-  let upc: string | null = null;
-  const upcPaths = [
-    variation?.item_variation_data?.upc,
-    variation?.upc,
-    item?.item_data?.upc, 
-    item?.upc,
-    variation?.item_variation_data?.item_variation_vendor_info?.vendor_upc,
-    item?.item_data?.variations?.[0]?.item_variation_data?.upc
-  ];
-  
-  for (const path of upcPaths) {
-    if (path) {
-      upc = path;
-      console.log(`✅ Found UPC via path: ${path}`);
-      break;
-    }
-  }
-  
-  console.log(`📊 EXTRACTED DATA for ${productName}:`);
-  console.log(`   SKU: ${sku || 'NULL'}`);
-  console.log(`   UPC: ${upc || 'NULL'}`);
-  
-  // Extract Square IDs
+  // Extract Square IDs first (these are our primary matching keys)
   const squareItemId = item?.id;
   const squareVariationId = variation?.id || null;
   
   if (!squareItemId) {
-    throw new Error("Square item ID is missing");
+    throw new Error('No Square item ID found');
   }
+  
+  // Extract and normalize field data
+  const extractedData = extractSquareFieldData(item, variation);
+  
+  console.log(`🔍 Processing Square item: ${extractedData.name}`);
+  console.log(`   Square Item ID: ${squareItemId}`);
+  console.log(`   Square Variation ID: ${squareVariationId || 'None'}`);
+  console.log(`   SKU: ${extractedData.sku || 'None'}`);
+  console.log(`   UPC: ${extractedData.upc || 'None'}`);
+  
+  // STEP 1: Match by POS link (highest priority - prevents duplicates)
+  let existingProduct = await findProductByPosLink(supabase, integrationId, squareItemId, squareVariationId);
+  let matchMethod = 'POS_LINK';
+  
+  if (!existingProduct && extractedData.upc) {
+    // STEP 2: Match by UPC (if non-empty)
+    existingProduct = await findProductByUPC(supabase, extractedData.upc);
+    matchMethod = 'UPC';
+  }
+  
+  if (!existingProduct && extractedData.sku) {
+    // STEP 3: Match by SKU (if non-empty)  
+    existingProduct = await findProductBySKU(supabase, extractedData.sku);
+    matchMethod = 'SKU';
+  }
+  
+  if (existingProduct) {
+    // Update existing product
+    console.log(`✅ Found existing product via ${matchMethod}: ${existingProduct.id}`);
+    const updated = await updateExistingProduct(supabase, runId, existingProduct, extractedData);
+    await ensurePosLink(supabase, existingProduct.id, integrationId, squareItemId, squareVariationId);
+    return { created: false, updated, productId: existingProduct.id };
+  } else {
+    // STEP 4: Create new product
+    console.log(`🆕 Creating new product: ${extractedData.name}`);
+    const productId = await createNewProduct(supabase, runId, extractedData);
+    await ensurePosLink(supabase, productId, integrationId, squareItemId, squareVariationId);
+    return { created: true, updated: false, productId };
+  }
+}
 
-  // Extract price and currency - STRICT: variation price only
-  let priceCents: number | null = null;
-  let currencyCode = 'USD'; // Default fallback
+// Helper function to extract and normalize Square field data
+function extractSquareFieldData(item: any, variation?: any) {
+  // Extract name
+  const name = (variation?.item_variation_data?.name || item?.item_data?.name || `Square Item ${item?.id}`)?.trim();
+  
+  // Extract and normalize SKU
+  let sku = variation?.item_variation_data?.sku || item?.item_data?.sku || null;
+  sku = sku?.trim() || null;
+  if (sku === '') sku = null;
+  
+  // Extract and normalize UPC  
+  let upc = variation?.item_variation_data?.upc || item?.item_data?.upc || null;
+  upc = upc?.trim() || null;
+  if (upc === '') upc = null;
+  
+  // Extract pricing info with proper fallback handling
+  let retailPriceCents: number | null = null;
+  let currencyCode = 'USD';
+  
   if (variation?.item_variation_data?.price_money?.amount) {
-    priceCents = parseInt(variation.item_variation_data.price_money.amount, 10);
+    retailPriceCents = parseInt(variation.item_variation_data.price_money.amount, 10);
     currencyCode = variation.item_variation_data.price_money.currency || 'USD';
-  } else if (!ALLOW_ITEM_PRICE_FALLBACK) {
-    // Strict policy: no item price fallback
-    priceCents = null;
-    currencyCode = 'USD';
-  } else if (item.item_data?.variations?.[0]?.item_variation_data?.price_money?.amount) {
-    // Fallback allowed
-    priceCents = parseInt(item.item_data.variations[0].item_variation_data.price_money.amount, 10);
+  } else if (ALLOW_ITEM_PRICE_FALLBACK && item?.item_data?.variations?.[0]?.item_variation_data?.price_money?.amount) {
+    retailPriceCents = parseInt(item.item_data.variations[0].item_variation_data.price_money.amount, 10);
     currencyCode = item.item_data.variations[0].item_variation_data.price_money.currency || 'USD';
   }
-
-  // Step 1: NEW HIERARCHY - Look for existing product by POS ID first
-  let existingProductId: string | null = null;
-  let matchedBy = '';
   
-  // 1A. First priority: Look for existing POS link (variation or item)
-  const { data: linkData, error: linkError } = await supabase
+  return { name, sku, upc, retailPriceCents, currencyCode };
+}
+
+// Helper function to find product by POS link
+async function findProductByPosLink(supabase: any, integrationId: string, itemId: string, variationId: string | null) {
+  const { data } = await supabase
     .from('product_pos_links')
-    .select('product_id')
+    .select('product_id, products(*)')
     .eq('integration_id', integrationId)
     .eq('source', 'SQUARE')
-    .eq('pos_item_id', squareItemId)
-    .eq('pos_variation_id', squareVariationId)
+    .eq('pos_item_id', itemId)
+    .eq('pos_variation_id', variationId)
     .maybeSingle();
-  
-  if (linkError) {
-    console.error('Error looking up existing link:', linkError);
-    await appendError(runId, 'LINK_LOOKUP_FAILED', `Failed to lookup existing link: ${linkError.message}`, {
-      op: 'link_lookup',
-      sq_item_id: squareItemId,
-      sq_variation_id: squareVariationId,
-      detail: linkError.message
-    });
-  }
-  
-  if (linkData?.product_id) {
-    existingProductId = linkData.product_id;
-    matchedBy = 'POS_ID';
-    console.log(`🔗 Found existing product via POS link: ${existingProductId}`);
-  }
-  
-  // 1B. If no POS link found, try UPC match (if UPC provided)
-  if (!existingProductId && upc) {
-    const { data: upcMatch, error: upcError } = await supabase
-      .from('products')
-      .select('id')
-      .eq('upc', upc)
-      .eq('catalog_status', 'ACTIVE')
-      .maybeSingle();
     
-    if (upcError) {
-      console.warn('Error looking up UPC match:', upcError);
-    } else if (upcMatch?.id) {
-      existingProductId = upcMatch.id;
-      matchedBy = 'UPC';
-      console.log(`🏷️ Found existing product via UPC: ${existingProductId}`);
-    }
-  }
-  
-  // 1C. If no UPC match, try SKU match (if SKU provided)
-  if (!existingProductId && sku) {
-    const { data: skuMatch, error: skuError } = await supabase
-      .from('products')
-      .select('id')
-      .eq('sku', sku)
-      .eq('catalog_status', 'ACTIVE')
-      .maybeSingle();
-    
-    if (skuError) {
-      console.warn('Error looking up SKU match:', skuError);
-    } else if (skuMatch?.id) {
-      existingProductId = skuMatch.id;
-      matchedBy = 'SKU';
-      console.log(`📦 Found existing product via SKU: ${existingProductId}`);
-    }
-  }
-
-  if (existingProductId) {
-    // Step 2: Update existing product
-    const { data: existingProduct, error: fetchError } = await supabase
-      .from('products')
-      .select('id, name, sku, retail_price_cents, currency_code, upc')
-      .eq('id', existingProductId)
-      .single();
-
-    if (fetchError) {
-      console.error(`Error fetching existing product ${existingProductId}:`, fetchError);
-      throw fetchError;
-    }
-
-    if (existingProduct) {
-      // Update existing product with improved data (only if we have better info)
-      const updateData: any = {};
-      if (productName && productName !== existingProduct.name) {
-        updateData.name = productName;
-      }
-      if (sku && sku !== existingProduct.sku) {
-        updateData.sku = sku;
-      }
-      if (priceCents !== null && priceCents !== existingProduct.retail_price_cents) {
-        updateData.retail_price_cents = priceCents;
-      }
-      if (currencyCode !== existingProduct.currency_code) {
-        updateData.currency_code = currencyCode;
-      }
-      // Only update UPC if we have one and existing doesn't, or if it matches
-      if (upc && (!existingProduct.upc || existingProduct.upc === upc)) {
-        updateData.upc = upc;
-      }
-
-      if (Object.keys(updateData).length > 0) {
-        try {
-          await supabase
-            .from('products')
-            .update({
-              ...updateData,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', existingProductId)
-            .throwOnError();
-
-        } catch (updateError: any) {
-          // STRICT: Handle UPC uniqueness violation - no retry without UPC
-          if (updateError.code === '23505' && updateError.message?.includes('upc')) {
-            console.warn(`⚠️ UPC conflict updating product ${existingProductId}: ${upc} already exists`);
-            await appendError(runId, 'UPC_CONFLICT', `UPC conflict during update: ${upc}`, {
-              op: 'update_product',
-              sq_item_id: squareItemId,
-              sq_variation_id: squareVariationId,
-              product_id: existingProductId,
-              upc: upc,
-              detail: 'Skipped UPC update due to conflict'
-            });
-            
-            // Continue without UPC update
-            const updateWithoutUpc = { ...updateData };
-            delete updateWithoutUpc.upc;
-            
-            if (Object.keys(updateWithoutUpc).length > 0) {
-              await supabase
-                .from('products')
-                .update({
-                  ...updateWithoutUpc,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', existingProductId)
-                .throwOnError();
-            }
-          } else {
-            throw updateError;
-          }
-        }
-
-        console.log(`✅ Updated existing product: ${existingProductId} (matched by ${matchedBy})`);
-        
-        // Ensure POS link exists if product was matched by UPC/SKU
-        if (matchedBy !== 'POS_ID') {
-          await ensurePosLink(supabase, integrationId, existingProductId, squareItemId, squareVariationId);
-        }
-        
-        return { created: false, updated: true, productId: existingProductId };
-      }
-      
-      // Ensure POS link exists if product was matched by UPC/SKU
-      if (matchedBy !== 'POS_ID') {
-        await ensurePosLink(supabase, integrationId, existingProductId, squareItemId, squareVariationId);
-      }
-      
-      return { created: false, updated: false, productId: existingProductId }; // No updates needed
-    }
-  }
-
-  // Step 3: No existing product found - create new one
-  console.log(`🆕 Creating new product: ${productName}`);
-  
-  let newProductId: string;
-  
-  try {
-    const { data: newProduct } = await supabase
-      .from('products')
-      .insert({
-        name: productName,
-        sku: sku,
-        upc: upc,
-        retail_price_cents: priceCents,
-        currency_code: currencyCode,
-        origin: 'SQUARE',
-        sync_state: 'SYNCED',
-        catalog_status: 'ACTIVE'
-      })
-      .select('id')
-      .single()
-      .throwOnError();
-
-    newProductId = newProduct.id;
-  } catch (createError: any) {
-    // STRICT: Handle UPC uniqueness violation - no retry without UPC
-    if (createError.code === '23505' && createError.message?.includes('upc')) {
-      console.warn(`⚠️ UPC conflict creating product: ${upc} already exists`);
-      await appendError(runId, 'UPC_CONFLICT', `UPC conflict during creation: ${upc}`, {
-        op: 'create_product',
-        sq_item_id: squareItemId,
-        sq_variation_id: squareVariationId,
-        upc: upc,
-        detail: 'Product creation skipped due to UPC conflict'
-      });
-      
-      // Don't create without UPC - skip this product entirely
-      throw new Error(`UPC conflict: ${upc} already exists. Product creation skipped.`);
-    } else {
-      throw createError;
-    }
-  }
-
-  console.log(`✅ Created new product: ${newProductId}`);
-
-  // Step 4: Create the POS link
-  try {
-    await supabase
-      .from('product_pos_links')
-      .insert({
-        integration_id: integrationId,
-        product_id: newProductId,
-        pos_item_id: squareItemId,
-        pos_variation_id: squareVariationId,
-        source: 'SQUARE'
-      })
-      .throwOnError();
-
-    console.log(`🔗 Created POS link for product: ${newProductId}`);
-  } catch (linkError: any) {
-    // If link creation fails due to duplicate, it's likely idempotent - log but don't fail
-    if (linkError.code === '23505') {
-      console.log(`ℹ️ Link already exists for product ${newProductId} (idempotent)`);
-    } else {
-      await appendError(runId, 'LINK_CREATE_FAILED', `Failed to create POS link: ${linkError.message}`, {
-        op: 'create_link',
-        table: 'product_pos_links',
-        product_id: newProductId,
-        sq_item_id: squareItemId,
-        sq_variation_id: squareVariationId,
-        detail: linkError.message
-      });
-      throw linkError;
-    }
-  }
-  
-  return { created: true, updated: false, productId: newProductId };
+  return data?.products;
 }
 
-// Helper function to ensure POS link exists
-async function ensurePosLink(supabase: any, integrationId: string, productId: string, squareItemId: string, squareVariationId: string | null) {
+// Helper function to find product by UPC
+async function findProductByUPC(supabase: any, upc: string) {
+  const { data } = await supabase
+    .from('products')
+    .select('*')
+    .eq('upc', upc)
+    .eq('catalog_status', 'ACTIVE')
+    .maybeSingle();
+    
+  return data;
+}
+
+// Helper function to find product by SKU
+async function findProductBySKU(supabase: any, sku: string) {
+  const { data } = await supabase
+    .from('products')
+    .select('*')
+    .eq('sku', sku)
+    .eq('catalog_status', 'ACTIVE')
+    .maybeSingle();
+    
+  return data;
+}
+
+// Helper function to update existing product with "don't downgrade data" logic
+async function updateExistingProduct(supabase: any, runId: string, existingProduct: any, extractedData: any): Promise<boolean> {
+  const updateData: any = {
+    origin: 'SQUARE',
+    sync_state: 'SYNCED'
+  };
+  
+  let hasUpdates = false;
+  
+  // Only update name if incoming is better (longer, more descriptive)
+  if (extractedData.name && (
+    !existingProduct.name || 
+    existingProduct.name === 'Unnamed Item' ||
+    extractedData.name.length > existingProduct.name.length
+  )) {
+    updateData.name = extractedData.name;
+    hasUpdates = true;
+  }
+  
+  // Never overwrite non-empty SKU with empty/null
+  if (extractedData.sku && (!existingProduct.sku || existingProduct.sku !== extractedData.sku)) {
+    updateData.sku = extractedData.sku;
+    hasUpdates = true;
+  }
+  
+  // Never overwrite non-empty UPC with empty/null, handle conflicts gracefully
+  if (extractedData.upc && (!existingProduct.upc || existingProduct.upc !== extractedData.upc)) {
+    updateData.upc = extractedData.upc;
+    hasUpdates = true;
+  }
+  
+  // Update price and currency if provided
+  if (extractedData.retailPriceCents !== null) {
+    updateData.retail_price_cents = extractedData.retailPriceCents;
+    hasUpdates = true;
+  }
+  if (extractedData.currencyCode) {
+    updateData.currency_code = extractedData.currencyCode;
+    hasUpdates = true;
+  }
+  
+  if (hasUpdates) {
+    try {
+      const { error: updateError } = await supabase
+        .from('products')
+        .update(updateData)
+        .eq('id', existingProduct.id);
+        
+      if (updateError) {
+        // Handle UPC conflict specifically
+        if (updateError.code === '23505' && updateError.message?.includes('upc')) {
+          console.log(`⚠️ UPC_CONFLICT: Product ${existingProduct.id}, UPC: ${extractedData.upc}`);
+          await appendError(runId, 'UPC_CONFLICT', `UPC conflict during update: ${extractedData.upc}`, {
+            op: 'update_product',
+            product_id: existingProduct.id,
+            upc: extractedData.upc,
+            detail: 'Skipped UPC update due to conflict'
+          });
+          
+          // Retry without UPC
+          delete updateData.upc;
+          const { error: retryError } = await supabase
+            .from('products')
+            .update(updateData)
+            .eq('id', existingProduct.id);
+          if (retryError) throw retryError;
+        } else {
+          throw updateError;
+        }
+      }
+      
+      console.log(`✅ Updated product: ${existingProduct.id}`);
+      return true;
+    } catch (error) {
+      await appendError(runId, 'UPSERT_FAILED', `Failed to update product: ${error}`, {
+        op: 'update_product',
+        product_id: existingProduct.id,
+        detail: String(error)
+      });
+      throw error;
+    }
+  }
+  
+  return false;
+}
+
+// Helper function to create new product
+async function createNewProduct(supabase: any, runId: string, extractedData: any): Promise<string> {
+  const productData = {
+    name: extractedData.name,
+    sku: extractedData.sku,
+    upc: extractedData.upc,
+    retail_price_cents: extractedData.retailPriceCents,
+    currency_code: extractedData.currencyCode,
+    origin: 'SQUARE',
+    sync_state: 'SYNCED',
+    catalog_status: 'ACTIVE'
+  };
+  
   try {
+    const { data: newProduct, error: insertError } = await supabase
+      .from('products')
+      .insert([productData])
+      .select()
+      .single();
+      
+    if (insertError) {
+      // Handle UPC conflict specifically
+      if (insertError.code === '23505' && insertError.message?.includes('upc')) {
+        console.log(`⚠️ UPC_CONFLICT: Cannot create product with UPC ${extractedData.upc} - already exists`);
+        await appendError(runId, 'UPC_CONFLICT', `UPC conflict during creation: ${extractedData.upc}`, {
+          op: 'create_product',
+          upc: extractedData.upc,
+          detail: 'Product creation skipped due to UPC conflict'
+        });
+        throw new Error(`UPC conflict: ${extractedData.upc} already exists. Product creation skipped.`);
+      }
+      
+      console.error(`Failed to create product:`, insertError);
+      await appendError(runId, 'UPSERT_FAILED', `Failed to create product: ${insertError.message}`, {
+        op: 'create_product',
+        detail: insertError.message
+      });
+      throw insertError;
+    }
+    
+    console.log(`✅ Created new product: ${newProduct.id}`);
+    return newProduct.id;
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function ensurePosLink(
+  supabase: any,
+  productId: string,
+  integrationId: string,
+  squareItemId: string,
+  squareVariationId?: string | null
+) {
+  try {
+    const linkData: any = {
+      product_id: productId,
+      integration_id: integrationId,
+      source: 'SQUARE',
+      pos_item_id: squareItemId,
+      pos_variation_id: squareVariationId || null
+    };
+    
     const { error } = await supabase
       .from('product_pos_links')
-      .upsert({
-        integration_id: integrationId,
-        product_id: productId,
-        pos_item_id: squareItemId,
-        pos_variation_id: squareVariationId,
-        source: 'SQUARE'
-      }, {
-        onConflict: 'integration_id,source,pos_item_id,pos_variation_id'
-      });
-    
-    if (error && error.code !== '23505') { // Ignore duplicate key errors
-      console.warn('Warning: Could not ensure POS link:', error);
-    } else {
-      console.log(`🔗 Ensured POS link for product ${productId}`);
+      .insert([linkData]);
+      
+    if (error && error.code !== '23505') { // Ignore unique constraint violations (link already exists)
+      console.error(`Failed to create POS link for product ${productId}:`, error);
+      throw error;
     }
-  } catch (err) {
-    console.warn('Warning: Could not ensure POS link:', err);
-  }
-}
-
-function sleep(ms: number) { 
-  return new Promise((r) => setTimeout(r, ms)); 
-}
-
-function tryParseJson(text: string): any {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
+    
+    if (error?.code === '23505') {
+      console.log(`ℹ️ Link already exists for product ${productId} (idempotent)`);
+    } else {
+      console.log(`✅ Created POS link for product ${productId}`);
+    }
+  } catch (error) {
+    console.error(`Error ensuring POS link:`, error);
+    throw error;
   }
 }
