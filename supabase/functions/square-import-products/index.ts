@@ -8,25 +8,18 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const IMPORT_MAX_SECONDS = Number(Deno.env.get("IMPORT_MAX_SECONDS") ?? 50);
 const IMPORT_PAGE_SIZE = Number(Deno.env.get("IMPORT_PAGE_SIZE") ?? 100);
 
-// Configuration flags for strict policies
-const ALLOW_LIST_FALLBACK = Deno.env.get("ALLOW_LIST_FALLBACK") === "true";
+// Configuration flags for strict policies  
 const ALLOW_ITEM_PRICE_FALLBACK = Deno.env.get("ALLOW_ITEM_PRICE_FALLBACK") === "true";
 const REQUIRE_ENVIRONMENT = Deno.env.get("REQUIRE_ENVIRONMENT") !== "false";
 const MAX_BATCH_RETRIEVE_IDS = Number(Deno.env.get("MAX_BATCH_RETRIEVE_IDS") ?? 200);
 
 // Dynamic Square API base resolution
 function resolveSquareBase(environment?: string | null): string {
-  if (REQUIRE_ENVIRONMENT && !environment) {
-    throw new Error("Environment is required but not specified in integration");
-  }
   const env = (environment || "").toLowerCase();
   if (env === "sandbox" || env === "test") return "https://connect.squareupsandbox.com/v2";
   return "https://connect.squareup.com/v2";
 }
 
-class SearchNotSupportedError extends Error { 
-  code = "SEARCH_NOT_SUPPORTED"; 
-}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -85,43 +78,34 @@ Deno.serve(async (req) => {
 
       const runId = await createRun(body.integrationId);
 
-      // Kickstart enhancement: immediately transition to RUNNING with preflight
-      await updateRun(runId, { status: "RUNNING" });
+      // Kickstart enhancement: immediately transition to RUNNING
+      await updateRun(runId, { status: "RUNNING", processed_count: 0 });
 
       try {
         const creds = await getSquareCreds(body.integrationId);
         const who = await squareWhoAmI(creds.accessToken, creds.baseUrl);
+        
+        // Log configuration on startup
+        console.log(`🚀 Square Import Configuration:`, {
+          REQUIRE_ENVIRONMENT,
+          ALLOW_ITEM_PRICE_FALLBACK,
+          IMPORT_PAGE_SIZE,
+          MAX_BATCH_RETRIEVE_IDS,
+          IMPORT_MAX_SECONDS,
+          baseUrl: creds.baseUrl,
+          environment: creds.environment || 'production'
+        });
+        
         await appendError(runId, "INFO", `Square merchant: ${who.merchantId} (${who.businessName || "?"}) @ ${creds.baseUrl} (${creds.environment || 'production'})`);
 
         // Test catalog access first
         await testCatalogAccess(creds.accessToken, creds.baseUrl);
 
-        // First page fetch to kickstart and avoid "PENDING forever"
-        let first: SquareSearchResponse;
-        try {
-          first = await searchCatalog(creds.accessToken, creds.baseUrl, undefined);
-        } catch (e) {
-          if (e instanceof SearchNotSupportedError) {
-            await appendError(runId, "FALLBACK", "Using list catalog due to search not supported");
-            first = await listCatalog(creds.accessToken, creds.baseUrl, undefined);
-          } else {
-            throw e;
-          }
-        }
-        const processed = (first.objects?.length || 0) + (first.related_objects?.length || 0);
-
-        await updateRun(runId, {
-          cursor: first.cursor ?? null,
-          processed_count: processed,
-          status: "RUNNING", // Always RUNNING, never SUCCESS in START
-          finished_at: null,  // Never set finished_at in START
-        });
-
-        // Always invoke CONTINUE to run processing pass, even if no cursor
-        console.log(`Kickstart done; invoking CONTINUE (cursor: ${first.cursor ? 'present' : 'none'})`);
+        // Always invoke CONTINUE to run processing pass - no first page fetch
+        console.log(`Kickstart done; invoking CONTINUE`);
         await selfInvoke({ integrationId: body.integrationId, mode: "CONTINUE", runId });
 
-        return json({ ok: true, runId, kickstarted: true, processed });
+        return json({ ok: true, runId, kickstarted: true });
       } catch (e) {
         const errorMessage = e instanceof Error ? e.message : String(e);
         await appendError(runId, "KICKSTART", errorMessage);
@@ -281,6 +265,12 @@ async function getSquareCreds(integrationId: string): Promise<{ accessToken: str
     
     const accessToken = data[0].access_token as string;
     const environment = data[0].environment as string | null;
+    
+    // Strict environment validation
+    if (REQUIRE_ENVIRONMENT && !environment) {
+      throw new Error("Square integration missing environment; set sandbox or production");
+    }
+    
     const baseUrl = resolveSquareBase(environment);
     
     console.log(`Successfully retrieved Square credentials for ${environment || 'production'} environment`);
@@ -372,15 +362,11 @@ async function searchCatalog(accessToken: string, baseUrl: string, cursor?: stri
       const text = await resp.text();
       
       if (resp.status === 404) {
-        if (ALLOW_LIST_FALLBACK) {
-          throw new SearchNotSupportedError("search-catalog-objects returned 404 NOT_FOUND");
-        } else {
-          throw new Error(`Square catalog search not supported (404). List fallback is disabled. Response: ${text}`);
-        }
+        throw new Error(`SEARCH_NOT_SUPPORTED: Square catalog search not supported (404). Response: ${text}`);
       } else if (resp.status === 403) {
-        throw new Error(`Square catalog search forbidden (403): Check your Square app permissions for catalog access. Response: ${text}`);
+        throw new Error(`CATALOG_FORBIDDEN: Square catalog search forbidden (403): Check your Square app permissions for catalog access. Response: ${text}`);
       } else if (resp.status === 401) {
-        throw new Error(`Square catalog search authentication failed (401): Check your access token validity. Response: ${text}`);
+        throw new Error(`AUTH_FAILED: Square catalog search authentication failed (401): Check your access token validity. Response: ${text}`);
       } else {
         throw new Error(`Square searchCatalog failed: ${resp.status} ${text}`);
       }
@@ -395,47 +381,6 @@ async function searchCatalog(accessToken: string, baseUrl: string, cursor?: stri
   }
 }
 
-async function listCatalog(accessToken: string, baseUrl: string, cursor?: string): Promise<SquareSearchResponse> {
-  const url = new URL(`${baseUrl}/catalog/list`);
-  url.searchParams.set("types", "ITEM,ITEM_VARIATION");
-  url.searchParams.set("limit", String(IMPORT_PAGE_SIZE));
-  if (cursor) url.searchParams.set("cursor", cursor);
-
-  let attempt = 0;
-  while (true) {
-    attempt++;
-    const resp = await fetch(url.toString(), {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/json",
-        "Square-Version": "2023-10-18"
-      },
-    });
-    
-    if (resp.status === 429 || resp.status >= 500) {
-      await sleep(Math.min(1000 * Math.pow(2, attempt), 8000));
-      continue;
-    }
-    
-    if (!resp.ok) {
-      const text = await resp.text();
-      throw new Error(`Square listCatalog failed: ${resp.status} ${text}`);
-    }
-    
-    const result = await resp.json();
-    
-    // Separate items and variations for list endpoint
-    const objects = (result.objects || []).filter((obj: any) => obj.type === "ITEM");
-    const related_objects = (result.objects || []).filter((obj: any) => obj.type === "ITEM_VARIATION");
-    
-    return {
-      objects,
-      related_objects,
-      cursor: result.cursor
-    };
-  }
-}
 
 async function batchRetrieveVariations(accessToken: string, baseUrl: string, variationIds: string[]): Promise<any[]> {
   if (variationIds.length === 0) return [];
@@ -450,7 +395,11 @@ async function batchRetrieveVariations(accessToken: string, baseUrl: string, var
   
   const allVariations = [];
   
-  for (const chunk of chunks) {
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    if (chunks.length > 1) {
+      console.log(`🔗 BatchRetrieve ${i + 1}/${chunks.length} (chunk size ${chunk.length})`);
+    }
     let attempt = 0;
     while (true) {
       attempt++;
@@ -543,19 +492,8 @@ async function performImport(integrationId: string, runId: string) {
 
       pageCount++;
 
-      // Step 1: Search ITEMS only (no related objects)
-      let page: SquareSearchResponse;
-      try {
-        page = await searchCatalog(creds.accessToken, creds.baseUrl, cursor);
-      } catch (e) {
-        if (e instanceof SearchNotSupportedError && ALLOW_LIST_FALLBACK) {
-          console.log("🔄 Search not supported, falling back to list catalog...");
-          await appendError(runId, "FALLBACK", "Switching from search to list catalog due to 404 NOT_FOUND");
-          page = await listCatalog(creds.accessToken, creds.baseUrl, cursor);
-        } else {
-          throw e;
-        }
-      }
+      // Step 1: Search ITEMS only (no related objects)  
+      const page = await searchCatalog(creds.accessToken, creds.baseUrl, cursor);
 
       const items = page.objects || [];
       if (items.length === 0 && !cursor) {
