@@ -166,6 +166,13 @@ export type Database = {
             foreignKeyName: "intake_reconcile_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "v_product_pos_identity"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "intake_reconcile_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "v_products_catalog"
             referencedColumns: ["id"]
           },
@@ -331,6 +338,13 @@ export type Database = {
             foreignKeyName: "product_candidates_merged_into_product_id_fkey"
             columns: ["merged_into_product_id"]
             isOneToOne: false
+            referencedRelation: "v_product_pos_identity"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "product_candidates_merged_into_product_id_fkey"
+            columns: ["merged_into_product_id"]
+            isOneToOne: false
             referencedRelation: "v_products_catalog"
             referencedColumns: ["id"]
           },
@@ -480,6 +494,13 @@ export type Database = {
             foreignKeyName: "product_intake_items_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "v_product_pos_identity"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "product_intake_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "v_products_catalog"
             referencedColumns: ["id"]
           },
@@ -583,6 +604,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_pos_links_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_product_pos_identity"
+            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "product_pos_links_product_id_fkey"
@@ -890,6 +918,13 @@ export type Database = {
             foreignKeyName: "supplier_products_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
+            referencedRelation: "v_product_pos_identity"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "supplier_products_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "v_products_catalog"
             referencedColumns: ["id"]
           },
@@ -991,6 +1026,33 @@ export type Database = {
       }
     }
     Views: {
+      v_product_pos_identity: {
+        Row: {
+          barcode: string | null
+          catalog_status: Database["public"]["Enums"]["catalog_status"] | null
+          integration_id: string | null
+          name: string | null
+          origin: string | null
+          pos_item_id: string | null
+          pos_link_created_at: string | null
+          pos_product_id: string | null
+          pos_variation_id: string | null
+          product_id: string | null
+          sku: string | null
+          source: Database["public"]["Enums"]["pos_source"] | null
+          sync_state: string | null
+          upc: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_pos_links_integration_id_fkey"
+            columns: ["integration_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_integrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_products_catalog: {
         Row: {
           approved_at: string | null
