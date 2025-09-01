@@ -104,13 +104,13 @@ Deno.serve(async (req) => {
         await updateRun(runId, {
           cursor: first.cursor ?? null,
           processed_count: processed,
-          status: first.cursor ? "PARTIAL" : "SUCCESS",
-          finished_at: first.cursor ? null : new Date().toISOString(),
+          status: "RUNNING", // Always RUNNING, never SUCCESS in START
+          finished_at: null,  // Never set finished_at in START
         });
 
-        // If more to do, chain a CONTINUE
-        if (first.cursor) await selfInvoke({ integrationId: body.integrationId, mode: "CONTINUE", runId });
-        else await updateIntegrationLastError(body.integrationId, null);
+        // Always invoke CONTINUE to run processing pass, even if no cursor
+        console.log(`Kickstart done; invoking CONTINUE (cursor: ${first.cursor ? 'present' : 'none'})`);
+        await selfInvoke({ integrationId: body.integrationId, mode: "CONTINUE", runId });
 
         return json({ ok: true, runId, kickstarted: true, processed });
       } catch (e) {
