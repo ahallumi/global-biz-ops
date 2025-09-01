@@ -171,6 +171,44 @@ export function useFindPlaceholderProduct() {
   });
 }
 
+export function useProductsCount(catalogStatus: CatalogStatus = 'ACTIVE') {
+  return useQuery({
+    queryKey: ['products-count', catalogStatus],
+    queryFn: async () => {
+      try {
+        if (catalogStatus === 'ACTIVE') {
+          // Use secure catalog view for ACTIVE products only
+          const { count, error } = await supabase
+            .from('v_products_catalog' as any)
+            .select('*', { count: 'exact', head: true });
+          
+          if (error) throw error;
+          return count || 0;
+        } else {
+          // Use regular products table for other statuses
+          const { count, error } = await supabase
+            .from('products')
+            .select('*', { count: 'exact', head: true })
+            .eq('catalog_status', catalogStatus);
+          
+          if (error) throw error;
+          return count || 0;
+        }
+      } catch (err: any) {
+        const msg = String(err?.message || err);
+        if (/load failed|failed to fetch|network/i.test(msg)) {
+          console.warn('Products count query suppressed network error:', msg);
+          return 0;
+        }
+        throw err;
+      }
+    },
+    retry: 0,
+    refetchOnWindowFocus: false,
+    staleTime: 30000, // Cache count for 30 seconds as it changes less frequently
+  });
+}
+
 export function useDeleteProducts() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -195,6 +233,7 @@ export function useDeleteProducts() {
       // Invalidate all product-related queries
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['products'] }),
+        queryClient.invalidateQueries({ queryKey: ['products-count'] }),
         queryClient.invalidateQueries({ queryKey: ['products', 'search'] }),
         queryClient.refetchQueries({ queryKey: ['products', 'ACTIVE'] }),
         queryClient.refetchQueries({ queryKey: ['products', 'PLACEHOLDER'] }),

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useProducts, useSearchProducts, useDeleteProducts } from '@/hooks/useProducts';
+import { useProducts, useSearchProducts, useDeleteProducts, useProductsCount } from '@/hooks/useProducts';
 import { useProductCandidates } from '@/hooks/useProductCandidates';
 import { usePushProductsToSquare, usePullProductsFromSquare, useActiveSyncRun, useActiveImportRun } from '@/hooks/useProductSync';
 import { useInventoryIntegrations } from '@/hooks/useInventoryIntegrations';
@@ -50,6 +50,7 @@ export default function ProductsPage() {
   // Product hooks - now filtered by catalog status
   const { data: products = [], isLoading: isLoadingProducts, refetch: refetchProducts } = useProducts('ACTIVE');
   const { data: searchResults = [], isLoading: isSearching } = useSearchProducts(searchQuery, 'ACTIVE');
+  const { data: totalProductsCount = 0 } = useProductsCount('ACTIVE');
   
   
   const pushToSquare = usePushProductsToSquare();
@@ -424,11 +425,15 @@ export default function ProductsPage() {
               {/* Products Table */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Live Catalog ({displayedProducts.length})</CardTitle>
+                  <CardTitle>
+                    Live Catalog ({displayedProducts.length}{!searchQuery.trim() && totalProductsCount > displayedProducts.length ? ` of ${totalProductsCount}` : ''})
+                  </CardTitle>
                   <CardDescription>
                     {searchQuery.trim() 
                       ? `Search results for "${searchQuery}"`
-                      : 'Active products available for sale'
+                      : totalProductsCount > displayedProducts.length 
+                        ? `Showing ${displayedProducts.length} of ${totalProductsCount} active products (pagination coming soon)`
+                        : 'Active products available for sale'
                     }
                   </CardDescription>
                 </CardHeader>
