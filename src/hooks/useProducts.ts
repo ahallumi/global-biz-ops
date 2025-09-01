@@ -106,11 +106,11 @@ export function useSearchProducts(query: string, catalogStatus: CatalogStatus = 
         if (!query.trim()) return [];
         
         if (catalogStatus === 'ACTIVE') {
-          // Use secure catalog view for ACTIVE products only
+          // Use POS identity view for enhanced search with POS IDs
           const { data, error } = await supabase
-            .from('v_products_catalog' as any)
+            .from('v_product_pos_identity' as any)
             .select('*')
-            .or(`name.ilike.%${query}%,sku.ilike.%${query}%,upc.ilike.%${query}%,barcode.ilike.%${query}%`)
+            .or(`name.ilike.%${query}%,sku.ilike.%${query}%,upc.ilike.%${query}%,barcode.ilike.%${query}%,pos_product_id.ilike.%${query}%,pos_item_id.ilike.%${query}%,pos_variation_id.ilike.%${query}%`)
             .order('name')
             .limit(20);
           

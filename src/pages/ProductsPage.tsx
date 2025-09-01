@@ -33,6 +33,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 
+import { ProductDeduplicationPanel } from '@/components/products/ProductDeduplicationPanel';
+
 const StagingTab = lazy(() => import('./products/StagingTab'));
 
 type Product = Database['public']['Tables']['products']['Row'];
@@ -193,6 +195,19 @@ export default function ProductsPage() {
         return (
           <div className="font-mono text-sm">
             {p?.upc || p?.plu || 'N/A'}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: 'pos_product_id',
+      header: 'POS Product ID',
+      cell: ({ row }) => {
+        const p = row.original as any;
+        const posProductId = p?.pos_product_id;
+        return (
+          <div className="font-mono text-xs text-muted-foreground">
+            {posProductId || 'N/A'}
           </div>
         );
       },
@@ -395,9 +410,12 @@ export default function ProductsPage() {
           )}
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className={`grid w-full ${isSafeMode ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            <TabsList className={`grid w-full ${isSafeMode ? 'grid-cols-2' : 'grid-cols-3'}`}>
               <TabsTrigger value="catalog">
                 Catalog ({products?.length || 0})
+              </TabsTrigger>
+              <TabsTrigger value="deduplication">
+                Deduplication
               </TabsTrigger>
               {!isSafeMode && (
                 <TabsTrigger value="staging">
@@ -546,6 +564,18 @@ export default function ProductsPage() {
                 </Suspense>
               </TabsContent>
             )}
+
+            <TabsContent value="deduplication" className="space-y-4">
+              <Suspense fallback={
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-16 w-full" />
+                  ))}
+                </div>
+              }>
+                <ProductDeduplicationPanel />
+              </Suspense>
+            </TabsContent>
           </Tabs>
         </div>
       </ErrorBoundary>

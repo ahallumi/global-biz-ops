@@ -790,13 +790,16 @@ async function upsertSingleProduct(
     currencyCode = item.item_data.variations[0].item_variation_data.price_money.currency || 'USD';
   }
 
-  // Step 1: Look for existing link by Square item ID (scoped to integration)
+  // Step 1: NEW HIERARCHY - Look for existing product by POS ID first
   let existingProductId: string | null = null;
+  let matchedBy = '';
   
+  // 1A. First priority: Look for existing POS link (variation or item)
   const { data: linkData, error: linkError } = await supabase
     .from('product_pos_links')
     .select('product_id')
     .eq('integration_id', integrationId)
+    .eq('source', 'SQUARE')
     .eq('pos_item_id', squareItemId)
     .eq('pos_variation_id', squareVariationId)
     .maybeSingle();
@@ -813,7 +816,44 @@ async function upsertSingleProduct(
   
   if (linkData?.product_id) {
     existingProductId = linkData.product_id;
-    console.log(`🔗 Found existing product via link: ${existingProductId}`);
+    matchedBy = 'POS_ID';
+    console.log(`🔗 Found existing product via POS link: ${existingProductId}`);
+  }
+  
+  // 1B. If no POS link found, try UPC match (if UPC provided)
+  if (!existingProductId && upc) {
+    const { data: upcMatch, error: upcError } = await supabase
+      .from('products')
+      .select('id')
+      .eq('upc', upc)
+      .eq('catalog_status', 'ACTIVE')
+      .maybeSingle();
+    
+    if (upcError) {
+      console.warn('Error looking up UPC match:', upcError);
+    } else if (upcMatch?.id) {
+      existingProductId = upcMatch.id;
+      matchedBy = 'UPC';
+      console.log(`🏷️ Found existing product via UPC: ${existingProductId}`);
+    }
+  }
+  
+  // 1C. If no UPC match, try SKU match (if SKU provided)
+  if (!existingProductId && sku) {
+    const { data: skuMatch, error: skuError } = await supabase
+      .from('products')
+      .select('id')
+      .eq('sku', sku)
+      .eq('catalog_status', 'ACTIVE')
+      .maybeSingle();
+    
+    if (skuError) {
+      console.warn('Error looking up SKU match:', skuError);
+    } else if (skuMatch?.id) {
+      existingProductId = skuMatch.id;
+      matchedBy = 'SKU';
+      console.log(`📦 Found existing product via SKU: ${existingProductId}`);
+    }
   }
 
   if (existingProductId) {
@@ -892,8 +932,19 @@ async function upsertSingleProduct(
           }
         }
 
-        console.log(`✅ Updated existing product: ${existingProductId}`);
+        console.log(`✅ Updated existing product: ${existingProductId} (matched by ${matchedBy})`);
+        
+        // Ensure POS link exists if product was matched by UPC/SKU
+        if (matchedBy !== 'POS_ID') {
+          await ensurePosLink(supabase, integrationId, existingProductId, squareItemId, squareVariationId);
+        }
+        
         return { created: false, updated: true, productId: existingProductId };
+      }
+      
+      // Ensure POS link exists if product was matched by UPC/SKU
+      if (matchedBy !== 'POS_ID') {
+        await ensurePosLink(supabase, integrationId, existingProductId, squareItemId, squareVariationId);
       }
       
       return { created: false, updated: false, productId: existingProductId }; // No updates needed
@@ -976,6 +1027,31 @@ async function upsertSingleProduct(
   }
   
   return { created: true, updated: false, productId: newProductId };
+}
+
+// Helper function to ensure POS link exists
+async function ensurePosLink(supabase: any, integrationId: string, productId: string, squareItemId: string, squareVariationId: string | null) {
+  try {
+    const { error } = await supabase
+      .from('product_pos_links')
+      .upsert({
+        integration_id: integrationId,
+        product_id: productId,
+        pos_item_id: squareItemId,
+        pos_variation_id: squareVariationId,
+        source: 'SQUARE'
+      }, {
+        onConflict: 'integration_id,source,pos_item_id,pos_variation_id'
+      });
+    
+    if (error && error.code !== '23505') { // Ignore duplicate key errors
+      console.warn('Warning: Could not ensure POS link:', error);
+    } else {
+      console.log(`🔗 Ensured POS link for product ${productId}`);
+    }
+  } catch (err) {
+    console.warn('Warning: Could not ensure POS link:', err);
+  }
 }
 
 function sleep(ms: number) { 
