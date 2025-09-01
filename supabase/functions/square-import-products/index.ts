@@ -761,10 +761,57 @@ async function upsertSingleProduct(
 ): Promise<{ created: boolean; updated: boolean; productId?: string }> {
   const { item, variation } = merged;
   
-  // Extract basic product info
+  // Extract basic product info first
   const productName = variation?.item_variation_data?.name || item?.item_data?.name || "Unnamed Item";
-  const sku = variation?.item_variation_data?.sku || item?.item_data?.sku || null;
-  const upc = variation?.item_variation_data?.upc || item?.item_data?.upc || null;
+  
+  // DEBUG: Log complete item and variation structure to find SKU/UPC fields
+  console.log(`🔍 RAW DATA STRUCTURE for ${productName}:`);
+  console.log('ITEM OBJECT:', JSON.stringify(item, null, 2));
+  if (variation) {
+    console.log('VARIATION OBJECT:', JSON.stringify(variation, null, 2));
+  }
+  
+  // Try multiple possible paths for SKU extraction based on Square API docs
+  let sku: string | null = null;
+  const skuPaths = [
+    variation?.item_variation_data?.sku,
+    variation?.sku, 
+    item?.item_data?.sku,
+    item?.sku,
+    variation?.item_variation_data?.item_variation_vendor_info?.vendor_code,
+    item?.item_data?.variations?.[0]?.item_variation_data?.sku
+  ];
+  
+  for (const path of skuPaths) {
+    if (path) {
+      sku = path;
+      console.log(`✅ Found SKU via path: ${path}`);
+      break;
+    }
+  }
+  
+  // Try multiple possible paths for UPC extraction 
+  let upc: string | null = null;
+  const upcPaths = [
+    variation?.item_variation_data?.upc,
+    variation?.upc,
+    item?.item_data?.upc, 
+    item?.upc,
+    variation?.item_variation_data?.item_variation_vendor_info?.vendor_upc,
+    item?.item_data?.variations?.[0]?.item_variation_data?.upc
+  ];
+  
+  for (const path of upcPaths) {
+    if (path) {
+      upc = path;
+      console.log(`✅ Found UPC via path: ${path}`);
+      break;
+    }
+  }
+  
+  console.log(`📊 EXTRACTED DATA for ${productName}:`);
+  console.log(`   SKU: ${sku || 'NULL'}`);
+  console.log(`   UPC: ${upc || 'NULL'}`);
   
   // Extract Square IDs
   const squareItemId = item?.id;
