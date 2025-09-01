@@ -777,6 +777,7 @@ async function upsertSingleProduct(
   console.log(`   Square Variation ID: ${squareVariationId || 'None'}`);
   console.log(`   SKU: ${extractedData.sku || 'None'}`);
   console.log(`   UPC: ${extractedData.upc || 'None'}`);
+  console.log(`   Price: ${extractedData.retailPriceCents ? `$${(extractedData.retailPriceCents / 100).toFixed(2)}` : 'None'} (${extractedData.priceSource})`);
   
   // STEP 1: Match by POS link (highest priority - prevents duplicates)
   let existingProduct = await findProductByPosLink(supabase, integrationId, squareItemId, squareVariationId);
@@ -824,19 +825,29 @@ function extractSquareFieldData(item: any, variation?: any) {
   upc = upc?.trim() || null;
   if (upc === '') upc = null;
   
-  // Extract pricing info with proper fallback handling
+  // Extract pricing info with enhanced logging
   let retailPriceCents: number | null = null;
   let currencyCode = 'USD';
+  let priceSource = 'NONE';
   
   if (variation?.item_variation_data?.price_money?.amount) {
     retailPriceCents = parseInt(variation.item_variation_data.price_money.amount, 10);
     currencyCode = variation.item_variation_data.price_money.currency || 'USD';
+    priceSource = 'VARIATION';
   } else if (ALLOW_ITEM_PRICE_FALLBACK && item?.item_data?.variations?.[0]?.item_variation_data?.price_money?.amount) {
     retailPriceCents = parseInt(item.item_data.variations[0].item_variation_data.price_money.amount, 10);
     currencyCode = item.item_data.variations[0].item_variation_data.price_money.currency || 'USD';
+    priceSource = 'ITEM_FALLBACK';
+  } else if (variation?.item_variation_data?.price_money === null || variation?.item_variation_data?.price_money === undefined) {
+    priceSource = 'VARIABLE_PRICE';
   }
   
-  return { name, sku, upc, retailPriceCents, currencyCode };
+  // Log price extraction for debugging
+  if (priceSource === 'NONE' && variation) {
+    console.log(`⚠️ No price found for variation ${variation.id}, variation price_money:`, variation.item_variation_data?.price_money);
+  }
+  
+  return { name, sku, upc, retailPriceCents, currencyCode, priceSource };
 }
 
 // Helper function to find product by POS link
@@ -908,6 +919,17 @@ async function updateExistingProduct(supabase: any, runId: string, existingProdu
     hasUpdates = true;
   }
   
+  // Mirror UPC to barcode when safe (barcode is empty or matches old UPC)
+  if (extractedData.upc && (
+    !existingProduct.barcode || 
+    existingProduct.barcode === '' ||
+    existingProduct.barcode === existingProduct.upc
+  )) {
+    updateData.barcode = extractedData.upc;
+    hasUpdates = true;
+    console.log(`🔗 Mirroring UPC to barcode: ${extractedData.upc}`);
+  }
+  
   // Update price and currency if provided
   if (extractedData.retailPriceCents !== null) {
     updateData.retail_price_cents = extractedData.retailPriceCents;
@@ -969,6 +991,7 @@ async function createNewProduct(supabase: any, runId: string, extractedData: any
     name: extractedData.name,
     sku: extractedData.sku,
     upc: extractedData.upc,
+    barcode: extractedData.upc, // Mirror UPC to barcode on creation
     retail_price_cents: extractedData.retailPriceCents,
     currency_code: extractedData.currencyCode,
     origin: 'SQUARE',

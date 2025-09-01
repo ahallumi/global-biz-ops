@@ -79,3 +79,6 @@ verify_jwt = true
 
 [functions.backfill-pos-links]
 verify_jwt = true
+
+[functions.cleanup-product-data]
+verify_jwt = true

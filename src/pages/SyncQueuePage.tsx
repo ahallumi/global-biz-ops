@@ -7,6 +7,7 @@ import { ColumnDef } from '@tanstack/react-table';
 import { useProductSyncRuns, useProductImportRuns, useActiveImportRun, useRunningImportRun, useAbortImport, useResumeImport } from '@/hooks/useProductSync';
 import { useInventoryIntegrations } from '@/hooks/useInventoryIntegrations';
 import { useBackfillPosLinks } from '@/hooks/useBackfillPosLinks';
+import { useProductDataCleanup } from '@/hooks/useProductDataCleanup';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EnhancedImportSummary } from '@/components/products/EnhancedImportSummary';
 import { History, Package, Upload, Download, Clock, CheckCircle, XCircle, AlertTriangle, StopCircle, Link } from 'lucide-react';
@@ -19,6 +20,7 @@ export default function SyncQueuePage() {
   const [isUnsticking, setIsUnsticking] = useState(false);
   const queryClient = useQueryClient();
   const backfillPosLinks = useBackfillPosLinks();
+  const cleanupMutation = useProductDataCleanup();
   
   // Sync hooks
   const { data: syncRuns, isLoading: isLoadingSyncRuns } = useProductSyncRuns();
@@ -90,6 +92,10 @@ export default function SyncQueuePage() {
     }
     
     backfillPosLinks.mutate(activeIntegration.id);
+  };
+
+  const handleCleanupProductData = () => {
+    cleanupMutation.mutate();
   };
 
   // Import runs columns - different structure than sync runs
@@ -304,6 +310,15 @@ export default function SyncQueuePage() {
             >
               <Link className="h-4 w-4 mr-2" />
               {backfillPosLinks.isPending ? 'Backfilling...' : 'Backfill POS Links'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleCleanupProductData}
+              disabled={cleanupMutation.isPending}
+            >
+              <Package className="h-4 w-4 mr-2" />
+              {cleanupMutation.isPending ? 'Cleaning...' : 'Cleanup Product Data'}
             </Button>
             <Button
               size="sm"
