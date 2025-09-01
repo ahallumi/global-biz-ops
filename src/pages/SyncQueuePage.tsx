@@ -6,16 +6,19 @@ import { DataTable } from '@/components/data-table/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
 import { useProductSyncRuns, useProductImportRuns, useActiveImportRun, useRunningImportRun, useAbortImport, useResumeImport } from '@/hooks/useProductSync';
 import { useInventoryIntegrations } from '@/hooks/useInventoryIntegrations';
+import { useBackfillPosLinks } from '@/hooks/useBackfillPosLinks';
 import { Skeleton } from '@/components/ui/skeleton';
-import { History, Package, Upload, Download, Clock, CheckCircle, XCircle, AlertTriangle, StopCircle } from 'lucide-react';
+import { EnhancedImportSummary } from '@/components/products/EnhancedImportSummary';
+import { History, Package, Upload, Download, Clock, CheckCircle, XCircle, AlertTriangle, StopCircle, Link } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
 export default function SyncQueuePage() {
-  const [isUnsticking, setIsUnsticking] = useState(false)
+  const [isUnsticking, setIsUnsticking] = useState(false);
   const queryClient = useQueryClient();
+  const backfillPosLinks = useBackfillPosLinks();
   
   // Sync hooks
   const { data: syncRuns, isLoading: isLoadingSyncRuns } = useProductSyncRuns();
@@ -74,7 +77,20 @@ export default function SyncQueuePage() {
     } catch (error) {
       // Error is handled by the mutation's onError callback
     }
-  }
+  };
+
+  const handleBackfillPosLinks = async () => {
+    if (!activeIntegration?.id) {
+      toast({
+        title: "No integration found",
+        description: "Cannot backfill without an active Square integration.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    backfillPosLinks.mutate(activeIntegration.id);
+  };
 
   // Import runs columns - different structure than sync runs
   const importRunColumns: ColumnDef<any>[] = [
@@ -283,6 +299,15 @@ export default function SyncQueuePage() {
             <Button
               size="sm"
               variant="outline"
+              onClick={handleBackfillPosLinks}
+              disabled={backfillPosLinks.isPending}
+            >
+              <Link className="h-4 w-4 mr-2" />
+              {backfillPosLinks.isPending ? 'Backfilling...' : 'Backfill POS Links'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               onClick={handleUnstickStaleRuns}
               disabled={isUnsticking}
             >
@@ -327,6 +352,14 @@ export default function SyncQueuePage() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* Enhanced Import Summary for Latest Run */}
+        {importRuns && importRuns.length > 0 && (
+          <EnhancedImportSummary 
+            importRun={importRuns[0]} 
+            showMatchBreakdown={true}
+          />
         )}
 
         <div className="grid gap-4 md:grid-cols-2">

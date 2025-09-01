@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/alert-dialog';
 
 import { ProductDeduplicationPanel } from '@/components/products/ProductDeduplicationPanel';
+import { PosProductId } from '@/components/products/PosProductId';
 
 const StagingTab = lazy(() => import('./products/StagingTab'));
 
@@ -203,12 +204,13 @@ export default function ProductsPage() {
       accessorKey: 'pos_product_id',
       header: 'POS Product ID',
       cell: ({ row }) => {
-        const p = row.original as any;
-        const posProductId = p?.pos_product_id;
+        const product = row.original as Product;
         return (
-          <div className="font-mono text-xs text-muted-foreground">
-            {posProductId || 'N/A'}
-          </div>
+          <PosProductId 
+            productId={product.id}
+            integrationId={activeIntegration?.id}
+            size="sm"
+          />
         );
       },
     },
