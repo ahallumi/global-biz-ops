@@ -526,9 +526,15 @@ async function performImport(integrationId: string, runId: string) {
       // Yield if time budget exceeded
       const elapsed = (Date.now() - started) / 1000;
       if (elapsed > IMPORT_MAX_SECONDS - 5) {
-        await updateRun(runId, { status: cursor ? "PARTIAL" : "RUNNING" });
-        if (cursor) await selfInvoke({ integrationId, mode: "CONTINUE", runId });
-        return { ok: true, yielded: Boolean(cursor), processed };
+        if (cursor) {
+          await updateRun(runId, { status: "PARTIAL" });
+          await selfInvoke({ integrationId, mode: "CONTINUE", runId });
+          return { ok: true, yielded: true, processed };
+        } else {
+          console.log("Time budget hit but no cursor — collection complete; proceeding to processing in same invocation.");
+          // Keep status RUNNING; ensure progress is already written via updateRun above
+          break; // Exit collection loop and continue to processing pass
+        }
       }
 
       if (!cursor) break; // Collection complete
