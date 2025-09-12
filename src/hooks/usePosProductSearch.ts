@@ -22,7 +22,7 @@ export function usePosProductSearch() {
 
     setLoading(true);
     try {
-      // Search for products by POS Item ID or Variation ID
+      // Search for products by POS Item ID or Variation ID using optimized query
       let searchQuery = supabase
         .from('v_product_pos_identity')
         .select('product_id, name, sku, upc, pos_item_id, pos_variation_id')

@@ -369,6 +369,7 @@ export type Database = {
           integration_id: string
           last_progress_at: string
           processed_count: number | null
+          skipped_count: number
           started_at: string | null
           status: Database["public"]["Enums"]["import_status"]
           updated_count: number | null
@@ -384,6 +385,7 @@ export type Database = {
           integration_id: string
           last_progress_at?: string
           processed_count?: number | null
+          skipped_count?: number
           started_at?: string | null
           status?: Database["public"]["Enums"]["import_status"]
           updated_count?: number | null
@@ -399,6 +401,7 @@ export type Database = {
           integration_id?: string
           last_progress_at?: string
           processed_count?: number | null
+          skipped_count?: number
           started_at?: string | null
           status?: Database["public"]["Enums"]["import_status"]
           updated_count?: number | null

@@ -131,6 +131,9 @@ export function LiveImportStatusPanel({ importRun, title }: LiveImportStatusPane
                 <span className="text-blue-600">
                   ↻ {updated} updated
                 </span>
+                <span className="text-muted-foreground">
+                  ✦ {importRun.skipped_count || 0} skipped
+                </span>
                 {(importRun.failed_count || 0) > 0 && (
                   <span className="text-red-600">
                     ✗ {importRun.failed_count} failed

@@ -537,6 +537,7 @@ async function performImport(integrationId: string, runId: string): Promise<any>
     let processedCount = run.processed_count || 0;
     let createdCount = run.created_count || 0;
     let updatedCount = run.updated_count || 0;
+    let skippedCount = run.skipped_count || 0;
     let failedCount = run.failed_count || 0;
 
     console.log("🔄 Starting Per-Page Processing Pipeline...");
@@ -645,14 +646,30 @@ async function performImport(integrationId: string, runId: string): Promise<any>
           // Item with variations
           for (const variation of itemVariations) {
             try {
-              const result = await upsertSingleProduct(supabaseAdmin, integrationId, runId, {
+              const result = await upsertSingleProduct(
+                supabaseAdmin, 
+                integrationId, 
                 item,
-                variation,
-                isStandaloneItem: false
-              });
-              
-              if (result.created) createdCount++;
-              if (result.updated) updatedCount++;
+                variation
+              );
+
+              if (result.success) {
+                if (result.created) {
+                  createdCount++;
+                } else if (result.updated) {
+                  updatedCount++;
+                } else if (result.skipped) {
+                  skippedCount++;
+                }
+              } else {
+                failedCount++;
+                await appendError(runId, result.error?.code || 'VARIATION_UPSERT_FAILED', result.error?.message || 'Failed to upsert variation', {
+                  op: 'upsert_variation',
+                  sq_item_id: item.id,
+                  sq_variation_id: variation.id,
+                  detail: result.error?.message
+                });
+              }
               
             } catch (error: any) {
               console.error(`Failed to process variation:`, error);
@@ -669,14 +686,29 @@ async function performImport(integrationId: string, runId: string): Promise<any>
         } else {
           // Standalone item (no variations)
           try {
-            const result = await upsertSingleProduct(supabaseAdmin, integrationId, runId, {
+            const result = await upsertSingleProduct(
+              supabaseAdmin, 
+              integrationId, 
               item,
-              variation: null,
-              isStandaloneItem: true
-            });
+              null
+            );
             
-            if (result.created) createdCount++;
-            if (result.updated) updatedCount++;
+            if (result.success) {
+              if (result.created) {
+                createdCount++;
+              } else if (result.updated) {
+                updatedCount++;
+              } else if (result.skipped) {
+                skippedCount++;
+              }
+            } else {
+              failedCount++;
+              await appendError(runId, result.error?.code || 'ITEM_UPSERT_FAILED', result.error?.message || 'Failed to upsert standalone item', {
+                op: 'upsert_item',
+                sq_item_id: item.id,
+                detail: result.error?.message
+              });
+            }
             
           } catch (error: any) {
             console.error(`Failed to process standalone item:`, error);
@@ -697,12 +729,13 @@ async function performImport(integrationId: string, runId: string): Promise<any>
         processed_count: processedCount,
         created_count: createdCount,
         updated_count: updatedCount,
+        skipped_count: skippedCount,
         failed_count: failedCount,
         status: cursor ? "PARTIAL" : "SUCCESS"
       });
 
       console.log(`Page ${pageCount}: processed ${itemsFromPage.length} items in ${Date.now() - pageStart}ms`);
-      console.log(`Running totals: ${processedCount} processed, ${createdCount} created, ${updatedCount} updated, ${failedCount} failed`);
+      console.log(`Running totals: ${processedCount} processed, ${createdCount} created, ${updatedCount} updated, ${skippedCount} skipped, ${failedCount} failed`);
 
       if (!cursor) {
         console.log("✅ All pages processed - import complete");
@@ -726,13 +759,14 @@ async function performImport(integrationId: string, runId: string): Promise<any>
     });
 
     await updateIntegrationLastError(integrationId, null);
-    console.log(`✅ Import completed: ${createdCount} created, ${updatedCount} updated, ${failedCount} failed`);
+    console.log(`✅ Import completed: ${createdCount} created, ${updatedCount} updated, ${skippedCount} skipped, ${failedCount} failed`);
     return { 
       ok: true, 
       done: true, 
       processed: processedCount, 
       created: createdCount, 
       updated: updatedCount, 
+      skipped: skippedCount,
       failed: failedCount 
     };
 
@@ -754,59 +788,186 @@ async function updateIntegrationLastError(integrationId: string, msg: string | n
 }
 
 async function upsertSingleProduct(
-  supabase: any,
-  integrationId: string,
-  runId: string,
-  merged: { item: any; variation: any; isStandaloneItem: boolean }
-): Promise<{ created: boolean; updated: boolean; productId?: string }> {
-  const { item, variation } = merged;
+  supabaseAdmin: any, 
+  integrationId: string, 
+  squareItem: any, 
+  variation?: any
+): Promise<{ success: boolean; created?: boolean; updated?: boolean; skipped?: boolean; error?: any }> {
+  const posItemId = squareItem.id;
+  const posVariationId = variation?.id || null;
   
-  // Extract Square IDs first (these are our primary matching keys)
-  const squareItemId = item?.id;
-  const squareVariationId = variation?.id || null;
-  
-  if (!squareItemId) {
-    throw new Error('No Square item ID found');
-  }
-  
-  // Extract and normalize field data
-  const extractedData = extractSquareFieldData(item, variation);
-  
-  console.log(`🔍 Processing Square item: ${extractedData.name}`);
-  console.log(`   Square Item ID: ${squareItemId}`);
-  console.log(`   Square Variation ID: ${squareVariationId || 'None'}`);
-  console.log(`   SKU: ${extractedData.sku || 'None'}`);
-  console.log(`   UPC: ${extractedData.upc || 'None'}`);
-  console.log(`   Price: ${extractedData.retailPriceCents ? `$${(extractedData.retailPriceCents / 100).toFixed(2)}` : 'None'} (${extractedData.priceSource})`);
-  
-  // STEP 1: Match by POS link (highest priority - prevents duplicates)
-  let existingProduct = await findProductByPosLink(supabase, integrationId, squareItemId, squareVariationId);
-  let matchMethod = 'POS_LINK';
-  
-  if (!existingProduct && extractedData.upc) {
-    // STEP 2: Match by UPC (if non-empty)
-    existingProduct = await findProductByUPC(supabase, extractedData.upc);
-    matchMethod = 'UPC';
-  }
-  
-  if (!existingProduct && extractedData.sku) {
-    // STEP 3: Match by SKU (if non-empty)  
-    existingProduct = await findProductBySKU(supabase, extractedData.sku);
-    matchMethod = 'SKU';
-  }
-  
-  if (existingProduct) {
-    // Update existing product
-    console.log(`✅ Found existing product via ${matchMethod}: ${existingProduct.id}`);
-    const updated = await updateExistingProduct(supabase, runId, existingProduct, extractedData);
-    await ensurePosLink(supabase, existingProduct.id, integrationId, squareItemId, squareVariationId);
-    return { created: false, updated, productId: existingProduct.id };
-  } else {
-    // STEP 4: Create new product
-    console.log(`🆕 Creating new product: ${extractedData.name}`);
-    const productId = await createNewProduct(supabase, runId, extractedData);
-    await ensurePosLink(supabase, productId, integrationId, squareItemId, squareVariationId);
-    return { created: true, updated: false, productId };
+  try {
+    // 1. Check if we already have a POS link for this item/variation
+    let existingProduct = await findProductByPosLink(supabaseAdmin, integrationId, posItemId, posVariationId);
+    
+    if (existingProduct) {
+      // Update existing product
+      const extractedData = extractSquareFieldData(squareItem, variation);
+      const updateResult = await updateExistingProduct(supabaseAdmin, existingProduct.id, extractedData);
+      
+      if (updateResult.error) {
+        return { 
+          success: false, 
+          error: { 
+            code: 'UPDATE_FAILED', 
+            message: updateResult.error.message, 
+            pos_item_id: posItemId, 
+            pos_variation_id: posVariationId 
+          }
+        };
+      }
+      
+      // Return skipped if no changes were made
+      return { success: true, updated: updateResult.hasChanges, skipped: !updateResult.hasChanges };
+    }
+
+    // 2. No existing POS link - try to find by UPC or SKU
+    const extractedData = extractSquareFieldData(squareItem, variation);
+    
+    // Try UPC match first
+    if (extractedData.upc) {
+      const upcProduct = await findProductByUPC(supabaseAdmin, extractedData.upc);
+      if (upcProduct) {
+        // Create POS link for UPC match (atomic with conflict resolution)
+        const linkResult = await ensurePosLink(supabaseAdmin, upcProduct.id, integrationId, posItemId, posVariationId);
+        
+        if (!linkResult.success && linkResult.conflictProductId) {
+          // Race condition: someone else created the link, use their product instead
+          console.log(`Race condition detected: UPC match product ${upcProduct.id} lost to ${linkResult.conflictProductId} for POS ${posItemId}/${posVariationId}`);
+          const updateResult = await updateExistingProduct(supabaseAdmin, linkResult.conflictProductId, extractedData);
+          return { success: true, updated: updateResult.hasChanges, skipped: !updateResult.hasChanges };
+        }
+        
+        if (!linkResult.success) {
+          return { 
+            success: false, 
+            error: { 
+              code: 'LINK_CREATE_FAILED', 
+              message: linkResult.error?.message || 'Failed to create POS link', 
+              pos_item_id: posItemId, 
+              pos_variation_id: posVariationId 
+            }
+          };
+        }
+        
+        // Update the product
+        const updateResult = await updateExistingProduct(supabaseAdmin, upcProduct.id, extractedData);
+        if (updateResult.error) {
+          return { 
+            success: false, 
+            error: { 
+              code: 'UPDATE_FAILED', 
+              message: updateResult.error.message, 
+              pos_item_id: posItemId, 
+              pos_variation_id: posVariationId 
+            }
+          };
+        }
+        
+        return { success: true, updated: updateResult.hasChanges, skipped: !updateResult.hasChanges };
+      }
+    }
+
+    // Try SKU match
+    if (extractedData.sku) {
+      const skuProduct = await findProductBySKU(supabaseAdmin, extractedData.sku);
+      if (skuProduct) {
+        // Create POS link for SKU match (atomic with conflict resolution)
+        const linkResult = await ensurePosLink(supabaseAdmin, skuProduct.id, integrationId, posItemId, posVariationId);
+        
+        if (!linkResult.success && linkResult.conflictProductId) {
+          // Race condition: someone else created the link, use their product instead
+          console.log(`Race condition detected: SKU match product ${skuProduct.id} lost to ${linkResult.conflictProductId} for POS ${posItemId}/${posVariationId}`);
+          const updateResult = await updateExistingProduct(supabaseAdmin, linkResult.conflictProductId, extractedData);
+          return { success: true, updated: updateResult.hasChanges, skipped: !updateResult.hasChanges };
+        }
+        
+        if (!linkResult.success) {
+          return { 
+            success: false, 
+            error: { 
+              code: 'LINK_CREATE_FAILED', 
+              message: linkResult.error?.message || 'Failed to create POS link', 
+              pos_item_id: posItemId, 
+              pos_variation_id: posVariationId 
+            }
+          };
+        }
+        
+        // Update the product
+        const updateResult = await updateExistingProduct(supabaseAdmin, skuProduct.id, extractedData);
+        if (updateResult.error) {
+          return { 
+            success: false, 
+            error: { 
+              code: 'UPDATE_FAILED', 
+              message: updateResult.error.message, 
+              pos_item_id: posItemId, 
+              pos_variation_id: posVariationId 
+            }
+          };
+        }
+        
+        return { success: true, updated: updateResult.hasChanges, skipped: !updateResult.hasChanges };
+      }
+    }
+
+    // 3. No match found - create new product atomically
+    const { data: newProduct, error: createError } = await createNewProduct(supabaseAdmin, extractedData);
+    
+    if (createError) {
+      return { 
+        success: false, 
+        error: { 
+          code: 'CREATE_FAILED', 
+          message: createError.message, 
+          pos_item_id: posItemId, 
+          pos_variation_id: posVariationId 
+        }
+      };
+    }
+
+    // 4. Create POS link for new product (atomic with race condition handling)
+    const linkResult = await ensurePosLink(supabaseAdmin, newProduct.id, integrationId, posItemId, posVariationId);
+    
+    if (!linkResult.success && linkResult.conflictProductId) {
+      // Race condition: someone else created the link while we were creating the product
+      // Delete our just-created product and use the canonical one instead
+      console.log(`Race condition detected: Created product ${newProduct.id} lost to ${linkResult.conflictProductId} for POS ${posItemId}/${posVariationId}, cleaning up`);
+      
+      await supabaseAdmin.from('products').delete().eq('id', newProduct.id);
+      
+      const updateResult = await updateExistingProduct(supabaseAdmin, linkResult.conflictProductId, extractedData);
+      return { success: true, updated: updateResult.hasChanges, skipped: !updateResult.hasChanges };
+    }
+    
+    if (!linkResult.success) {
+      // Clean up the orphaned product
+      await supabaseAdmin.from('products').delete().eq('id', newProduct.id);
+      
+      return { 
+        success: false, 
+        error: { 
+          code: 'LINK_CREATE_FAILED', 
+          message: linkResult.error?.message || 'Failed to create POS link', 
+          pos_item_id: posItemId, 
+          pos_variation_id: posVariationId 
+        }
+      };
+    }
+    
+    return { success: true, created: true };
+
+  } catch (error: any) {
+    return { 
+      success: false, 
+      error: { 
+        code: 'UNEXPECTED_ERROR', 
+        message: error.message, 
+        pos_item_id: posItemId, 
+        pos_variation_id: posVariationId 
+      }
+    };
   }
 }
 
@@ -847,21 +1008,40 @@ function extractSquareFieldData(item: any, variation?: any) {
     console.log(`⚠️ No price found for variation ${variation.id}, variation price_money:`, variation.item_variation_data?.price_money);
   }
   
-  return { name, sku, upc, retailPriceCents, currencyCode, priceSource };
+  return { 
+    name, 
+    sku, 
+    upc, 
+    retail_price_cents: retailPriceCents, 
+    currency_code: currencyCode, 
+    priceSource,
+    // Mirror UPC to barcode when creating products
+    barcode: upc 
+  };
 }
 
 // Helper function to find product by POS link
-async function findProductByPosLink(supabase: any, integrationId: string, itemId: string, variationId: string | null) {
-  const { data } = await supabase
+async function findProductByPosLink(supabaseAdmin: any, integrationId: string, itemId: string, variationId: string | null) {
+  let query = supabaseAdmin
     .from('product_pos_links')
-    .select('product_id, products(*)')
+    .select('product_id, products!inner(*)')
     .eq('integration_id', integrationId)
     .eq('source', 'SQUARE')
-    .eq('pos_item_id', itemId)
-    .eq('pos_variation_id', variationId)
-    .maybeSingle();
-    
-  return data?.products;
+    .eq('pos_item_id', itemId);
+
+  if (variationId) {
+    query = query.eq('pos_variation_id', variationId);
+  } else {
+    query = query.is('pos_variation_id', null); // Use .is() for proper NULL handling
+  }
+
+  const { data, error } = await query.maybeSingle(); // Use maybeSingle to avoid errors
+  
+  if (error) {
+    throw error;
+  }
+
+  return data?.products || null;
 }
 
 // Helper function to find product by UPC
@@ -888,71 +1068,129 @@ async function findProductBySKU(supabase: any, sku: string) {
   return data;
 }
 
-// Helper function to update existing product with "don't downgrade data" logic
-async function updateExistingProduct(supabase: any, runId: string, existingProduct: any, extractedData: any): Promise<boolean> {
-  const updateData: any = {
-    origin: 'SQUARE',
-    sync_state: 'SYNCED'
-  };
-  
-  let hasUpdates = false;
-  
-  // Only update name if incoming is better (longer, more descriptive)
-  if (extractedData.name && (
-    !existingProduct.name || 
-    existingProduct.name === 'Unnamed Item' ||
-    extractedData.name.length > existingProduct.name.length
-  )) {
-    updateData.name = extractedData.name;
-    hasUpdates = true;
-  }
-  
-  // Never overwrite non-empty SKU with empty/null
-  if (extractedData.sku && (!existingProduct.sku || existingProduct.sku !== extractedData.sku)) {
-    updateData.sku = extractedData.sku;
-    hasUpdates = true;
-  }
-  
-  // Never overwrite non-empty UPC with empty/null, handle conflicts gracefully
-  if (extractedData.upc && (!existingProduct.upc || existingProduct.upc !== extractedData.upc)) {
-    updateData.upc = extractedData.upc;
-    hasUpdates = true;
-  }
-  
-  // Mirror UPC to barcode when safe (barcode is empty or matches old UPC)
-  if (extractedData.upc && (
-    !existingProduct.barcode || 
-    existingProduct.barcode === '' ||
-    existingProduct.barcode === existingProduct.upc
-  )) {
-    updateData.barcode = extractedData.upc;
-    hasUpdates = true;
-    console.log(`🔗 Mirroring UPC to barcode: ${extractedData.upc}`);
-  }
-  
-  // Update price and currency if provided
-  if (extractedData.retailPriceCents !== null) {
-    updateData.retail_price_cents = extractedData.retailPriceCents;
-    hasUpdates = true;
-  }
-  if (extractedData.currencyCode) {
-    updateData.currency_code = extractedData.currencyCode;
-    hasUpdates = true;
-  }
-  
-  if (hasUpdates) {
-    try {
-      const { error: updateError } = await supabase
-        .from('products')
-        .update(updateData)
-        .eq('id', existingProduct.id);
+// Helper function to update existing product with change detection
+async function updateExistingProduct(supabaseAdmin: any, productId: string, extractedData: any): Promise<{ error?: any; hasChanges: boolean }> {
+  try {
+    // First, get the current product to compare changes
+    const { data: currentProduct, error: fetchError } = await supabaseAdmin
+      .from('products')
+      .select('name, sku, upc, barcode, retail_price_cents, currency_code, origin, sync_state')
+      .eq('id', productId)
+      .maybeSingle();
+    
+    if (fetchError) {
+      return { error: fetchError, hasChanges: false };
+    }
+    
+    if (!currentProduct) {
+      return { error: { message: 'Product not found' }, hasChanges: false };
+    }
+    
+    const updateData: any = {
+      origin: 'SQUARE',
+      sync_state: 'SYNCED'
+    };
+    
+    let hasChanges = false;
+    
+    // Only update name if incoming is better (longer, more descriptive)
+    if (extractedData.name && (
+      !currentProduct.name || 
+      currentProduct.name === 'Unnamed Item' ||
+      extractedData.name.length > currentProduct.name.length
+    )) {
+      updateData.name = extractedData.name;
+      hasChanges = true;
+    }
+    
+    // Never overwrite non-empty SKU with empty/null
+    if (extractedData.sku && (!currentProduct.sku || currentProduct.sku !== extractedData.sku)) {
+      updateData.sku = extractedData.sku;
+      hasChanges = true;
+    }
+    
+    // Never overwrite non-empty UPC with empty/null, handle conflicts gracefully
+    if (extractedData.upc && (!currentProduct.upc || currentProduct.upc !== extractedData.upc)) {
+      updateData.upc = extractedData.upc;
+      hasChanges = true;
+    }
+    
+    // Mirror UPC to barcode when safe (barcode is empty or matches old UPC)
+    if (extractedData.upc && (
+      !currentProduct.barcode || 
+      currentProduct.barcode === '' ||
+      currentProduct.barcode === currentProduct.upc
+    )) {
+      updateData.barcode = extractedData.upc;
+      hasChanges = true;
+      console.log(`🔗 Mirroring UPC to barcode: ${extractedData.upc}`);
+    }
+    
+    // Update price and currency if provided
+    if (extractedData.retail_price_cents !== null && extractedData.retail_price_cents !== currentProduct.retail_price_cents) {
+      updateData.retail_price_cents = extractedData.retail_price_cents;
+      hasChanges = true;
+    }
+    if (extractedData.currency_code && extractedData.currency_code !== currentProduct.currency_code) {
+      updateData.currency_code = extractedData.currency_code;
+      hasChanges = true;
+    }
+    
+    // Always update origin and sync_state (these don't count as "real" changes)
+    if (currentProduct.origin !== 'SQUARE') {
+      updateData.origin = 'SQUARE';
+    }
+    if (currentProduct.sync_state !== 'SYNCED') {
+      updateData.sync_state = 'SYNCED';
+    }
+    
+    if (!hasChanges) {
+      // Still update origin/sync_state if needed, but don't count as changes
+      const metadataUpdate: any = {};
+      if (currentProduct.origin !== 'SQUARE') metadataUpdate.origin = 'SQUARE';
+      if (currentProduct.sync_state !== 'SYNCED') metadataUpdate.sync_state = 'SYNCED';
+      
+      if (Object.keys(metadataUpdate).length > 0) {
+        await supabaseAdmin
+          .from('products')
+          .update(metadataUpdate)
+          .eq('id', productId);
+      }
+      
+      return { hasChanges: false };
+    }
+
+    const { error } = await supabaseAdmin
+      .from('products')
+      .update(updateData)
+      .eq('id', productId);
+
+    if (error) {
+      // Handle UPC conflict specifically
+      if (error.code === '23505' && error.message?.includes('upc')) {
+        console.log(`⚠️ UPC_CONFLICT: Product ${productId}, UPC: ${extractedData.upc}`);
         
-      if (updateError) {
-        // Handle UPC conflict specifically
-        if (updateError.code === '23505' && updateError.message?.includes('upc')) {
-          console.log(`⚠️ UPC_CONFLICT: Product ${existingProduct.id}, UPC: ${extractedData.upc}`);
-          await appendError(runId, 'UPC_CONFLICT', `UPC conflict during update: ${extractedData.upc}`, {
-            op: 'update_product',
+        // Retry update without UPC to avoid blocking the whole process
+        const { upc, ...updateDataWithoutUpc } = updateData;
+        const { error: retryError } = await supabaseAdmin
+          .from('products')
+          .update(updateDataWithoutUpc)
+          .eq('id', productId);
+          
+        if (retryError) {
+          return { error: retryError, hasChanges: false };
+        }
+        
+        return { hasChanges: true };
+      }
+      return { error, hasChanges: false };
+    }
+
+    return { hasChanges: true };
+  } catch (error) {
+    return { error, hasChanges: false };
+  }
+}
             product_id: existingProduct.id,
             upc: extractedData.upc,
             detail: 'Skipped UPC update due to conflict'

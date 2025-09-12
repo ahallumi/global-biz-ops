@@ -131,6 +131,9 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
                 <span className="text-blue-600">
                   ↻ {summary.lastRun.updated_count || 0} updated
                 </span>
+                <span className="text-muted-foreground">
+                  ✦ {summary.lastRun.skipped_count || 0} skipped
+                </span>
                 {(summary.lastRun.failed_count || 0) > 0 && (
                   <span className="text-red-600">
                     ✗ {summary.lastRun.failed_count} failed
@@ -149,6 +152,9 @@ export function ImportStatusPopover({ onNavigateToSyncQueue }: ImportStatusPopov
                 </span>
                 <span className="text-blue-600">
                   ↻ {summary.lastRun.updated_count || 0} updated
+                </span>
+                <span className="text-muted-foreground">
+                  ✦ {summary.lastRun.skipped_count || 0} skipped
                 </span>
                 {(summary.lastRun.failed_count || 0) > 0 && (
                   <span className="text-red-600">
