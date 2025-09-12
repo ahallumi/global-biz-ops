@@ -23,6 +23,7 @@ import {
 import { useInventoryIntegrations, useUpdateInventoryIntegration, useCreateInventoryIntegration, useTestConnection, useImportProducts, useCredentialStatus, useSaveCredentials } from '@/hooks/useInventoryIntegrations';
 import { useImportProgress } from '@/hooks/useImportProgress';
 import { ImportProgressDialog } from '@/components/imports/ImportProgressDialog';
+import { StationAccessManagement } from '@/components/admin/StationAccessManagement';
 import { supabase } from '@/integrations/supabase/client';
 import { AlertCircle, CheckCircle, Package, Upload, Download, Key, Shield, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -572,6 +573,9 @@ export default function InventorySettingsPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Station Access Management */}
+        <StationAccessManagement />
 
         {/* Import Progress Dialog */}
         {activeIntegration && (

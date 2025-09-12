@@ -19,6 +19,9 @@ import SuppliersPage from "./pages/SuppliersPage";
 import InventorySettingsPage from "./pages/InventorySettingsPage";
 import ProductsPage from "./pages/ProductsPage";
 import SyncQueuePage from "./pages/SyncQueuePage";
+import StationLoginPage from "./pages/StationLoginPage";
+import StationPage from "./pages/StationPage";
+import { StationRoute } from "./components/StationRoute";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -129,6 +132,16 @@ const App = () => (
                 <ProtectedRoute requiredRoles={['admin', 'manager', 'staff']}>
                   <SyncQueuePage />
                 </ProtectedRoute>
+              } 
+            />
+            {/* Station routes */}
+            <Route path="/station-login" element={<StationLoginPage />} />
+            <Route 
+              path="/station" 
+              element={
+                <StationRoute>
+                  <StationPage />
+                </StationRoute>
               } 
             />
             {/* Redirect to dashboard for authenticated users */}

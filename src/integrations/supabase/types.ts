@@ -878,6 +878,45 @@ export type Database = {
           },
         ]
       }
+      station_login_codes: {
+        Row: {
+          allowed_paths: string[]
+          code: string
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          label: string | null
+          last_used_at: string | null
+          role: string
+        }
+        Insert: {
+          allowed_paths?: string[]
+          code: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          last_used_at?: string | null
+          role?: string
+        }
+        Update: {
+          allowed_paths?: string[]
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          last_used_at?: string | null
+          role?: string
+        }
+        Relationships: []
+      }
       supplier_products: {
         Row: {
           created_at: string | null
