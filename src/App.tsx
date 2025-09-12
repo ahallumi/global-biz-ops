@@ -16,7 +16,9 @@ import IntakesPage from "./pages/IntakesPage";
 import NewIntakePage from "./pages/NewIntakePage";
 import IntakeDetailPage from "./pages/IntakeDetailPage";
 import SuppliersPage from "./pages/SuppliersPage";
-import InventorySettingsPage from "./pages/InventorySettingsPage";
+import SettingsPage from "./pages/SettingsPage";
+import InventorySettingsPage from "./pages/settings/InventorySettingsPage";
+import StationSettingsPage from "./pages/settings/StationSettingsPage";
 import ProductsPage from "./pages/ProductsPage";
 import SyncQueuePage from "./pages/SyncQueuePage";
 import StationLoginPage from "./pages/StationLoginPage";
@@ -110,14 +112,21 @@ const App = () => (
                 </ProtectedRoute>
               } 
             />
-            <Route 
-              path="/inventory-settings" 
-              element={
-                <ProtectedRoute requiredRoles={['admin']}>
-                  <InventorySettingsPage />
-                </ProtectedRoute>
-              } 
-            />
+            <Route path="/settings" element={
+              <ProtectedRoute requiredRoles={['admin']}>
+                <SettingsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/settings/inventory" element={
+              <ProtectedRoute requiredRoles={['admin']}>
+                <InventorySettingsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/settings/station" element={
+              <ProtectedRoute requiredRoles={['admin']}>
+                <StationSettingsPage />
+              </ProtectedRoute>
+            } />
             <Route 
               path="/products" 
               element={

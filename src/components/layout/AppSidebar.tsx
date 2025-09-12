@@ -84,9 +84,9 @@ const navigation = [
     roles: ['admin', 'manager', 'staff'],
   },
   {
-    name: 'Inventory Settings',
-    href: '/inventory-settings',
-    icon: Cog,
+    name: 'Settings',
+    href: '/settings',
+    icon: Settings,
     roles: ['admin'],
   },
   {

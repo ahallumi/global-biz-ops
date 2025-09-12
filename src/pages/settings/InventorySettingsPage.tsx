@@ -3,11 +3,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-import { Layout } from '@/components/layout/Layout';
+import { SettingsLayout } from '@/components/layout/SettingsLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
@@ -23,8 +22,6 @@ import {
 import { useInventoryIntegrations, useUpdateInventoryIntegration, useCreateInventoryIntegration, useTestConnection, useImportProducts, useCredentialStatus, useSaveCredentials } from '@/hooks/useInventoryIntegrations';
 import { useImportProgress } from '@/hooks/useImportProgress';
 import { ImportProgressDialog } from '@/components/imports/ImportProgressDialog';
-import { StationAccessManagement } from '@/components/admin/StationAccessManagement';
-import { supabase } from '@/integrations/supabase/client';
 import { AlertCircle, CheckCircle, Package, Upload, Download, Key, Shield, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
@@ -34,7 +31,7 @@ const integrationSchema = z.object({
   access_token: z.string(),
   auto_import_enabled: z.boolean(),
   auto_import_interval_hours: z.number().min(0.25).max(24), // 15 minutes to 24 hours
-  auto_push_enabled: z.boolean(), // Use the real boolean flag
+  auto_push_enabled: z.boolean(),
 });
 
 export default function InventorySettingsPage() {
@@ -61,8 +58,8 @@ export default function InventorySettingsPage() {
       catalog_mode: 'SEARCH',
       access_token: '',
       auto_import_enabled: false,
-      auto_import_interval_hours: 3, // 3 hours (was 180 minutes)
-      auto_push_enabled: false, // Use the real boolean flag
+      auto_import_interval_hours: 3,
+      auto_push_enabled: false,
     },
   });
 
@@ -73,8 +70,8 @@ export default function InventorySettingsPage() {
         catalog_mode: (activeIntegration.catalog_mode as 'SEARCH' | 'LIST') || 'SEARCH',
         access_token: '',
         auto_import_enabled: activeIntegration.auto_import_enabled,
-        auto_import_interval_hours: activeIntegration.auto_import_interval_minutes / 60, // Convert minutes to hours
-        auto_push_enabled: activeIntegration.auto_push_enabled, // Use the real boolean flag
+        auto_import_interval_hours: activeIntegration.auto_import_interval_minutes / 60,
+        auto_push_enabled: activeIntegration.auto_push_enabled,
       });
     }
   }, [activeIntegration, form]);
@@ -131,8 +128,8 @@ export default function InventorySettingsPage() {
           environment: values.environment,
           catalog_mode: values.catalog_mode,
           auto_import_enabled: values.auto_import_enabled,
-          auto_import_interval_minutes: Math.round(values.auto_import_interval_hours * 60), // Convert hours to minutes
-          auto_push_enabled: values.auto_push_enabled, // Use the real boolean flag
+          auto_import_interval_minutes: Math.round(values.auto_import_interval_hours * 60),
+          auto_push_enabled: values.auto_push_enabled,
         });
 
         if (values.access_token.trim()) {
@@ -153,8 +150,8 @@ export default function InventorySettingsPage() {
           environment: values.environment,
           catalog_mode: values.catalog_mode,
           auto_import_enabled: values.auto_import_enabled,
-          auto_import_interval_minutes: Math.round(values.auto_import_interval_hours * 60), // Convert hours to minutes
-          auto_push_enabled: values.auto_push_enabled, // Use the real boolean flag
+          auto_import_interval_minutes: Math.round(values.auto_import_interval_hours * 60),
+          auto_push_enabled: values.auto_push_enabled,
         });
 
         await saveCredentials.mutateAsync({
@@ -165,7 +162,6 @@ export default function InventorySettingsPage() {
         });
       }
 
-      // Clear the form access token field after successful save
       form.setValue('access_token', '');
       
       toast({
@@ -182,15 +178,11 @@ export default function InventorySettingsPage() {
   };
 
   return (
-    <Layout>
+    <SettingsLayout 
+      title="Inventory Settings"
+      description="Configure Square POS integration for automatic product sync"
+    >
       <div className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Inventory Integration</h1>
-          <p className="text-muted-foreground">
-            Configure Square POS integration for automatic product sync
-          </p>
-        </div>
-
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -225,7 +217,7 @@ export default function InventorySettingsPage() {
                  <div className="flex items-center gap-2 text-sm">
                    {credentialStatus?.hasCredentials ? (
                      <>
-                       <CheckCircle className="h-4 w-4 text-green-500" />
+                       <CheckCircle className="h-4 w-4 text-success" />
                        <span className="text-muted-foreground">API credentials configured</span>
                        {credentialStatus?.lastUpdated && (
                          <span className="text-muted-foreground">
@@ -235,7 +227,7 @@ export default function InventorySettingsPage() {
                      </>
                    ) : (
                      <>
-                       <AlertCircle className="h-4 w-4 text-orange-500" />
+                       <AlertCircle className="h-4 w-4 text-warning" />
                        <span className="text-muted-foreground">API credentials missing</span>
                      </>
                    )}
@@ -243,18 +235,18 @@ export default function InventorySettingsPage() {
                  
                   {/* Current Import Status */}
                   {isImporting && currentImport && (
-                    <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 space-y-2">
-                      <div className="flex items-center gap-2 text-sm font-medium text-blue-700 dark:text-blue-300">
+                    <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-primary">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Import in Progress
                       </div>
-                      <div className="text-sm text-blue-600 dark:text-blue-400">
+                      <div className="text-sm text-primary/80">
                         {currentImport.processed_count > 0 
                           ? `Processing... ${currentImport.processed_count} products processed`
                           : 'Fetching products from Square...'
                         }
                       </div>
-                      <div className="flex gap-4 text-xs text-blue-500 dark:text-blue-400">
+                      <div className="flex gap-4 text-xs text-primary/70">
                         <span>Created: {currentImport.created_count}</span>
                         <span>Updated: {currentImport.updated_count}</span>
                       </div>
@@ -263,12 +255,12 @@ export default function InventorySettingsPage() {
                   
                   {activeIntegration.last_success_at ? (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <CheckCircle className="h-4 w-4 text-success" />
                       Last successful sync: {new Date(activeIntegration.last_success_at).toLocaleString()}
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <AlertCircle className="h-4 w-4 text-red-500" />
+                      <AlertCircle className="h-4 w-4 text-destructive" />
                       No successful sync yet
                     </div>
                   )}
@@ -408,7 +400,7 @@ export default function InventorySettingsPage() {
                         <div className="space-y-0.5">
                           <FormLabel className="text-base">Auto Push</FormLabel>
                           <FormDescription>
-                            Automatically push approved products to Square
+                            Automatically push product updates to Square when products are modified
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -435,11 +427,11 @@ export default function InventorySettingsPage() {
                               max="24"
                               step="0.25"
                               {...field}
-                              onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                             />
                           </FormControl>
                           <FormDescription>
-                            How often to check for new products (0.25 to 24 hours)
+                            How often to automatically import products (minimum 15 minutes, maximum 24 hours)
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -448,145 +440,116 @@ export default function InventorySettingsPage() {
                   )}
                 </div>
 
-                <div className="flex justify-end">
-                  <Button 
-                    type="submit" 
-                    disabled={updateIntegration.isPending || createIntegration.isPending}
-                  >
-                    {updateIntegration.isPending || createIntegration.isPending ? 'Saving...' : 'Save Settings'}
+                <div className="flex justify-between">
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleTestConnection}
+                      disabled={!activeIntegration || isTestingConnection}
+                    >
+                      {isTestingConnection ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Testing...
+                        </>
+                      ) : (
+                        <>
+                          <Key className="mr-2 h-4 w-4" />
+                          Test Connection
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleImportProducts('START')}
+                      disabled={!activeIntegration || isImporting}
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Import Products
+                    </Button>
+
+                    {currentImport && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleImportProducts('RESUME')}
+                        disabled={!activeIntegration || !isImporting}
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Resume Import
+                      </Button>
+                    )}
+                  </div>
+
+                  <Button type="submit">
+                    Save Settings
                   </Button>
                 </div>
               </form>
             </Form>
-          </CardContent>
-        </Card>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Test Connection</CardTitle>
-              <CardDescription>
-                Verify your Square integration settings
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button onClick={handleTestConnection} disabled={isTestingConnection}>
-                {isTestingConnection ? 'Testing...' : 'Test Connection'}
-              </Button>
-              {connectionResult && (
-                <div className="space-y-2">
-                  {connectionResult.ok ? (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                        Connected to {connectionResult.locations?.length || 0} Square location(s)
+            {/* Connection Test Results */}
+            {connectionResult && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    {connectionResult.error ? (
+                      <>
+                        <AlertCircle className="h-5 w-5 text-destructive" />
+                        Connection Failed
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="h-5 w-5 text-success" />
+                        Connection Successful
+                      </>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {connectionResult.error ? (
+                    <div className="text-sm text-destructive">
+                      {connectionResult.error}
+                    </div>
+                  ) : (
+                    <div className="space-y-2 text-sm">
+                      <div>
+                        <strong>Application ID:</strong> {connectionResult.applicationId}
                       </div>
-                      {connectionResult.environment && (
-                        <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded font-mono">
-                          <div><strong>Environment:</strong> {connectionResult.environment}</div>
-                          <div><strong>Endpoint:</strong> {connectionResult.baseUrl}</div>
-                          <div><strong>Token:</strong> {connectionResult.maskedToken}</div>
+                      <div>
+                        <strong>Application Name:</strong> {connectionResult.applicationName}
+                      </div>
+                      <div>
+                        <strong>Environment:</strong> {connectionResult.environment}
+                      </div>
+                      {connectionResult.locationId && (
+                        <div>
+                          <strong>Location ID:</strong> {connectionResult.locationId}
+                        </div>
+                      )}
+                      {connectionResult.merchantName && (
+                        <div>
+                          <strong>Merchant:</strong> {connectionResult.merchantName}
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <AlertCircle className="h-4 w-4 text-red-500" />
-                      Connection failed: {connectionResult.error || 'Unknown error'}
-                    </div>
                   )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Import Products</CardTitle>
-              <CardDescription>
-                Import products from Square to seed your catalog
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <Button 
-                  onClick={() => handleImportProducts('START')} 
-                  disabled={importProducts.isPending || isImporting}
-                  className="flex-1"
-                >
-                  {isImporting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Importing...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="h-4 w-4 mr-2" />
-                      Start Import
-                    </>
-                  )}
-                </Button>
-                <Button 
-                  onClick={() => handleImportProducts('RESUME')} 
-                  disabled={importProducts.isPending || isImporting} 
-                  variant="outline"
-                  className="flex-1"
-                >
-                  {isImporting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Importing...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Resume Import
-                    </>
-                  )}
-                </Button>
-              </div>
-              
-              {isImporting && currentImport && (
-                <div className="bg-muted/50 rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Import Progress</span>
-                    <Badge variant="secondary">
-                      {currentImport.status}
-                    </Badge>
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {currentImport.processed_count > 0 
-                      ? `${currentImport.processed_count} products processed`
-                      : 'Initializing import...'
-                    }
-                  </div>
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Created: {currentImport.created_count}</span>
-                    <span>Updated: {currentImport.updated_count}</span>
-                  </div>
-                </div>
-              )}
-              
-              <p className="text-sm text-muted-foreground">
-                Import products from Square into your catalog. Use Resume to continue partial imports.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Station Access Management */}
-        <StationAccessManagement />
-
-        {/* Import Progress Dialog */}
-        {activeIntegration && (
-          <ImportProgressDialog
-            open={showImportDialog}
-            onOpenChange={setShowImportDialog}
-            integrationId={activeIntegration.id}
-            mode={importMode}
-          />
-        )}
+                </CardContent>
+              </Card>
+            )}
+          </CardContent>
+        </Card>
       </div>
-    </Layout>
+
+      <ImportProgressDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        mode={importMode}
+        integrationId={activeIntegration?.id}
+      />
+    </SettingsLayout>
   );
 }
