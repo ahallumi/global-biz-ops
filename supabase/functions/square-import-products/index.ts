@@ -1191,40 +1191,8 @@ async function updateExistingProduct(supabaseAdmin: any, productId: string, extr
     return { error, hasChanges: false };
   }
 }
-            product_id: existingProduct.id,
-            upc: extractedData.upc,
-            detail: 'Skipped UPC update due to conflict'
-          });
-          
-          // Retry without UPC
-          delete updateData.upc;
-          const { error: retryError } = await supabase
-            .from('products')
-            .update(updateData)
-            .eq('id', existingProduct.id);
-          if (retryError) throw retryError;
-        } else {
-          throw updateError;
-        }
-      }
-      
-      console.log(`✅ Updated product: ${existingProduct.id}`);
-      return true;
-    } catch (error) {
-      await appendError(runId, 'UPSERT_FAILED', `Failed to update product: ${error}`, {
-        op: 'update_product',
-        product_id: existingProduct.id,
-        detail: String(error)
-      });
-      throw error;
-    }
-  }
-  
-  return false;
-}
 
-// Helper function to create new product
-async function createNewProduct(supabase: any, runId: string, extractedData: any): Promise<string> {
+async function createNewProduct(supabaseAdmin: any, extractedData: any): Promise<{ data: any; error: any }> {
   const productData = {
     name: extractedData.name,
     sku: extractedData.sku,
