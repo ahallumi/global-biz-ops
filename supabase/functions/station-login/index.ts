@@ -61,10 +61,16 @@ serve(async (req) => {
   const url = new URL(req.url);
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  console.log(`${req.method} ${url.pathname}`);
+  // Normalize pathname - remove function name prefix if present
+  let pathname = url.pathname;
+  if (pathname.startsWith('/station-login')) {
+    pathname = pathname.replace('/station-login', '') || '/';
+  }
+
+  console.log(`${req.method} ${url.pathname} -> normalized: ${pathname}`);
 
   // Station login endpoint
-  if (req.method === "POST" && url.pathname === "/station-login") {
+  if (req.method === "POST" && pathname === "/") {
     try {
       const { code } = await req.json().catch(() => ({}));
       
@@ -133,13 +139,13 @@ serve(async (req) => {
   }
 
   // Station logout endpoint
-  if (req.method === "POST" && url.pathname === "/station-logout") {
+  if (req.method === "POST" && pathname === "/station-logout") {
     const headers = setCookie(cookieStr(COOKIE_NAME, "", 0));
     return json({ ok: true }, 200, headers);
   }
 
   // Station session validation endpoint
-  if (req.method === "GET" && url.pathname === "/station-session") {
+  if (req.method === "GET" && pathname === "/station-session") {
     try {
       const cookie = req.headers.get("cookie") || "";
       const token = cookie.split("; ").find(c => c.startsWith(`${COOKIE_NAME}=`))?.split("=")[1];
@@ -162,7 +168,7 @@ serve(async (req) => {
   }
 
   // Generate new station code endpoint (admin only)
-  if (req.method === "POST" && url.pathname === "/generate-station-code") {
+  if (req.method === "POST" && pathname === "/generate-station-code") {
     try {
       const { label, role = 'station', expires_at, allowed_paths = ['/station'] } = await req.json();
       

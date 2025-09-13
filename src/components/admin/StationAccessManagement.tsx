@@ -77,23 +77,37 @@ export function StationAccessManagement() {
         }
       });
 
-      if (error) throw error;
-      if (data?.ok) {
+      if (error) {
+        console.error('Failed to generate code:', error);
         toast({
-          title: "Success",
-          description: "Station access code generated successfully",
+          title: "Error",
+          description: data?.error || error.message || "Failed to generate access code",
+          variant: "destructive",
         });
-        setIsCreateDialogOpen(false);
-        setNewCodeForm({
-          label: "",
-          role: "station",
-          expires_at: "",
-          allowed_paths: ["/station"]
-        });
-        loadCodes();
-      } else {
-        throw new Error(data?.error || "Failed to generate code");
+        return;
       }
+
+      if (!data?.ok) {
+        toast({
+          title: "Error", 
+          description: data?.error || "Failed to generate access code",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: "Station access code generated successfully",
+      });
+      setIsCreateDialogOpen(false);
+      setNewCodeForm({
+        label: "",
+        role: "station",
+        expires_at: "",
+        allowed_paths: ["/station"]
+      });
+      loadCodes();
     } catch (error) {
       console.error("Error generating code:", error);
       toast({
