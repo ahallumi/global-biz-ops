@@ -1,11 +1,69 @@
 import { SettingsLayout } from '@/components/layout/SettingsLayout';
 import { StationAccessManagement } from '@/components/admin/StationAccessManagement';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Shield, Monitor, Clock, Settings as SettingsIcon, ExternalLink, LogIn } from 'lucide-react';
+import { Shield, Monitor, Clock, Settings as SettingsIcon, ExternalLink, LogIn, Copy } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { useEffect, useState } from 'react';
 
 export default function StationSettingsPage() {
+  const { toast } = useToast();
+  const [metrics, setMetrics] = useState({
+    activeStations: 0,
+    accessCodes: 0,
+    sessionTimeout: '8h',
+    loading: true
+  });
+
+  useEffect(() => {
+    const fetchMetrics = async () => {
+      try {
+        // Fetch active access codes count
+        const { count: codesCount } = await supabase
+          .from('station_login_codes')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_active', true);
+
+        // Fetch session timeout from time_settings
+        const { data: timeSettings } = await supabase
+          .from('time_settings')
+          .select('auto_clock_out_hours')
+          .single();
+
+        setMetrics({
+          activeStations: 0, // TODO: Implement active sessions tracking
+          accessCodes: codesCount || 0,
+          sessionTimeout: `${timeSettings?.auto_clock_out_hours || 8}h`,
+          loading: false
+        });
+      } catch (error) {
+        console.error('Failed to fetch metrics:', error);
+        setMetrics(prev => ({ ...prev, loading: false }));
+      }
+    };
+
+    fetchMetrics();
+  }, []);
+
+  const copyLoginLink = async () => {
+    const loginUrl = `${window.location.origin}/station-login`;
+    try {
+      await navigator.clipboard.writeText(loginUrl);
+      toast({
+        title: "Link copied!",
+        description: "Station login link has been copied to clipboard.",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to copy",
+        description: "Could not copy link to clipboard.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <SettingsLayout 
       title="Station Settings"
@@ -22,7 +80,9 @@ export default function StationSettingsPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium">Active Stations</p>
-                  <p className="text-2xl font-bold">3</p>
+                  <p className="text-2xl font-bold">
+                    {metrics.loading ? "..." : metrics.activeStations}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -36,7 +96,9 @@ export default function StationSettingsPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium">Access Codes</p>
-                  <p className="text-2xl font-bold">12</p>
+                  <p className="text-2xl font-bold">
+                    {metrics.loading ? "..." : metrics.accessCodes}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -50,12 +112,30 @@ export default function StationSettingsPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium">Session Timeout</p>
-                  <p className="text-2xl font-bold">8h</p>
+                  <p className="text-2xl font-bold">
+                    {metrics.loading ? "..." : metrics.sessionTimeout}
+                  </p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* Station Access Management */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Access Code Management
+            </CardTitle>
+            <CardDescription>
+              Generate, manage, and monitor station access codes for secure terminal access
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <StationAccessManagement />
+          </CardContent>
+        </Card>
 
         {/* Station Login Instructions */}
         <Card>
@@ -72,12 +152,18 @@ export default function StationSettingsPage() {
             <div className="bg-muted/50 rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="font-medium">Station Login Page</h4>
-                <Button asChild variant="outline" size="sm">
-                  <Link to="/station-login" className="flex items-center gap-2">
-                    <ExternalLink className="h-4 w-4" />
-                    Open Login Page
-                  </Link>
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button onClick={copyLoginLink} variant="outline" size="sm">
+                    <Copy className="h-4 w-4" />
+                    Copy Link
+                  </Button>
+                  <Button asChild variant="outline" size="sm">
+                    <Link to="/station-login" className="flex items-center gap-2">
+                      <ExternalLink className="h-4 w-4" />
+                      Open Login Page
+                    </Link>
+                  </Button>
+                </div>
               </div>
               <p className="text-sm text-muted-foreground">
                 Direct staff to use this page for secure station access with their assigned codes.
@@ -118,22 +204,6 @@ export default function StationSettingsPage() {
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Station Access Management */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
-              Access Code Management
-            </CardTitle>
-            <CardDescription>
-              Generate, manage, and monitor station access codes for secure terminal access
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <StationAccessManagement />
           </CardContent>
         </Card>
 
