@@ -16,7 +16,7 @@ export function useStationSession() {
     
     const checkSession = async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('station-login/station-session');
+        const { data, error } = await supabase.functions.invoke('station-login');
         
         if (!cancelled) {
           if (error) {
@@ -45,7 +45,10 @@ export function useStationSession() {
 
   const logout = async () => {
     try {
-      await supabase.functions.invoke('station-login/station-logout');
+      await supabase.functions.invoke('station-login', {
+        method: 'POST',
+        body: { action: 'logout' }
+      });
       setSession({ ok: false });
       window.location.href = '/station-login';
     } catch (error) {

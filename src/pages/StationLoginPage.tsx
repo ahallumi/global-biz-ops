@@ -35,7 +35,7 @@ export default function StationLoginPage() {
         return;
       }
 
-      const { data, error: loginError } = await supabase.functions.invoke('station-login/station-login', {
+      const { data, error: loginError } = await supabase.functions.invoke('station-login', {
         body: { code: cleanCode }
       });
 
@@ -45,7 +45,7 @@ export default function StationLoginPage() {
       } else if (data?.ok) {
         navigate('/station', { replace: true });
       } else {
-        setError(data?.error || "Login failed");
+        setError(data?.error || loginError?.message || "Login failed");
       }
     } catch (error) {
       console.error('Login error:', error);

@@ -69,10 +69,17 @@ serve(async (req) => {
 
   console.log(`${req.method} ${url.pathname} -> normalized: ${pathname}`);
 
-  // Station login endpoint
+  // Station login endpoint - handle both "/" and "/station-login" paths
   if (req.method === "POST" && pathname === "/") {
     try {
-      const { code } = await req.json().catch(() => ({}));
+      const body = await req.json().catch(() => ({}));
+      const { code, action } = body;
+      
+      // Handle logout action
+      if (action === 'logout') {
+        const headers = setCookie(cookieStr(COOKIE_NAME, "", 0));
+        return json({ ok: true }, 200, headers);
+      }
       
       if (!code) {
         return json({ error: "Access code is required" }, 400);
@@ -144,8 +151,8 @@ serve(async (req) => {
     return json({ ok: true }, 200, headers);
   }
 
-  // Station session validation endpoint
-  if (req.method === "GET" && pathname === "/station-session") {
+  // Station session validation endpoint - handle GET requests for session check
+  if (req.method === "GET" && pathname === "/") {
     try {
       const cookie = req.headers.get("cookie") || "";
       const token = cookie.split("; ").find(c => c.startsWith(`${COOKIE_NAME}=`))?.split("=")[1];
