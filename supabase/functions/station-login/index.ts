@@ -10,18 +10,18 @@ const COOKIE_NAME = "station_session";
 const MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
 };
 
 function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 
-      "Content-Type": "application/json", 
+    headers: {
+      "Content-Type": "application/json",
       ...corsHeaders,
-      ...extraHeaders 
+      ...extraHeaders,
     },
   });
 }
@@ -44,8 +44,8 @@ function cookieStr(name: string, val: string, maxAge = MAX_AGE) {
 
 // Generate 12-character alphanumeric code (excluding confusing characters)
 function generateStationCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excludes 0, O, 1, I, L
-  let result = '';
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Excludes 0, O, 1, I, L
+  let result = "";
   for (let i = 0; i < 12; i++) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
@@ -54,7 +54,7 @@ function generateStationCode(): string {
 
 serve(async (req) => {
   // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
@@ -63,36 +63,29 @@ serve(async (req) => {
 
   // Normalize pathname - remove function name prefix if present
   let pathname = url.pathname;
-  if (pathname.startsWith('/station-login')) {
-    pathname = pathname.replace('/station-login', '') || '/';
+  if (pathname.startsWith("/station-login")) {
+    pathname = pathname.replace("/station-login", "") || "/";
   }
 
   console.log(`${req.method} ${url.pathname} -> normalized: ${pathname}`);
 
-  // Station login endpoint - handle both "/" and "/station-login" paths
+  // POST /  -> login with code
   if (req.method === "POST" && pathname === "/") {
     try {
-      const body = await req.json().catch(() => ({}));
-      const { code, action } = body;
-      
-      // Handle logout action
-      if (action === 'logout') {
+      const body = await req.json().catch(() => ({} as any));
+      const { code, action } = body as { code?: string; action?: string };
+
+      // Support logout via action in root as well (defensive)
+      if (action === "logout") {
         const headers = setCookie(cookieStr(COOKIE_NAME, "", 0));
         return json({ ok: true }, 200, headers);
       }
-      
-      if (!code) {
-        return json({ error: "Access code is required" }, 400);
-      }
 
-      // Validate code format (12 characters, alphanumeric)
-      if (!/^[A-Z0-9]{12}$/.test(code)) {
-        return json({ error: "Invalid code format" }, 400);
-      }
+      if (!code) return json({ error: "Access code is required" }, 400);
+      if (!/^[A-Z0-9]{12}$/.test(code)) return json({ error: "Invalid code format" }, 400);
 
       console.log(`Attempting login with code: ${code}`);
 
-      // Check if code exists and is valid
       const { data, error } = await supabase
         .from("station_login_codes")
         .select("*")
@@ -105,26 +98,12 @@ serve(async (req) => {
       }
 
       const now = new Date();
-      
-      // Check if code is active
-      if (!data.is_active) {
-        console.log(`Code inactive: ${code}`);
-        return json({ error: "Access code has been deactivated" }, 403);
-      }
-      
-      // Check if code is expired
-      if (data.expires_at && new Date(data.expires_at) < now) {
-        console.log(`Code expired: ${code}`);
-        return json({ error: "Access code has expired" }, 403);
-      }
 
-      // Update last used timestamp
-      await supabase
-        .from("station_login_codes")
-        .update({ last_used_at: now.toISOString() })
-        .eq("id", data.id);
+      if (!data.is_active) return json({ error: "Access code has been deactivated" }, 403);
+      if (data.expires_at && new Date(data.expires_at) < now) return json({ error: "Access code has expired" }, 403);
 
-      // Create JWT payload
+      await supabase.from("station_login_codes").update({ last_used_at: now.toISOString() }).eq("id", data.id);
+
       const payload = {
         cid: data.id,
         role: data.role,
@@ -135,83 +114,60 @@ serve(async (req) => {
 
       const jwt = await create({ alg: "HS256", typ: "JWT" }, payload, JWT_SECRET);
       const headers = setCookie(cookieStr(COOKIE_NAME, jwt));
-
       console.log(`Successfully authenticated code: ${code}`);
       return json({ ok: true }, 200, headers);
-
     } catch (error) {
       console.error("Login error:", error);
       return json({ error: "Internal server error" }, 500);
     }
   }
 
-  // Station logout endpoint
+  // POST /station-logout -> clear cookie
   if (req.method === "POST" && pathname === "/station-logout") {
     const headers = setCookie(cookieStr(COOKIE_NAME, "", 0));
     return json({ ok: true }, 200, headers);
   }
 
-  // Station session validation endpoint - handle GET requests for session check
-  if (req.method === "GET" && pathname === "/") {
+  // POST /station-session -> validate cookie and return session info
+  if ((req.method === "POST" || req.method === "GET") && pathname === "/station-session") {
     try {
       const cookie = req.headers.get("cookie") || "";
-      const token = cookie.split("; ").find(c => c.startsWith(`${COOKIE_NAME}=`))?.split("=")[1];
-      
-      if (!token) {
-        return json({ ok: false });
-      }
+      const token = cookie.split("; ").find((c) => c.startsWith(`${COOKIE_NAME}=`))?.split("=")[1];
+      if (!token) return json({ ok: false });
 
-      const payload = await verify(token, JWT_SECRET, "HS256") as any;
-      return json({ 
-        ok: true, 
-        role: payload.role, 
-        allowed_paths: payload.allowed_paths 
-      });
-
+      const payload = (await verify(token, JWT_SECRET, "HS256")) as any;
+      return json({ ok: true, role: payload.role, allowed_paths: payload.allowed_paths });
     } catch (error) {
       console.log("Session validation failed:", error);
       return json({ ok: false });
     }
   }
 
-  // Generate new station code endpoint (admin only)
+  // POST /generate-station-code -> admin-only (no auth check here; rely on admin UI)
   if (req.method === "POST" && pathname === "/generate-station-code") {
     try {
-      const { label, role = 'station', expires_at, allowed_paths = ['/station'] } = await req.json();
-      
-      // Generate unique code
+      const { label, role = "station", expires_at, allowed_paths = ["/station"] } = await req.json();
+
+      // Ensure uniqueness with retries
       let code: string;
       let attempts = 0;
       const maxAttempts = 10;
-      
-      do {
-        code = generateStationCode();
+
+      while (true) {
         attempts++;
-        
-        if (attempts > maxAttempts) {
-          return json({ error: "Failed to generate unique code" }, 500);
-        }
-        
-        // Check if code already exists
-        const { data: existingCode } = await supabase
+        code = generateStationCode();
+        const { data: existing } = await supabase
           .from("station_login_codes")
           .select("id")
           .eq("code", code)
-          .single();
-          
-        if (!existingCode) break;
-      } while (true);
+          .maybeSingle();
+        if (!existing) break;
+        if (attempts > maxAttempts) return json({ error: "Failed to generate unique code" }, 500);
+      }
 
-      // Create the new code record
       const { data: newCode, error: createError } = await supabase
         .from("station_login_codes")
-        .insert({
-          code,
-          label,
-          role,
-          expires_at,
-          allowed_paths
-        })
+        .insert({ code, label, role, expires_at, allowed_paths })
         .select()
         .single();
 
@@ -220,11 +176,7 @@ serve(async (req) => {
         return json({ error: "Failed to create access code" }, 500);
       }
 
-      return json({ 
-        ok: true, 
-        code: newCode 
-      });
-
+      return json({ ok: true, code: newCode });
     } catch (error) {
       console.error("Code generation error:", error);
       return json({ error: "Internal server error" }, 500);
