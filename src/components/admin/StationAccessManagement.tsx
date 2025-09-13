@@ -68,9 +68,8 @@ export function StationAccessManagement() {
 
   const generateCode = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('station-login', {
+      const { data, error } = await supabase.functions.invoke('station-login/generate-station-code', {
         body: {
-          endpoint: 'generate-station-code',
           label: newCodeForm.label || null,
           role: newCodeForm.role,
           expires_at: newCodeForm.expires_at || null,

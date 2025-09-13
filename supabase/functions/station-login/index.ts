@@ -162,15 +162,9 @@ serve(async (req) => {
   }
 
   // Generate new station code endpoint (admin only)
-  if (req.method === "POST" && (url.pathname === "/generate-station-code" || url.pathname === "/")) {
+  if (req.method === "POST" && url.pathname === "/generate-station-code") {
     try {
-      const body = await req.json();
-      const { endpoint, label, role = 'station', expires_at, allowed_paths = ['/station'] } = body;
-      
-      // If endpoint is specified, check if it's the generate endpoint
-      if (endpoint && endpoint !== 'generate-station-code') {
-        return json({ error: "Invalid endpoint" }, 400);
-      }
+      const { label, role = 'station', expires_at, allowed_paths = ['/station'] } = await req.json();
       
       // Generate unique code
       let code: string;
