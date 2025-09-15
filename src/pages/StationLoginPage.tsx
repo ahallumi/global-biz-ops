@@ -35,17 +35,29 @@ export default function StationLoginPage() {
         return;
       }
 
-      const { data, error: loginError } = await supabase.functions.invoke('station-login', {
-        body: { code: cleanCode }
+      const response = await fetch('/functions/v1/station-login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ code: cleanCode })
       });
 
-      if (loginError) {
-        console.error('Login function error:', loginError);
-        setError("Network error. Please try again.");
-      } else if (data?.ok) {
-        navigate('/station', { replace: true });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const errorMsg = data?.error || 'Login failed';
+        setError(errorMsg);
+        return;
+      }
+
+      if (data?.ok) {
+        // Use redirectTo from server response, fallback to /station
+        const redirectPath = data.redirectTo || '/station';
+        navigate(redirectPath, { replace: true });
       } else {
-        setError(data?.error || loginError?.message || "Login failed");
+        setError(data?.error || 'Login failed');
       }
     } catch (error) {
       console.error('Login error:', error);

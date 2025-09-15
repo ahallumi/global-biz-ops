@@ -16,13 +16,20 @@ export function useStationSession() {
     
     const checkSession = async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('station-login/station-session');
+        const response = await fetch('/functions/v1/station-login/station-session', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
         
         if (!cancelled) {
-          if (error) {
-            console.error('Station session check failed:', error);
+          if (!response.ok) {
+            console.error('Station session check failed:', response.status);
             setSession({ ok: false });
           } else {
+            const data = await response.json().catch(() => ({ ok: false }));
             setSession(data || { ok: false });
           }
           setLoading(false);
@@ -45,7 +52,13 @@ export function useStationSession() {
 
   const logout = async () => {
     try {
-      await supabase.functions.invoke('station-login/station-logout');
+      await fetch('/functions/v1/station-login/station-logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
       setSession({ ok: false });
       window.location.href = '/station-login';
     } catch (error) {

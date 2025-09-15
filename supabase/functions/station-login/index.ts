@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { create, verify } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
+import { create, verify, getNumericDate } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
 
 const JWT_SECRET = Deno.env.get("STATION_JWT_SECRET")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -13,7 +13,19 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  "Access-Control-Allow-Credentials": "true",
 };
+
+async function importHmacKey(secret: string): Promise<CryptoKey> {
+  const raw = new TextEncoder().encode(secret);
+  return crypto.subtle.importKey(
+    "raw",
+    raw,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+}
 
 function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
@@ -56,6 +68,16 @@ serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Validate environment variables
+  if (!JWT_SECRET) {
+    console.error("STATION_JWT_SECRET is not set");
+    return json({ error: "Server configuration error" }, 500);
+  }
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    console.error("Missing Supabase environment variables");
+    return json({ error: "Server configuration error" }, 500);
   }
 
   const url = new URL(req.url);
@@ -102,20 +124,31 @@ serve(async (req) => {
       if (!data.is_active) return json({ error: "Access code has been deactivated" }, 403);
       if (data.expires_at && new Date(data.expires_at) < now) return json({ error: "Access code has expired" }, 403);
 
-      await supabase.from("station_login_codes").update({ last_used_at: now.toISOString() }).eq("id", data.id);
-
+      // Prepare JWT payload
       const payload = {
         cid: data.id,
         role: data.role,
         allowed_paths: data.allowed_paths,
-        iat: Math.floor(now.getTime() / 1000),
-        exp: Math.floor(now.getTime() / 1000) + MAX_AGE,
+        iat: getNumericDate(0),
+        exp: getNumericDate(MAX_AGE),
       };
 
-      const jwt = await create({ alg: "HS256", typ: "JWT" }, payload, JWT_SECRET);
+      // Import key and create JWT
+      const key = await importHmacKey(JWT_SECRET);
+      const header = { alg: "HS256", typ: "JWT" } as const;
+      const jwt = await create(header, payload as Record<string, unknown>, key);
+
+      // Only update last_used_at after successful JWT creation
+      await supabase.from("station_login_codes").update({ last_used_at: now.toISOString() }).eq("id", data.id);
+
+      // Determine redirect path from allowed_paths
+      const redirectTo = Array.isArray(data.allowed_paths) && data.allowed_paths.length > 0 
+        ? data.allowed_paths[0] 
+        : "/station";
+
       const headers = setCookie(cookieStr(COOKIE_NAME, jwt));
       console.log(`Successfully authenticated code: ${code}`);
-      return json({ ok: true }, 200, headers);
+      return json({ ok: true, redirectTo }, 200, headers);
     } catch (error) {
       console.error("Login error:", error);
       return json({ error: "Internal server error" }, 500);
