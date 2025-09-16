@@ -21,7 +21,7 @@ export default function StationPage() {
       title: "Quick Intake", 
       description: "Scan and log incoming products",
       icon: Scan,
-      action: () => console.log("Quick Intake"),
+      action: () => navigate('/station/intake'),
       disabled: false,
       path: "/station/intake"
     },
@@ -29,7 +29,7 @@ export default function StationPage() {
       title: "Inventory Check",
       description: "Verify product quantities", 
       icon: Package,
-      action: () => console.log("Inventory Check"),
+      action: () => navigate('/station/inventory'),
       disabled: false,
       path: "/station/inventory"
     },
@@ -37,7 +37,7 @@ export default function StationPage() {
       title: "Staff Tools",
       description: "Access staff functions",
       icon: Users,
-      action: () => console.log("Staff Tools"),
+      action: () => navigate('/station/staff'),
       disabled: role !== 'admin',
       path: "/station/staff"
     }

@@ -24,6 +24,9 @@ import SyncQueuePage from "./pages/SyncQueuePage";
 import StationLoginPage from "./pages/StationLoginPage";
 import StationPage from "./pages/StationPage";
 import StationClockPage from "./pages/StationClockPage";
+import StationIntakePage from "./pages/StationIntakePage";
+import StationInventoryPage from "./pages/StationInventoryPage";
+import StationStaffPage from "./pages/StationStaffPage";
 import { StationRoute } from "./components/StationRoute";
 import NotFound from "./pages/NotFound";
 
@@ -159,6 +162,30 @@ const App = () => (
               element={
                 <StationRoute>
                   <StationClockPage />
+                </StationRoute>
+              } 
+            />
+            <Route 
+              path="/station/intake" 
+              element={
+                <StationRoute>
+                  <StationIntakePage />
+                </StationRoute>
+              } 
+            />
+            <Route 
+              path="/station/inventory" 
+              element={
+                <StationRoute>
+                  <StationInventoryPage />
+                </StationRoute>
+              } 
+            />
+            <Route 
+              path="/station/staff" 
+              element={
+                <StationRoute>
+                  <StationStaffPage />
                 </StationRoute>
               } 
             />
