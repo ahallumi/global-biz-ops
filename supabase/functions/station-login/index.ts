@@ -122,11 +122,21 @@ serve(async (req) => {
   const url = new URL(req.url);
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // Normalize pathname - remove function name prefix if present
+  // Normalize pathname - handle both direct and Supabase function URLs
   let pathname = url.pathname;
-  if (pathname.startsWith("/station-login")) {
-    pathname = pathname.replace("/station-login", "") || "/";
+  
+  // 1) Strip the Supabase prefix if present
+  pathname = pathname.replace(/^\/functions\/v1/, "");
+  
+  // 2) Strip the function's slug no matter where it appears
+  const FN = "/station-login";
+  const idx = pathname.indexOf(FN);
+  if (idx >= 0) {
+    pathname = pathname.slice(idx + FN.length) || "/";
   }
+  
+  // Optional: normalize empty path
+  if (pathname === "") pathname = "/";
 
   console.log(`${req.method} ${url.pathname} -> normalized: ${pathname}`);
 
