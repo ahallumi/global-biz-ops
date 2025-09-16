@@ -14,51 +14,29 @@ export function useStationSession() {
   useEffect(() => {
     let cancelled = false;
     
-    const fetchSession = async (withBearer = true) => {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (withBearer) {
-        const token = sessionStorage.getItem('station_jwt');
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-      }
-      
-      const response = await fetch('/functions/v1/station-login/station-session', {
-        method: 'POST',
-        credentials: 'include',
-        headers,
-      });
-      
-      const data = await response.json().catch(() => ({}));
-      return { ok: response.ok && data?.ok === true, response, data };
-    };
-    
     const checkSession = async () => {
       try {
-        // First try cookie-only (server now prioritizes cookie)
-        let { ok, data } = await fetchSession(false);
+        console.log('Checking station session...');
         
-        if (!ok && (data?.reason === 'invalid_token' || data?.reason === 'missing_token')) {
-          // Auto-recovery: try with Bearer if available
-          if (sessionStorage.getItem('station_jwt')) {
-            console.log('Cookie failed, trying Bearer token...');
-            ({ ok, data } = await fetchSession(true));
-            
-            if (!ok && (data?.reason === 'invalid_token' || data?.reason === 'missing_token')) {
-              console.log('Bearer also failed, clearing stale token...');
-              sessionStorage.removeItem('station_jwt');
-              // Final attempt with clean state
-              ({ ok, data } = await fetchSession(false));
-            }
-          }
-        }
+        const response = await fetch('/functions/v1/station-login/station-session', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+        });
+        
+        console.log('Session check response status:', response.status);
+        
+        const data = await response.json().catch(() => ({}));
+        console.log('Session check response data:', data);
         
         if (!cancelled) {
-          if (ok) {
-            console.log('Session check successful via:', data?.via || 'unknown');
+          if (response.ok && data?.ok === true) {
+            console.log('Session check successful, role:', data?.role);
             setSession(data || { ok: false });
           } else {
-            console.error('Station session check failed:', data);
+            console.log('Session check failed:', data?.reason || 'Unknown reason');
             setSession({ ok: false });
           }
           setLoading(false);
@@ -88,14 +66,10 @@ export function useStationSession() {
           'Content-Type': 'application/json',
         },
       });
-      // Clear session storage token
-      sessionStorage.removeItem('station_jwt');
       setSession({ ok: false });
       window.location.href = '/station-login';
     } catch (error) {
       console.error('Logout failed:', error);
-      // Clear session storage even if logout call fails
-      sessionStorage.removeItem('station_jwt');
       // Force redirect even if logout call fails
       window.location.href = '/station-login';
     }

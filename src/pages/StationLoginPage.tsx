@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { supabase } from "@/integrations/supabase/client";
 import { useStationSession } from "@/hooks/useStationSession";
 
 export default function StationLoginPage() {
@@ -53,11 +52,6 @@ export default function StationLoginPage() {
       }
 
       if (data?.ok) {
-        // Store token in sessionStorage as fallback for proxy environments
-        if (data.token) {
-          sessionStorage.setItem('station_jwt', data.token);
-        }
-        
         // Use redirectTo from server response, fallback to /station
         const redirectPath = data.redirectTo || '/station';
         console.log('Login successful, redirecting to:', redirectPath);
