@@ -135,6 +135,15 @@ serve(async (req) => {
     });
   }
 
+  // DEBUG: quick env presence check
+  if (method === "GET" && path === "/__env") {
+    const url = !!Deno.env.get("SUPABASE_URL");
+    const key = !!Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const sec = Deno.env.get("STATION_JWT_SECRET") || "";
+    const hash = sec ? await secretHash16(sec) : null;
+    return jsonRes(req, 200, { has_url: url, has_service_key: key, has_secret: !!sec, secret_hash: hash });
+  }
+
   // DEBUG: test mint token (dev only)
   if (method === "GET" && path === "/__mint" && Deno.env.get("ALLOW_TEST_MINT") === "1") {
     const secret = Deno.env.get("STATION_JWT_SECRET");
@@ -155,12 +164,13 @@ serve(async (req) => {
   // LOGIN: POST /
   if (method === "POST" && path === "/") {
     try {
-      const { code } = await req.json().catch(() => ({}));
-      console.log("LOGIN: start", { code });
-      if (!code || typeof code !== "string" || !code.trim()) {
-        return jsonRes(req, 400, { error: "Access code is required" });
-      }
-      const cleanCode = code.trim();
+      const body = await req.json().catch(() => ({}));
+      const rawCode = typeof body?.code === "string" ? body.code : "";
+      console.log("LOGIN: start", { rawCode });
+
+      // robust normalization (handles pasted spaces/dashes/mixed case)
+      const code = rawCode.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      if (!code) return jsonRes(req, 400, { error: "Access code is required" });
 
       const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
       const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -169,46 +179,39 @@ serve(async (req) => {
         return jsonRes(req, 500, { error: "Server configuration error" });
       }
 
-      // Helper to GET from PostgREST
       const getOne = async (table: string) => {
-        const url = `${supabaseUrl}/rest/v1/${table}?select=*&code=eq.${encodeURIComponent(cleanCode)}&limit=1`;
+        const url = `${supabaseUrl}/rest/v1/${table}?select=*&code=eq.${encodeURIComponent(code)}&limit=1`;
         const r = await fetch(url, {
-          headers: {
-            apikey: serviceKey,
-            Authorization: `Bearer ${serviceKey}`,
-            Accept: "application/json",
-          },
+          headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, Accept: "application/json" },
         });
         const txt = await r.text();
         let json: any = null;
         try { json = txt ? JSON.parse(txt) : null; } catch {}
         console.log("LOGIN: rest", { table, status: r.status, body: txt?.slice(0, 200) });
-        if (!r.ok) return { ok: false as const, data: null, err: `HTTP ${r.status}` };
-        if (Array.isArray(json) && json.length > 0) return { ok: true as const, data: json[0], err: null };
-        return { ok: false as const, data: null, err: "not_found" };
+        if (!r.ok) return { ok: false as const, data: null };
+        if (Array.isArray(json) && json.length > 0) return { ok: true as const, data: json[0] };
+        return { ok: false as const, data: null };
       };
 
-      // Try both common table names
+      // Try both table names (whichever you actually use)
       let rec: any = null;
       let r = await getOne("station_login_codes");
       if (r.ok) rec = r.data; else {
         r = await getOne("station_access_codes");
         if (r.ok) rec = r.data;
       }
-
       if (!rec) {
-        console.log("LOGIN: code not found");
-        return jsonRes(req, 401, { error: "Invalid access code" });
+        console.log("LOGIN: code not found after normalization", { code });
+        return jsonRes(req, 401, { error: "Invalid access code", reason: "not_found" });
       }
 
-      // expiry / active checks (tolerate schema diff)
       if (rec.expires_at && new Date(rec.expires_at) < new Date()) {
         console.log("LOGIN: expired", rec.expires_at);
-        return jsonRes(req, 401, { error: "Access code has expired" });
+        return jsonRes(req, 401, { error: "Access code has expired", reason: "expired" });
       }
       if (rec.is_active === false) {
         console.log("LOGIN: disabled");
-        return jsonRes(req, 403, { error: "Access code is disabled" });
+        return jsonRes(req, 403, { error: "Access code is disabled", reason: "disabled" });
       }
 
       // Sign JWT
@@ -219,12 +222,12 @@ serve(async (req) => {
       }
       const key = await importHmacKey(secret);
       const payload = {
-        sub: String(rec.id ?? rec.station_id ?? cleanCode),
+        sub: String(rec.id ?? rec.station_id ?? code),
         role: rec.role ?? "kiosk",
         allowed_paths: rec.allowed_paths ?? [],
         default_page: rec.default_page ?? "/station",
         iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // 24h
+        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
       };
 
       const token = await create({ alg: "HS256", typ: "JWT" }, payload as Record<string, unknown>, key);

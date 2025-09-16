@@ -43,10 +43,12 @@ export default function StationLoginPage() {
         body: JSON.stringify({ code: cleanCode })
       });
 
-      const data = await response.json().catch(() => ({}));
-
+      const text = await response.text();
+      let data: any = {};
+      try { data = JSON.parse(text); } catch {}
+      
       if (!response.ok || !data?.token) {
-        const errorMsg = data?.error || 'Login failed';
+        const errorMsg = data?.error || `Login failed (${response.status})`;
         setError(errorMsg);
         return;
       }
