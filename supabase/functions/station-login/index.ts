@@ -168,7 +168,9 @@ serve(async (req) => {
       const token = cookie.split("; ").find((c) => c.startsWith(`${COOKIE_NAME}=`))?.split("=")[1];
       if (!token) return json({ ok: false });
 
-      const payload = (await verify(token, JWT_SECRET, "HS256")) as any;
+      // Import the key for verification (same as creation)
+      const key = await importHmacKey(JWT_SECRET);
+      const payload = (await verify(token, key, "HS256")) as any;
       return json({ ok: true, role: payload.role, allowed_paths: payload.allowed_paths });
     } catch (error) {
       console.log("Session validation failed:", error);

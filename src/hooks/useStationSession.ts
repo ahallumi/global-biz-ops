@@ -30,6 +30,7 @@ export function useStationSession() {
             setSession({ ok: false });
           } else {
             const data = await response.json().catch(() => ({ ok: false }));
+            console.log('Session check response:', data);
             setSession(data || { ok: false });
           }
           setLoading(false);

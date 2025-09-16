@@ -55,7 +55,9 @@ export default function StationLoginPage() {
       if (data?.ok) {
         // Use redirectTo from server response, fallback to /station
         const redirectPath = data.redirectTo || '/station';
-        navigate(redirectPath, { replace: true });
+        console.log('Login successful, redirecting to:', redirectPath);
+        // Use window.location.replace to ensure the HttpOnly cookie is honored
+        window.location.replace(redirectPath);
       } else {
         setError(data?.error || 'Login failed');
       }
