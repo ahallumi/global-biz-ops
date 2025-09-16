@@ -23,6 +23,7 @@ import ProductsPage from "./pages/ProductsPage";
 import SyncQueuePage from "./pages/SyncQueuePage";
 import StationLoginPage from "./pages/StationLoginPage";
 import StationPage from "./pages/StationPage";
+import StationClockPage from "./pages/StationClockPage";
 import { StationRoute } from "./components/StationRoute";
 import NotFound from "./pages/NotFound";
 
@@ -150,6 +151,14 @@ const App = () => (
               element={
                 <StationRoute>
                   <StationPage />
+                </StationRoute>
+              } 
+            />
+            <Route 
+              path="/station/clock" 
+              element={
+                <StationRoute>
+                  <StationClockPage />
                 </StationRoute>
               } 
             />

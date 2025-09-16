@@ -1,34 +1,52 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, Package, Scan, Users } from "lucide-react";
+import { LogOut, Package, Scan, Users, Clock } from "lucide-react";
 import { useStationSession } from "@/hooks/useStationSession";
+import { useNavigate } from "react-router-dom";
 
 export default function StationPage() {
-  const { logout, role } = useStationSession();
+  const { logout, role, allowedPaths } = useStationSession();
+  const navigate = useNavigate();
 
   const stationTools = [
     {
-      title: "Quick Intake",
+      title: "Time Clock",
+      description: "Clock in/out and manage breaks",
+      icon: Clock,
+      action: () => navigate('/station/clock'),
+      disabled: false,
+      path: "/station/clock"
+    },
+    {
+      title: "Quick Intake", 
       description: "Scan and log incoming products",
       icon: Scan,
       action: () => console.log("Quick Intake"),
-      disabled: false
+      disabled: false,
+      path: "/station/intake"
     },
     {
       title: "Inventory Check",
-      description: "Verify product quantities",
+      description: "Verify product quantities", 
       icon: Package,
       action: () => console.log("Inventory Check"),
-      disabled: false
+      disabled: false,
+      path: "/station/inventory"
     },
     {
       title: "Staff Tools",
       description: "Access staff functions",
       icon: Users,
       action: () => console.log("Staff Tools"),
-      disabled: role !== 'admin'
+      disabled: role !== 'admin',
+      path: "/station/staff"
     }
   ];
+
+  // Filter tools based on allowed paths
+  const availableTools = stationTools.filter(tool => 
+    allowedPaths?.includes(tool.path) || tool.path === undefined
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -47,7 +65,7 @@ export default function StationPage() {
 
       <main className="p-6">
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {stationTools.map((tool) => (
+          {availableTools.map((tool) => (
             <Card 
               key={tool.title} 
               className={`cursor-pointer transition-colors hover:bg-muted/50 ${

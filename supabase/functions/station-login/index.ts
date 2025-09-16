@@ -141,10 +141,9 @@ serve(async (req) => {
       // Only update last_used_at after successful JWT creation
       await supabase.from("station_login_codes").update({ last_used_at: now.toISOString() }).eq("id", data.id);
 
-      // Determine redirect path from allowed_paths
-      const redirectTo = Array.isArray(data.allowed_paths) && data.allowed_paths.length > 0 
-        ? data.allowed_paths[0] 
-        : "/station";
+      // Determine redirect path - use default_page if available, otherwise first allowed path
+      const redirectTo = data.default_page || 
+        (Array.isArray(data.allowed_paths) && data.allowed_paths.length > 0 ? data.allowed_paths[0] : "/station");
 
       const headers = setCookie(cookieStr(COOKIE_NAME, jwt));
       console.log(`Successfully authenticated code: ${code}`);
@@ -181,7 +180,13 @@ serve(async (req) => {
   // POST /generate-station-code -> admin-only (no auth check here; rely on admin UI)
   if (req.method === "POST" && pathname === "/generate-station-code") {
     try {
-      const { label, role = "station", expires_at, allowed_paths = ["/station"] } = await req.json();
+      const { 
+        label, 
+        role = "station", 
+        expires_at, 
+        allowed_paths = ["/station"], 
+        default_page = "/station" 
+      } = await req.json();
 
       // Ensure uniqueness with retries
       let code: string;
@@ -202,7 +207,7 @@ serve(async (req) => {
 
       const { data: newCode, error: createError } = await supabase
         .from("station_login_codes")
-        .insert({ code, label, role, expires_at, allowed_paths })
+        .insert({ code, label, role, expires_at, allowed_paths, default_page })
         .select()
         .single();
 

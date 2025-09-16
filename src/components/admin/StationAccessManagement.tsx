@@ -36,10 +36,19 @@ export function StationAccessManagement() {
   // Form state for creating new codes
   const [newCodeForm, setNewCodeForm] = useState({
     label: "",
-    role: "station",
+    role: "station", 
     expires_at: "",
-    allowed_paths: ["/station"]
+    allowed_paths: ["/station"],
+    default_page: "/station"
   });
+
+  const availablePages = [
+    { path: "/station", label: "Station Home" },
+    { path: "/station/clock", label: "Time Clock" },
+    { path: "/station/intake", label: "Quick Intake" },
+    { path: "/station/inventory", label: "Inventory Check" },
+    { path: "/station/staff", label: "Staff Tools" }
+  ];
 
   const loadCodes = async () => {
     try {
@@ -73,7 +82,8 @@ export function StationAccessManagement() {
           label: newCodeForm.label || null,
           role: newCodeForm.role,
           expires_at: newCodeForm.expires_at || null,
-          allowed_paths: newCodeForm.allowed_paths
+          allowed_paths: newCodeForm.allowed_paths,
+          default_page: newCodeForm.default_page
         }
       });
 
@@ -105,7 +115,8 @@ export function StationAccessManagement() {
         label: "",
         role: "station",
         expires_at: "",
-        allowed_paths: ["/station"]
+        allowed_paths: ["/station"],
+        default_page: "/station"
       });
       loadCodes();
     } catch (error) {
@@ -258,10 +269,63 @@ export function StationAccessManagement() {
                 />
               </div>
 
+              <div>
+                <Label>Allowed Pages</Label>
+                <div className="space-y-2 mt-2">
+                  {availablePages.map((page) => (
+                    <div key={page.path} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id={page.path}
+                        checked={newCodeForm.allowed_paths.includes(page.path)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setNewCodeForm(prev => ({
+                              ...prev,
+                              allowed_paths: [...prev.allowed_paths, page.path]
+                            }));
+                          } else {
+                            setNewCodeForm(prev => ({
+                              ...prev,
+                              allowed_paths: prev.allowed_paths.filter(p => p !== page.path)
+                            }));
+                          }
+                        }}
+                        className="rounded border-gray-300"
+                      />
+                      <Label htmlFor={page.path} className="text-sm">
+                        {page.label}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="default_page">Default Page After Login</Label>
+                <Select 
+                  value={newCodeForm.default_page} 
+                  onValueChange={(value) => setNewCodeForm(prev => ({ ...prev, default_page: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availablePages
+                      .filter(page => newCodeForm.allowed_paths.includes(page.path))
+                      .map((page) => (
+                        <SelectItem key={page.path} value={page.path}>
+                          {page.label}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <Alert>
                 <AlertDescription>
                   A 12-character alphanumeric code will be automatically generated.
-                  Default access is granted to the /station page.
+                  Select which pages this kiosk can access.
                 </AlertDescription>
               </Alert>
 
@@ -289,6 +353,7 @@ export function StationAccessManagement() {
                 <TableHead>Label</TableHead>
                 <TableHead>Code</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead>Allowed Pages</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Last Used</TableHead>
                 <TableHead>Expires</TableHead>
@@ -327,6 +392,15 @@ export function StationAccessManagement() {
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">{code.role}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      {code.allowed_paths.map((path) => (
+                        <Badge key={path} variant="secondary" className="text-xs">
+                          {availablePages.find(p => p.path === path)?.label || path}
+                        </Badge>
+                      ))}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
