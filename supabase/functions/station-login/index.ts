@@ -1,339 +1,237 @@
+// deno-lint-ignore-file no-explicit-any
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { create, verify, getNumericDate } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
+import { create, verify } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
 
-const JWT_SECRET = Deno.env.get("STATION_JWT_SECRET")!;
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
+/** ======== CONFIG (single source of truth) ======== */
+const FN_SLUG = "/station-login";
 const COOKIE_NAME = "station_session";
-const MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+const COOKIE_SAMESITE: "Lax" | "None" = "None"; // use "Lax" if your app and functions share the same origin
 
-// Utility to resolve origin from request headers
-function resolveOrigin(req: Request): string {
-  // Prefer Origin header; fall back to Referer (for same-site), then function URL's own origin
-  const origin = req.headers.get("origin");
-  if (origin) return origin;
-  
-  const referer = req.headers.get("referer");
-  if (referer) {
-    try { 
-      return new URL(referer).origin; 
+/** ======== CORS helpers (always used) ======== */
+function resolveOrigin(req: Request) {
+  const o = req.headers.get("origin");
+  if (o) return o;
+  const ref = req.headers.get("referer");
+  if (ref) {
+    try {
+      return new URL(ref).origin;
     } catch {}
   }
-  
   return new URL(req.url).origin;
 }
-
-// CORS headers that automatically reflect the request origin
-function corsHeadersFor(req: Request) {
-  const origin = resolveOrigin(req);
+function corsHeaders(req: Request) {
+  const o = resolveOrigin(req);
   return {
-    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Origin": o,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Access-Control-Allow-Headers": "authorization, content-type, x-client-info, apikey",
     "Vary": "Origin",
   };
 }
-
-async function importHmacKey(secret: string): Promise<CryptoKey> {
-  const raw = new TextEncoder().encode(secret);
-  return crypto.subtle.importKey(
-    "raw",
-    raw,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign", "verify"],
-  );
-}
-
-// JSON response with automatic CORS handling
 function jsonRes(req: Request, status: number, body: unknown, extra?: Record<string, string>) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 
-      "Content-Type": "application/json", 
-      ...corsHeadersFor(req), 
-      ...(extra ?? {}) 
-    },
+    headers: { "Content-Type": "application/json", ...corsHeaders(req), ...(extra ?? {}) },
   });
 }
-
-// Empty CORS response (for OPTIONS, etc.)
-function emptyCors(req: Request, status = 204, extra?: Record<string, string>) {
-  return new Response(null, { 
-    status, 
-    headers: { 
-      ...corsHeadersFor(req), 
-      ...(extra ?? {}) 
-    } 
-  });
+function emptyRes(req: Request, status = 204, extra?: Record<string, string>) {
+  return new Response(null, { status, headers: { ...corsHeaders(req), ...(extra ?? {}) } });
 }
 
-function setCookie(cookie: string) {
-  return { "Set-Cookie": cookie };
+/** ======== Path normalization (handles /functions/v1 + slug anywhere) ======== */
+function normalizePath(req: Request) {
+  let p = new URL(req.url).pathname;
+  // strip Supabase prefix
+  p = p.replace(/^\/functions\/v1/, "");
+  // find slug anywhere in path
+  const i = p.indexOf(FN_SLUG);
+  if (i >= 0) p = p.slice(i + FN_SLUG.length) || "/";
+  if (p === "") p = "/";
+  return p;
 }
 
-// Cookie string builder with flexible options
-function makeCookie(name: string, value: string, opts: {maxAge?: number, sameSite?: "Lax"|"None"} = {}) {
+/** ======== Cookie helpers ======== */
+function getCookie(req: Request, name: string) {
+  const m = (req.headers.get("cookie") || "").match(new RegExp(`(?:^|; )${name}=([^;]+)`));
+  return m ? decodeURIComponent(m[1]).replace(/^"(.*)"$/, "$1") : null;
+}
+function makeCookie(name: string, value: string, opts: { maxAge?: number; sameSite?: "Lax" | "None" } = {}) {
   const parts = [
     `${name}=${encodeURIComponent(value)}`,
     "Path=/",
     "HttpOnly",
     "Secure", // required on https
-    `SameSite=${opts.sameSite ?? "Lax"}`,
+    `SameSite=${opts.sameSite ?? COOKIE_SAMESITE}`,
   ];
   if (opts.maxAge != null) parts.push(`Max-Age=${opts.maxAge}`);
   return parts.join("; ");
 }
 
-// Generate 12-character alphanumeric code (excluding confusing characters)
-function generateStationCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Excludes 0, O, 1, I, L
-  let result = "";
-  for (let i = 0; i < 12; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+/** ======== Key/secret helpers ======== */
+async function importHmacKey(secret: string) {
+  const raw = new TextEncoder().encode(secret);
+  return crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+}
+async function secretHash16(secret: string) {
+  const raw = new TextEncoder().encode(secret);
+  const h = await crypto.subtle.digest("SHA-256", raw);
+  return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
 }
 
+/** ======== Main ======== */
 serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === "OPTIONS") {
-    return emptyCors(req);
+  if (req.method === "OPTIONS") return emptyRes(req);
+
+  const path = normalizePath(req);
+  const method = req.method;
+
+  // DEBUG: secret hash
+  if (method === "GET" && path === "/__secret-hash") {
+    const s = Deno.env.get("STATION_JWT_SECRET") || "";
+    if (!s) return jsonRes(req, 500, { error: "server_error", reason: "missing_secret" });
+    return jsonRes(req, 200, { secret_hash: await secretHash16(s) });
   }
 
-  // Validate environment variables and log secret consistency
-  if (!JWT_SECRET) {
-    console.error("STATION_JWT_SECRET is not set");
-    return jsonRes(req, 500, { error: "Server configuration error" });
-  }
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    console.error("Missing Supabase environment variables");
-    return jsonRes(req, 500, { error: "Server configuration error" });
-  }
+  // DEBUG: whoami (shows what server sees for tokens & path)
+  if (method === "GET" && path === "/__whoami") {
+    const s = Deno.env.get("STATION_JWT_SECRET") || "";
+    const key = s ? await importHmacKey(s) : null;
 
-  // Log secret hash for consistency verification (safe to log; not the secret)
-  const secretHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JWT_SECRET))))
-    .map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
-  console.log("JWT secret hash:", secretHash);
+    const cookieToken = getCookie(req, COOKIE_NAME);
+    const auth = req.headers.get("authorization") || "";
+    const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
 
-  const url = new URL(req.url);
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    let via: "cookie" | "bearer" | "none" = "none";
+    let payload: any = null;
+    const errors: Record<string, string> = {};
 
-  // Normalize pathname - handle both direct and Supabase function URLs
-  let pathname = url.pathname;
-  
-  // 1) Strip the Supabase prefix if present
-  pathname = pathname.replace(/^\/functions\/v1/, "");
-  
-  // 2) Strip the function's slug no matter where it appears
-  const FN = "/station-login";
-  const idx = pathname.indexOf(FN);
-  if (idx >= 0) {
-    pathname = pathname.slice(idx + FN.length) || "/";
-  }
-  
-  // Optional: normalize empty path
-  if (pathname === "") pathname = "/";
-
-  console.log(`${req.method} ${url.pathname} -> normalized: ${pathname}`);
-
-  // POST /  -> login with code
-  if (req.method === "POST" && pathname === "/") {
-    try {
-      const body = await req.json().catch(() => ({} as any));
-      const { code, action } = body as { code?: string; action?: string };
-
-      // Support logout via action in root as well (defensive)
-      if (action === "logout") {
-        const clearCookie = makeCookie(COOKIE_NAME, "", { maxAge: 0, sameSite: "None" });
-        return jsonRes(req, 200, { ok: true }, { "Set-Cookie": clearCookie });
+    if (cookieToken && key) {
+      try {
+        payload = await verify(cookieToken, key, "HS256");
+        via = "cookie";
+      } catch (e) {
+        errors.cookie = String(e?.message || e);
       }
+    }
+    if (via === "none" && bearer && key) {
+      try {
+        payload = await verify(bearer, key, "HS256");
+        via = "bearer";
+      } catch (e) {
+        errors.bearer = String(e?.message || e);
+      }
+    }
 
+    return jsonRes(req, 200, {
+      method,
+      raw_path: new URL(req.url).pathname,
+      normalized_path: path,
+      has_cookie: !!cookieToken,
+      has_bearer: !!bearer,
+      via,
+      payload: payload ? { role: payload.role, sub: payload.sub, default_page: payload.default_page } : null,
+      errors,
+    });
+  }
+
+  // LOGIN: POST /
+  if (method === "POST" && path === "/") {
+    try {
+      const { code } = await req.json().catch(() => ({}));
       if (!code) return jsonRes(req, 400, { error: "Access code is required" });
-      if (!/^[A-Z0-9]{12}$/.test(code)) return jsonRes(req, 400, { error: "Invalid code format" });
 
-      console.log(`Attempting login with code: ${code}`);
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.46.1");
+      const client = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
 
-      const { data, error } = await supabase
+      // look up your code record (adjust table/columns if needed)
+      const { data: codeData, error } = await client
         .from("station_login_codes")
         .select("*")
         .eq("code", code)
-        .single();
+        .maybeSingle();
 
-      if (error || !data) {
-        console.log(`Code not found: ${code}`, error);
-        return jsonRes(req, 401, { error: "Invalid access code" });
+      if (error || !codeData) return jsonRes(req, 401, { error: "Invalid access code" });
+      if (codeData.expires_at && new Date(codeData.expires_at) < new Date()) {
+        return jsonRes(req, 401, { error: "Access code has expired" });
       }
+      if (codeData.is_active === false) return jsonRes(req, 403, { error: "Access code is disabled" });
 
-      const now = new Date();
+      const secret = Deno.env.get("STATION_JWT_SECRET");
+      if (!secret) return jsonRes(req, 500, { error: "Server configuration error: missing secret" });
+      const key = await importHmacKey(secret);
 
-      if (!data.is_active) return jsonRes(req, 403, { error: "Access code has been deactivated" });
-      if (data.expires_at && new Date(data.expires_at) < now) return jsonRes(req, 403, { error: "Access code has expired" });
-
-      // Prepare JWT payload
       const payload = {
-        cid: data.id,
-        role: data.role,
-        allowed_paths: data.allowed_paths,
-        iat: getNumericDate(0),
-        exp: getNumericDate(MAX_AGE),
+        sub: String(codeData.id),
+        role: codeData.role ?? "kiosk",
+        allowed_paths: codeData.allowed_paths ?? [],
+        default_page: codeData.default_page ?? "/station",
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // 24h
       };
 
-      // Import key and create JWT
-      const key = await importHmacKey(JWT_SECRET);
-      const header = { alg: "HS256", typ: "JWT" } as const;
-      const jwt = await create(header, payload as Record<string, unknown>, key);
+      const token = await create({ alg: "HS256", typ: "JWT" }, payload as Record<string, unknown>, key);
 
-      // Only update last_used_at after successful JWT creation
-      await supabase.from("station_login_codes").update({ last_used_at: now.toISOString() }).eq("id", data.id);
-
-      // Determine redirect path - use default_page if available, otherwise first allowed path
-      const redirectTo = data.default_page || 
-        (Array.isArray(data.allowed_paths) && data.allowed_paths.length > 0 ? data.allowed_paths[0] : "/station");
-
-      // Set cookie with proper SameSite attribute
-      const sessionCookie = makeCookie(COOKIE_NAME, jwt, { maxAge: MAX_AGE, sameSite: "None" });
-      
-      console.log(`Successfully authenticated code: ${code}`);
-      return jsonRes(req, 200, { ok: true, redirectTo, token: jwt }, { "Set-Cookie": sessionCookie });
-    } catch (error) {
-      console.error("Login error:", error);
-      return jsonRes(req, 500, { error: "Internal server error" });
+      const cookie = makeCookie(COOKIE_NAME, token, { sameSite: COOKIE_SAMESITE });
+      return jsonRes(req, 200, { success: true, token, redirectTo: payload.default_page }, { "Set-Cookie": cookie });
+    } catch (e) {
+      console.error("login error:", e);
+      return jsonRes(req, 500, { error: "server_error", detail: String(e?.message || e) });
     }
   }
 
-  // POST /station-logout -> clear cookie
-  if (req.method === "POST" && pathname === "/station-logout") {
-    const clearCookie = makeCookie(COOKIE_NAME, "", { maxAge: 0, sameSite: "None" });
-    return jsonRes(req, 200, { ok: true }, { "Set-Cookie": clearCookie });
-  }
+  // SESSION: GET/POST /station-session  (cookie first, then bearer)
+  if ((method === "GET" || method === "POST") && path === "/station-session") {
+    const secret = Deno.env.get("STATION_JWT_SECRET");
+    if (!secret) return jsonRes(req, 500, { ok: false, reason: "server_error" });
+    const key = await importHmacKey(secret);
 
-  // POST /station-session -> validate cookie and return session info
-  if ((req.method === "POST" || req.method === "GET") && pathname === "/station-session") {
-    try {
-      // Extract Bearer token (ignore empty/short ones)
-      const authHeader = req.headers.get("authorization") || "";
-      const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
-      const hasValidBearer = !!(bearerToken && bearerToken.length > 20);
-
-      // Extract cookie - prefer station_session only
-      function getCookie(req: Request, name: string) {
-        const cookieHeader = req.headers.get("cookie") || "";
-        const match = cookieHeader.match(new RegExp(`(?:^|; )${name}=([^;]+)`));
-        return match ? decodeURIComponent(match[1]).replace(/^"(.*)"$/, '$1') : null;
+    const cookieToken = getCookie(req, COOKIE_NAME);
+    if (cookieToken) {
+      try {
+        const p: any = await verify(cookieToken, key, "HS256");
+        return jsonRes(req, 200, {
+          ok: true,
+          via: "cookie",
+          role: p.role,
+          allowed_paths: p.allowed_paths ?? [],
+          default_page: p.default_page,
+        });
+      } catch (e) {
+        // fall through to bearer
       }
-      
-      const cookieToken = getCookie(req, COOKIE_NAME);
-
-      console.log("station-session: cookie?", !!cookieToken, cookieToken ? cookieToken.length : 0, "bearer?", hasValidBearer, bearerToken ? bearerToken.length : 0);
-
-      // Import the key for verification
-      const key = await importHmacKey(JWT_SECRET);
-
-      // 1) Cookie first (prioritized)
-      if (cookieToken) {
-        try {
-          const payload = (await verify(cookieToken, key, "HS256")) as any;
-          return jsonRes(req, 200, { 
-            ok: true, 
-            via: "cookie", 
-            role: payload.role, 
-            allowed_paths: payload.allowed_paths, 
-            default_page: payload.default_page 
-          });
-        } catch (cookieError) {
-          console.log("Cookie token validation failed:", cookieError);
-          // Clear invalid cookie but continue to try Bearer
-        }
-      }
-
-      // 2) Then Bearer (if present & non-empty)
-      if (hasValidBearer) {
-        try {
-          const payload = (await verify(bearerToken!, key, "HS256")) as any;
-          return jsonRes(req, 200, { 
-            ok: true, 
-            via: "bearer", 
-            role: payload.role, 
-            allowed_paths: payload.allowed_paths, 
-            default_page: payload.default_page 
-          });
-        } catch (bearerError) {
-          console.log("Bearer token validation failed (raw):", bearerError);
-          // Try forgiving variants (strip quotes or decode URI) before failing
-          try {
-            const cleaned = bearerToken!.replace(/^"(.*)"$/, '$1');
-            const decoded = decodeURIComponent(cleaned);
-            const payload = (await verify(decoded, key, "HS256")) as any;
-            return jsonRes(req, 200, { 
-              ok: true, 
-              via: "bearer", 
-              role: payload.role, 
-              allowed_paths: payload.allowed_paths, 
-              default_page: payload.default_page 
-            });
-          } catch (secondError) {
-            console.log("Bearer token validation failed (cleaned/decoded):", secondError);
-            return jsonRes(req, 401, { ok: false, reason: "invalid_token" });
-          }
-        }
-      }
-
-      return jsonRes(req, 401, { ok: false, reason: "missing_token" });
-    } catch (error) {
-      console.error("Session validation error:", error);
-      return jsonRes(req, 500, { ok: false, reason: 'server_error', detail: String(error) });
     }
-  }
 
-  // POST /generate-station-code -> admin-only (no auth check here; rely on admin UI)
-  if (req.method === "POST" && pathname === "/generate-station-code") {
-    try {
-      const { 
-        label, 
-        role = "station", 
-        expires_at, 
-        allowed_paths = ["/station"], 
-        default_page = "/station" 
-      } = await req.json();
-
-      // Ensure uniqueness with retries
-      let code: string;
-      let attempts = 0;
-      const maxAttempts = 10;
-
-      while (true) {
-        attempts++;
-        code = generateStationCode();
-        const { data: existing } = await supabase
-          .from("station_login_codes")
-          .select("id")
-          .eq("code", code)
-          .maybeSingle();
-        if (!existing) break;
-        if (attempts > maxAttempts) return jsonRes(req, 500, { error: "Failed to generate unique code" });
+    const auth = req.headers.get("authorization") || "";
+    const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+    if (bearer && bearer.length > 20) {
+      try {
+        const p: any = await verify(bearer, key, "HS256");
+        return jsonRes(req, 200, {
+          ok: true,
+          via: "bearer",
+          role: p.role,
+          allowed_paths: p.allowed_paths ?? [],
+          default_page: p.default_page,
+        });
+      } catch (e) {
+        return jsonRes(req, 401, { ok: false, reason: "invalid_token" });
       }
-
-      const { data: newCode, error: createError } = await supabase
-        .from("station_login_codes")
-        .insert({ code, label, role, expires_at, allowed_paths, default_page })
-        .select()
-        .single();
-
-      if (createError) {
-        console.error("Failed to create code:", createError);
-        return jsonRes(req, 500, { error: "Failed to create access code" });
-      }
-
-      return jsonRes(req, 200, { ok: true, code: newCode });
-    } catch (error) {
-      console.error("Code generation error:", error);
-      return jsonRes(req, 500, { error: "Internal server error" });
     }
+
+    return jsonRes(req, 401, { ok: false, reason: cookieToken ? "invalid_token" : "missing_token" });
   }
 
-  return jsonRes(req, 404, { error: "Not found" });
+  // LOGOUT: POST /station-logout
+  if (method === "POST" && path === "/station-logout") {
+    const expired = makeCookie(COOKIE_NAME, "", { sameSite: COOKIE_SAMESITE, maxAge: 0 });
+    return jsonRes(req, 200, { success: true }, { "Set-Cookie": expired });
+  }
+
+  // (optional) ADMIN route: /generate-station-code — remember to jsonRes(req,...)
+
+  // 404 fallback (with CORS)
+  return jsonRes(req, 404, { error: "not_found", method, path, raw: new URL(req.url).pathname });
 });
