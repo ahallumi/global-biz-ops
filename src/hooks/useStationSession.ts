@@ -38,11 +38,14 @@ export function useStationSession() {
         // First try with Bearer token if available
         let { ok, data } = await fetchSession(true);
         
-        if (!ok && data?.reason === 'invalid_token') {
+        if (!ok && (data?.reason === 'invalid_token' || data?.reason === 'missing_token')) {
           // Auto-recovery: clear stale Bearer token and retry with cookie only
-          console.log('Bearer token invalid, clearing and retrying with cookie...');
-          sessionStorage.removeItem('station_jwt');
-          ({ ok, data } = await fetchSession(false));
+          const hasBearer = !!sessionStorage.getItem('station_jwt');
+          if (hasBearer) {
+            console.log('Bearer token issue, clearing and retrying with cookie...');
+            sessionStorage.removeItem('station_jwt');
+            ({ ok, data } = await fetchSession(false));
+          }
         }
         
         if (!cancelled) {

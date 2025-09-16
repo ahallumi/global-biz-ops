@@ -169,27 +169,24 @@ serve(async (req) => {
   // POST /station-session -> validate cookie and return session info
   if ((req.method === "POST" || req.method === "GET") && pathname === "/station-session") {
     try {
-      // Try Authorization header first, then fallback to cookie
-      let token: string | undefined;
-      let tokenSource: 'bearer' | 'cookie' | undefined;
+      // Extract Bearer token (ignore empty/short ones)
+      const authHeader = req.headers.get("authorization") || "";
+      const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+      const hasValidBearer = !!(bearerToken && bearerToken.length > 20);
       
-      const authHeader = req.headers.get("authorization");
-      if (authHeader?.startsWith("Bearer ")) {
-        token = authHeader.substring(7);
-        tokenSource = 'bearer';
-      }
-      
-      const cookieToken = req.headers.get("cookie")?.split("; ").find((c) => c.startsWith(`${COOKIE_NAME}=`))?.split("=")[1];
-      
-      if (!token) return json({ ok: false, reason: "missing_token" }, 401, {}, origin);
+      // Extract cookies - support both cookie names for compatibility
+      const cookieHeader = req.headers.get("cookie") || "";
+      const cookieToken = cookieHeader.split("; ")
+        .find(c => c.startsWith(`${COOKIE_NAME}=`) || c.startsWith("station_jwt="))
+        ?.split("=")[1];
 
       // Import the key for verification
       const key = await importHmacKey(JWT_SECRET);
       
-      // Try Bearer token first
-      if (token && tokenSource === 'bearer') {
+      // Try Bearer first if valid, with cookie fallback
+      if (hasValidBearer) {
         try {
-          const payload = (await verify(token, key, "HS256")) as any;
+          const payload = (await verify(bearerToken!, key, "HS256")) as any;
           return json({ 
             ok: true, 
             role: payload.role, 
@@ -213,7 +210,7 @@ serve(async (req) => {
               return json({ 
                 ok: false, 
                 reason: "invalid_token",
-                detail: { bearer_error: String(bearerError), cookie_error: String(cookieError) }
+                detail: { bearer_errors: [String(bearerError)], cookie_errors: [String(cookieError)] }
               }, 401, {}, origin);
             }
           }
@@ -221,12 +218,12 @@ serve(async (req) => {
           return json({ 
             ok: false, 
             reason: "invalid_token",
-            detail: { bearer_error: String(bearerError) }
+            detail: { bearer_errors: [String(bearerError)] }
           }, 401, {}, origin);
         }
       }
       
-      // Try cookie only
+      // No Bearer or invalid Bearer - try cookie only
       if (cookieToken) {
         try {
           const payload = (await verify(cookieToken, key, "HS256")) as any;
@@ -241,7 +238,7 @@ serve(async (req) => {
           return json({ 
             ok: false, 
             reason: "invalid_token",
-            detail: { cookie_error: String(cookieError) }
+            detail: { cookie_errors: [String(cookieError)] }
           }, 401, {}, origin);
         }
       }
