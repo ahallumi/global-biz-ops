@@ -884,6 +884,7 @@ export type Database = {
           code: string
           created_at: string
           created_by: string | null
+          default_page: string | null
           expires_at: string | null
           id: string
           is_active: boolean
@@ -896,6 +897,7 @@ export type Database = {
           code: string
           created_at?: string
           created_by?: string | null
+          default_page?: string | null
           expires_at?: string | null
           id?: string
           is_active?: boolean
@@ -908,6 +910,7 @@ export type Database = {
           code?: string
           created_at?: string
           created_by?: string | null
+          default_page?: string | null
           expires_at?: string | null
           id?: string
           is_active?: boolean
