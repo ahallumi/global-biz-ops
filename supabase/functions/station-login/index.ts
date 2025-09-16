@@ -9,14 +9,30 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const COOKIE_NAME = "station_session";
 const MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
-// Dynamic CORS headers to reflect origin for credentialed requests
-function getCorsHeaders(origin?: string | null) {
-  const allowedOrigin = origin || "https://your-app.lovableproject.com"; // reflect or hardcode fallback
+// Utility to resolve origin from request headers
+function resolveOrigin(req: Request): string {
+  // Prefer Origin header; fall back to Referer (for same-site), then function URL's own origin
+  const origin = req.headers.get("origin");
+  if (origin) return origin;
+  
+  const referer = req.headers.get("referer");
+  if (referer) {
+    try { 
+      return new URL(referer).origin; 
+    } catch {}
+  }
+  
+  return new URL(req.url).origin;
+}
+
+// CORS headers that automatically reflect the request origin
+function corsHeadersFor(req: Request) {
+  const origin = resolveOrigin(req);
   return {
-    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "authorization, content-type",
+    "Access-Control-Allow-Headers": "authorization, content-type, x-client-info, apikey",
     "Vary": "Origin",
   };
 }
@@ -32,15 +48,26 @@ async function importHmacKey(secret: string): Promise<CryptoKey> {
   );
 }
 
-function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}, origin?: string) {
-  const corsHeaders = getCorsHeaders(origin);
+// JSON response with automatic CORS handling
+function jsonRes(req: Request, status: number, body: unknown, extra?: Record<string, string>) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: {
-      "Content-Type": "application/json",
-      ...corsHeaders,
-      ...extraHeaders,
+    headers: { 
+      "Content-Type": "application/json", 
+      ...corsHeadersFor(req), 
+      ...(extra ?? {}) 
     },
+  });
+}
+
+// Empty CORS response (for OPTIONS, etc.)
+function emptyCors(req: Request, status = 204, extra?: Record<string, string>) {
+  return new Response(null, { 
+    status, 
+    headers: { 
+      ...corsHeadersFor(req), 
+      ...(extra ?? {}) 
+    } 
   });
 }
 
@@ -48,15 +75,16 @@ function setCookie(cookie: string) {
   return { "Set-Cookie": cookie };
 }
 
-function cookieStr(name: string, val: string, maxAge = MAX_AGE) {
+// Cookie string builder with flexible options
+function makeCookie(name: string, value: string, opts: {maxAge?: number, sameSite?: "Lax"|"None"} = {}) {
   const parts = [
-    `${name}=${val}`,
-    `Path=/`,
-    `HttpOnly`,
-    `SameSite=Lax`,
-    `Max-Age=${maxAge}`,
-    `Secure`,
+    `${name}=${encodeURIComponent(value)}`,
+    "Path=/",
+    "HttpOnly",
+    "Secure", // required on https
+    `SameSite=${opts.sameSite ?? "Lax"}`,
   ];
+  if (opts.maxAge != null) parts.push(`Max-Age=${opts.maxAge}`);
   return parts.join("; ");
 }
 
@@ -71,21 +99,19 @@ function generateStationCode(): string {
 }
 
 serve(async (req) => {
-  const origin = req.headers.get("origin");
-
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: getCorsHeaders(origin) });
+    return emptyCors(req);
   }
 
   // Validate environment variables and log secret consistency
   if (!JWT_SECRET) {
     console.error("STATION_JWT_SECRET is not set");
-    return json({ error: "Server configuration error" }, 500);
+    return jsonRes(req, 500, { error: "Server configuration error" });
   }
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     console.error("Missing Supabase environment variables");
-    return json({ error: "Server configuration error" }, 500);
+    return jsonRes(req, 500, { error: "Server configuration error" });
   }
 
   // Log secret hash for consistency verification (safe to log; not the secret)
@@ -112,12 +138,12 @@ serve(async (req) => {
 
       // Support logout via action in root as well (defensive)
       if (action === "logout") {
-        const headers = setCookie(cookieStr(COOKIE_NAME, "", 0));
-        return json({ ok: true }, 200, headers);
+        const clearCookie = makeCookie(COOKIE_NAME, "", { maxAge: 0, sameSite: "Lax" });
+        return jsonRes(req, 200, { ok: true }, { "Set-Cookie": clearCookie });
       }
 
-      if (!code) return json({ error: "Access code is required" }, 400);
-      if (!/^[A-Z0-9]{12}$/.test(code)) return json({ error: "Invalid code format" }, 400);
+      if (!code) return jsonRes(req, 400, { error: "Access code is required" });
+      if (!/^[A-Z0-9]{12}$/.test(code)) return jsonRes(req, 400, { error: "Invalid code format" });
 
       console.log(`Attempting login with code: ${code}`);
 
@@ -129,13 +155,13 @@ serve(async (req) => {
 
       if (error || !data) {
         console.log(`Code not found: ${code}`, error);
-        return json({ error: "Invalid access code" }, 401);
+        return jsonRes(req, 401, { error: "Invalid access code" });
       }
 
       const now = new Date();
 
-      if (!data.is_active) return json({ error: "Access code has been deactivated" }, 403);
-      if (data.expires_at && new Date(data.expires_at) < now) return json({ error: "Access code has expired" }, 403);
+      if (!data.is_active) return jsonRes(req, 403, { error: "Access code has been deactivated" });
+      if (data.expires_at && new Date(data.expires_at) < now) return jsonRes(req, 403, { error: "Access code has expired" });
 
       // Prepare JWT payload
       const payload = {
@@ -158,62 +184,26 @@ serve(async (req) => {
       const redirectTo = data.default_page || 
         (Array.isArray(data.allowed_paths) && data.allowed_paths.length > 0 ? data.allowed_paths[0] : "/station");
 
-      // Build cookie with proper attributes for same-site vs cross-site and http vs https
-      const urlInfo = new URL(req.url);
-      const isHttps = urlInfo.protocol === 'https:' || req.headers.get('x-forwarded-proto') === 'https';
-      let sameSite = 'Lax';
-      try {
-        if (origin) {
-          const o = new URL(origin);
-          if (o.host !== urlInfo.host) sameSite = 'None';
-        }
-      } catch {}
-      const cookieParts = [
-        `${COOKIE_NAME}=${encodeURIComponent(jwt)}`,
-        'Path=/',
-        'HttpOnly',
-        `Max-Age=${MAX_AGE}`,
-        `SameSite=${sameSite}`,
-      ];
-      if (isHttps) cookieParts.push('Secure');
-      const headers = setCookie(cookieParts.join('; '));
+      // Set cookie with proper SameSite attribute
+      const sessionCookie = makeCookie(COOKIE_NAME, jwt, { maxAge: MAX_AGE, sameSite: "Lax" });
+      
       console.log(`Successfully authenticated code: ${code}`);
-      return json({ ok: true, redirectTo, token: jwt }, 200, headers, origin);
+      return jsonRes(req, 200, { ok: true, redirectTo, token: jwt }, { "Set-Cookie": sessionCookie });
     } catch (error) {
       console.error("Login error:", error);
-      return json({ error: "Internal server error" }, 500);
+      return jsonRes(req, 500, { error: "Internal server error" });
     }
   }
 
   // POST /station-logout -> clear cookie
   if (req.method === "POST" && pathname === "/station-logout") {
-    const urlInfo = new URL(req.url);
-    const isHttps = urlInfo.protocol === 'https:' || req.headers.get('x-forwarded-proto') === 'https';
-    let sameSite = 'Lax';
-    const origin = req.headers.get('origin');
-    try {
-      if (origin) {
-        const o = new URL(origin);
-        if (o.host !== urlInfo.host) sameSite = 'None';
-      }
-    } catch {}
-    const clearParts = [
-      `${COOKIE_NAME}=`,
-      'Path=/',
-      'HttpOnly',
-      'Max-Age=0',
-      `SameSite=${sameSite}`,
-    ];
-    if (isHttps) clearParts.push('Secure');
-    const headers = setCookie(clearParts.join('; '));
-    return json({ ok: true }, 200, headers);
+    const clearCookie = makeCookie(COOKIE_NAME, "", { maxAge: 0, sameSite: "Lax" });
+    return jsonRes(req, 200, { ok: true }, { "Set-Cookie": clearCookie });
   }
 
   // POST /station-session -> validate cookie and return session info
   if ((req.method === "POST" || req.method === "GET") && pathname === "/station-session") {
     try {
-      const origin = req.headers.get("origin");
-      
       // Extract Bearer token (ignore empty/short ones)
       const authHeader = req.headers.get("authorization") || "";
       const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
@@ -235,12 +225,13 @@ serve(async (req) => {
       if (cookieToken) {
         try {
           const payload = (await verify(cookieToken, key, "HS256")) as any;
-          return json(
-            { ok: true, via: "cookie", role: payload.role, allowed_paths: payload.allowed_paths, default_page: payload.default_page },
-            200,
-            {},
-            origin,
-          );
+          return jsonRes(req, 200, { 
+            ok: true, 
+            via: "cookie", 
+            role: payload.role, 
+            allowed_paths: payload.allowed_paths, 
+            default_page: payload.default_page 
+          });
         } catch (cookieError) {
           console.log("Cookie token validation failed:", cookieError);
           // Clear invalid cookie but continue to try Bearer
@@ -251,22 +242,23 @@ serve(async (req) => {
       if (hasValidBearer) {
         try {
           const payload = (await verify(bearerToken!, key, "HS256")) as any;
-          return json(
-            { ok: true, via: "bearer", role: payload.role, allowed_paths: payload.allowed_paths, default_page: payload.default_page },
-            200,
-            {},
-            origin,
-          );
+          return jsonRes(req, 200, { 
+            ok: true, 
+            via: "bearer", 
+            role: payload.role, 
+            allowed_paths: payload.allowed_paths, 
+            default_page: payload.default_page 
+          });
         } catch (bearerError) {
           console.log("Bearer token validation failed:", bearerError);
-          return json({ ok: false, reason: "invalid_token" }, 401, {}, origin);
+          return jsonRes(req, 401, { ok: false, reason: "invalid_token" });
         }
       }
 
-      return json({ ok: false, reason: "missing_token" }, 401, {}, origin);
+      return jsonRes(req, 401, { ok: false, reason: "missing_token" });
     } catch (error) {
       console.error("Session validation error:", error);
-      return json({ ok: false, reason: 'server_error', detail: String(error) }, 500, {}, origin);
+      return jsonRes(req, 500, { ok: false, reason: 'server_error', detail: String(error) });
     }
   }
 
@@ -295,7 +287,7 @@ serve(async (req) => {
           .eq("code", code)
           .maybeSingle();
         if (!existing) break;
-        if (attempts > maxAttempts) return json({ error: "Failed to generate unique code" }, 500);
+        if (attempts > maxAttempts) return jsonRes(req, 500, { error: "Failed to generate unique code" });
       }
 
       const { data: newCode, error: createError } = await supabase
@@ -306,15 +298,15 @@ serve(async (req) => {
 
       if (createError) {
         console.error("Failed to create code:", createError);
-        return json({ error: "Failed to create access code" }, 500);
+        return jsonRes(req, 500, { error: "Failed to create access code" });
       }
 
-      return json({ ok: true, code: newCode });
+      return jsonRes(req, 200, { ok: true, code: newCode });
     } catch (error) {
       console.error("Code generation error:", error);
-      return json({ error: "Internal server error" }, 500);
+      return jsonRes(req, 500, { error: "Internal server error" });
     }
   }
 
-  return json({ error: "Not found" }, 404);
+  return jsonRes(req, 404, { error: "Not found" });
 });
