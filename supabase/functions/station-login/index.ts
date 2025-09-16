@@ -210,12 +210,13 @@ serve(async (req) => {
       const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
       const hasValidBearer = !!(bearerToken && bearerToken.length > 20);
 
-      // Extract cookies - support both cookie names for compatibility
+      // Extract cookie - prefer station_session only; legacy cookies intentionally ignored
       const cookieHeader = req.headers.get("cookie") || "";
-      const cookieToken = cookieHeader
+      const rawCookieToken = cookieHeader
         .split("; ")
-        .find((c) => c.startsWith(`${COOKIE_NAME}=`) || c.startsWith("station_jwt="))
-        ?.split("=")[1];
+        .find((c) => c.startsWith(`${COOKIE_NAME}=`))
+        ?.split("=")[1] || null;
+      const cookieToken = rawCookieToken ? decodeURIComponent(rawCookieToken).replace(/^"(.*)"$/, '$1') : null;
 
       // Compute a 'clear cookie' header for invalid cases
       const urlInfo = new URL(req.url);
