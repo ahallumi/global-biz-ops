@@ -9,12 +9,15 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const COOKIE_NAME = "station_session";
 const MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-  "Access-Control-Allow-Credentials": "true",
-};
+// Dynamic CORS headers to reflect origin for credentialed requests
+function getCorsHeaders(origin?: string) {
+  return {
+    "Access-Control-Allow-Origin": origin || "*",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+    "Access-Control-Allow-Credentials": "true",
+  };
+}
 
 async function importHmacKey(secret: string): Promise<CryptoKey> {
   const raw = new TextEncoder().encode(secret);
@@ -27,7 +30,8 @@ async function importHmacKey(secret: string): Promise<CryptoKey> {
   );
 }
 
-function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
+function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}, origin?: string) {
+  const corsHeaders = getCorsHeaders(origin);
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -65,9 +69,11 @@ function generateStationCode(): string {
 }
 
 serve(async (req) => {
+  const origin = req.headers.get("origin");
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: getCorsHeaders(origin) });
   }
 
   // Validate environment variables
@@ -147,7 +153,7 @@ serve(async (req) => {
 
       const headers = setCookie(cookieStr(COOKIE_NAME, jwt));
       console.log(`Successfully authenticated code: ${code}`);
-      return json({ ok: true, redirectTo }, 200, headers);
+      return json({ ok: true, redirectTo, token: jwt }, 200, headers, origin);
     } catch (error) {
       console.error("Login error:", error);
       return json({ error: "Internal server error" }, 500);
@@ -163,17 +169,26 @@ serve(async (req) => {
   // POST /station-session -> validate cookie and return session info
   if ((req.method === "POST" || req.method === "GET") && pathname === "/station-session") {
     try {
-      const cookie = req.headers.get("cookie") || "";
-      const token = cookie.split("; ").find((c) => c.startsWith(`${COOKIE_NAME}=`))?.split("=")[1];
-      if (!token) return json({ ok: false });
+      // Try Authorization header first, then fallback to cookie
+      let token: string | undefined;
+      
+      const authHeader = req.headers.get("authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        token = authHeader.substring(7);
+      } else {
+        const cookie = req.headers.get("cookie") || "";
+        token = cookie.split("; ").find((c) => c.startsWith(`${COOKIE_NAME}=`))?.split("=")[1];
+      }
+      
+      if (!token) return json({ ok: false }, 200, {}, origin);
 
       // Import the key for verification (same as creation)
       const key = await importHmacKey(JWT_SECRET);
       const payload = (await verify(token, key, "HS256")) as any;
-      return json({ ok: true, role: payload.role, allowed_paths: payload.allowed_paths });
+      return json({ ok: true, role: payload.role, allowed_paths: payload.allowed_paths }, 200, {}, origin);
     } catch (error) {
       console.log("Session validation failed:", error);
-      return json({ ok: false });
+      return json({ ok: false }, 200, {}, origin);
     }
   }
 

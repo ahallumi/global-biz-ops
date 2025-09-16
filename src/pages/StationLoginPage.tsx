@@ -53,10 +53,15 @@ export default function StationLoginPage() {
       }
 
       if (data?.ok) {
+        // Store token in sessionStorage as fallback for proxy environments
+        if (data.token) {
+          sessionStorage.setItem('station_jwt', data.token);
+        }
+        
         // Use redirectTo from server response, fallback to /station
         const redirectPath = data.redirectTo || '/station';
         console.log('Login successful, redirecting to:', redirectPath);
-        // Use window.location.replace to ensure the HttpOnly cookie is honored
+        // Use window.location.replace to ensure session is refreshed
         window.location.replace(redirectPath);
       } else {
         setError(data?.error || 'Login failed');

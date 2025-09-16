@@ -16,12 +16,20 @@ export function useStationSession() {
     
     const checkSession = async () => {
       try {
+        // Include Authorization header if token exists in sessionStorage
+        const token = sessionStorage.getItem('station_jwt');
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+
         const response = await fetch('/functions/v1/station-login/station-session', {
           method: 'POST',
           credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
         });
         
         if (!cancelled) {
@@ -60,10 +68,14 @@ export function useStationSession() {
           'Content-Type': 'application/json',
         },
       });
+      // Clear session storage token
+      sessionStorage.removeItem('station_jwt');
       setSession({ ok: false });
       window.location.href = '/station-login';
     } catch (error) {
       console.error('Logout failed:', error);
+      // Clear session storage even if logout call fails
+      sessionStorage.removeItem('station_jwt');
       // Force redirect even if logout call fails
       window.location.href = '/station-login';
     }
