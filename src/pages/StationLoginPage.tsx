@@ -45,18 +45,25 @@ export default function StationLoginPage() {
 
       const data = await response.json().catch(() => ({}));
 
-      if (!response.ok) {
+      if (!response.ok || !data?.token) {
         const errorMsg = data?.error || 'Login failed';
         setError(errorMsg);
         return;
       }
 
-      if (data?.ok) {
+      if (data?.ok && data?.token) {
+        // ✅ Save token for Bearer path (works even if cookie is blocked)
+        sessionStorage.setItem("station_jwt", data.token);
+        
         // Use redirectTo from server response, fallback to /station
         const redirectPath = data.redirectTo || '/station';
         console.log('Login successful, redirecting to:', redirectPath);
-        // Small delay to ensure cookie is set before navigating
-        setTimeout(() => window.location.replace(redirectPath), 150);
+        
+        // Tiny delay so cookie can land in browsers that allow it
+        await new Promise((r) => setTimeout(r, 120));
+        
+        // Redirect to server-provided default_page
+        window.location.assign(redirectPath);
       } else {
         setError(data?.error || 'Login failed');
       }
