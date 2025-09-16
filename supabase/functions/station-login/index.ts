@@ -171,24 +171,85 @@ serve(async (req) => {
     try {
       // Try Authorization header first, then fallback to cookie
       let token: string | undefined;
+      let tokenSource: 'bearer' | 'cookie' | undefined;
       
       const authHeader = req.headers.get("authorization");
       if (authHeader?.startsWith("Bearer ")) {
         token = authHeader.substring(7);
-      } else {
-        const cookie = req.headers.get("cookie") || "";
-        token = cookie.split("; ").find((c) => c.startsWith(`${COOKIE_NAME}=`))?.split("=")[1];
+        tokenSource = 'bearer';
       }
       
-      if (!token) return json({ ok: false }, 200, {}, origin);
+      const cookieToken = req.headers.get("cookie")?.split("; ").find((c) => c.startsWith(`${COOKIE_NAME}=`))?.split("=")[1];
+      
+      if (!token) return json({ ok: false, reason: "missing_token" }, 401, {}, origin);
 
-      // Import the key for verification (same as creation)
+      // Import the key for verification
       const key = await importHmacKey(JWT_SECRET);
-      const payload = (await verify(token, key, "HS256")) as any;
-      return json({ ok: true, role: payload.role, allowed_paths: payload.allowed_paths }, 200, {}, origin);
+      
+      // Try Bearer token first
+      if (token && tokenSource === 'bearer') {
+        try {
+          const payload = (await verify(token, key, "HS256")) as any;
+          return json({ 
+            ok: true, 
+            role: payload.role, 
+            allowed_paths: payload.allowed_paths,
+            via: 'bearer'
+          }, 200, {}, origin);
+        } catch (bearerError) {
+          console.log("Bearer token validation failed:", bearerError);
+          // Fallback to cookie if available
+          if (cookieToken) {
+            try {
+              const payload = (await verify(cookieToken, key, "HS256")) as any;
+              return json({ 
+                ok: true, 
+                role: payload.role, 
+                allowed_paths: payload.allowed_paths,
+                via: 'cookie'
+              }, 200, {}, origin);
+            } catch (cookieError) {
+              console.log("Cookie token validation also failed:", cookieError);
+              return json({ 
+                ok: false, 
+                reason: "invalid_token",
+                detail: { bearer_error: String(bearerError), cookie_error: String(cookieError) }
+              }, 401, {}, origin);
+            }
+          }
+          // No cookie to fall back to
+          return json({ 
+            ok: false, 
+            reason: "invalid_token",
+            detail: { bearer_error: String(bearerError) }
+          }, 401, {}, origin);
+        }
+      }
+      
+      // Try cookie only
+      if (cookieToken) {
+        try {
+          const payload = (await verify(cookieToken, key, "HS256")) as any;
+          return json({ 
+            ok: true, 
+            role: payload.role, 
+            allowed_paths: payload.allowed_paths,
+            via: 'cookie'
+          }, 200, {}, origin);
+        } catch (cookieError) {
+          console.log("Cookie token validation failed:", cookieError);
+          return json({ 
+            ok: false, 
+            reason: "invalid_token",
+            detail: { cookie_error: String(cookieError) }
+          }, 401, {}, origin);
+        }
+      }
+      
+      return json({ ok: false, reason: "missing_token" }, 401, {}, origin);
     } catch (error) {
-      console.log("Session validation failed:", error);
-      return json({ ok: false }, 200, {}, origin);
+      console.error("Session validation error:", error);
+      return json({ ok: false, reason: "server_error", detail: String(error) }, 500, {}, origin);
     }
   }
 

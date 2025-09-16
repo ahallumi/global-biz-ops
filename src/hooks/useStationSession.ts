@@ -14,32 +14,44 @@ export function useStationSession() {
   useEffect(() => {
     let cancelled = false;
     
-    const checkSession = async () => {
-      try {
-        // Include Authorization header if token exists in sessionStorage
+    const fetchSession = async (withBearer = true) => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (withBearer) {
         const token = sessionStorage.getItem('station_jwt');
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-        };
-        
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
-
-        const response = await fetch('/functions/v1/station-login/station-session', {
-          method: 'POST',
-          credentials: 'include',
-          headers,
-        });
+      }
+      
+      const response = await fetch('/functions/v1/station-login/station-session', {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+      });
+      
+      const data = await response.json().catch(() => ({}));
+      return { ok: response.ok && data?.ok === true, response, data };
+    };
+    
+    const checkSession = async () => {
+      try {
+        // First try with Bearer token if available
+        let { ok, data } = await fetchSession(true);
+        
+        if (!ok && data?.reason === 'invalid_token') {
+          // Auto-recovery: clear stale Bearer token and retry with cookie only
+          console.log('Bearer token invalid, clearing and retrying with cookie...');
+          sessionStorage.removeItem('station_jwt');
+          ({ ok, data } = await fetchSession(false));
+        }
         
         if (!cancelled) {
-          if (!response.ok) {
-            console.error('Station session check failed:', response.status);
-            setSession({ ok: false });
-          } else {
-            const data = await response.json().catch(() => ({ ok: false }));
-            console.log('Session check response:', data);
+          if (ok) {
+            console.log('Session check successful:', data);
             setSession(data || { ok: false });
+          } else {
+            console.error('Station session check failed:', data);
+            setSession({ ok: false });
           }
           setLoading(false);
         }
