@@ -135,14 +135,34 @@ serve(async (req) => {
     });
   }
 
+  // DEBUG: test mint token (dev only)
+  if (method === "GET" && path === "/__mint" && Deno.env.get("ALLOW_TEST_MINT") === "1") {
+    const secret = Deno.env.get("STATION_JWT_SECRET");
+    if (!secret) return jsonRes(req, 500, { error: "server_error", reason: "missing_secret" });
+    const key = await importHmacKey(secret);
+    const payload = {
+      sub: "test",
+      role: "kiosk",
+      allowed_paths: ["/station", "/station/clock"],
+      default_page: "/station/clock",
+      iat: Math.floor(Date.now()/1000),
+      exp: Math.floor(Date.now()/1000) + 3600,
+    };
+    const token = await create({ alg: "HS256", typ: "JWT" }, payload as any, key);
+    return jsonRes(req, 200, { token });
+  }
+
   // LOGIN: POST /
   if (method === "POST" && path === "/") {
     try {
+      console.log('LOGIN: start', { origin: resolveOrigin(req) });
       const { code } = await req.json().catch(() => ({}));
+      console.log('LOGIN: code', code);
       if (!code) return jsonRes(req, 400, { error: "Access code is required" });
 
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      console.log('LOGIN: env', { has_supabase_url: !!supabaseUrl, has_service_key: !!supabaseKey });
       const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.46.1");
       const client = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
 
@@ -153,13 +173,16 @@ serve(async (req) => {
         .eq("code", code)
         .maybeSingle();
 
+      console.log('LOGIN: lookup', { error: (error as any)?.message, found: !!codeData });
+
       if (error || !codeData) return jsonRes(req, 401, { error: "Invalid access code" });
       if (codeData.expires_at && new Date(codeData.expires_at) < new Date()) {
         return jsonRes(req, 401, { error: "Access code has expired" });
       }
       if (codeData.is_active === false) return jsonRes(req, 403, { error: "Access code is disabled" });
 
-      const secret = Deno.env.get("STATION_JWT_SECRET");
+      const secret = Deno.env.get("STATION_JWT_SECRET") || "";
+      console.log('LOGIN: secret_set', !!secret, 'secret_hash', await secretHash16(secret));
       if (!secret) return jsonRes(req, 500, { error: "Server configuration error: missing secret" });
       const key = await importHmacKey(secret);
 
