@@ -155,52 +155,92 @@ serve(async (req) => {
   // LOGIN: POST /
   if (method === "POST" && path === "/") {
     try {
-      console.log('LOGIN: start', { origin: resolveOrigin(req) });
       const { code } = await req.json().catch(() => ({}));
-      console.log('LOGIN: code', code);
-      if (!code) return jsonRes(req, 400, { error: "Access code is required" });
+      console.log("LOGIN: start", { code });
+      if (!code || typeof code !== "string" || !code.trim()) {
+        return jsonRes(req, 400, { error: "Access code is required" });
+      }
+      const cleanCode = code.trim();
 
-      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-      console.log('LOGIN: env', { has_supabase_url: !!supabaseUrl, has_service_key: !!supabaseKey });
-      const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.46.1");
-      const client = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
+      const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+      if (!supabaseUrl || !serviceKey) {
+        console.log("LOGIN: missing env", { hasUrl: !!supabaseUrl, hasKey: !!serviceKey });
+        return jsonRes(req, 500, { error: "Server configuration error" });
+      }
 
-      // look up your code record (adjust table/columns if needed)
-      const { data: codeData, error } = await client
-        .from("station_login_codes")
-        .select("*")
-        .eq("code", code)
-        .maybeSingle();
+      // Helper to GET from PostgREST
+      const getOne = async (table: string) => {
+        const url = `${supabaseUrl}/rest/v1/${table}?select=*&code=eq.${encodeURIComponent(cleanCode)}&limit=1`;
+        const r = await fetch(url, {
+          headers: {
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+            Accept: "application/json",
+          },
+        });
+        const txt = await r.text();
+        let json: any = null;
+        try { json = txt ? JSON.parse(txt) : null; } catch {}
+        console.log("LOGIN: rest", { table, status: r.status, body: txt?.slice(0, 200) });
+        if (!r.ok) return { ok: false as const, data: null, err: `HTTP ${r.status}` };
+        if (Array.isArray(json) && json.length > 0) return { ok: true as const, data: json[0], err: null };
+        return { ok: false as const, data: null, err: "not_found" };
+      };
 
-      console.log('LOGIN: lookup', { error: (error as any)?.message, found: !!codeData });
+      // Try both common table names
+      let rec: any = null;
+      let r = await getOne("station_login_codes");
+      if (r.ok) rec = r.data; else {
+        r = await getOne("station_access_codes");
+        if (r.ok) rec = r.data;
+      }
 
-      if (error || !codeData) return jsonRes(req, 401, { error: "Invalid access code" });
-      if (codeData.expires_at && new Date(codeData.expires_at) < new Date()) {
+      if (!rec) {
+        console.log("LOGIN: code not found");
+        return jsonRes(req, 401, { error: "Invalid access code" });
+      }
+
+      // expiry / active checks (tolerate schema diff)
+      if (rec.expires_at && new Date(rec.expires_at) < new Date()) {
+        console.log("LOGIN: expired", rec.expires_at);
         return jsonRes(req, 401, { error: "Access code has expired" });
       }
-      if (codeData.is_active === false) return jsonRes(req, 403, { error: "Access code is disabled" });
+      if (rec.is_active === false) {
+        console.log("LOGIN: disabled");
+        return jsonRes(req, 403, { error: "Access code is disabled" });
+      }
 
+      // Sign JWT
       const secret = Deno.env.get("STATION_JWT_SECRET") || "";
-      console.log('LOGIN: secret_set', !!secret, 'secret_hash', await secretHash16(secret));
-      if (!secret) return jsonRes(req, 500, { error: "Server configuration error: missing secret" });
+      if (!secret) {
+        console.log("LOGIN: missing secret");
+        return jsonRes(req, 500, { error: "Server configuration error: missing secret" });
+      }
       const key = await importHmacKey(secret);
-
       const payload = {
-        sub: String(codeData.id),
-        role: codeData.role ?? "kiosk",
-        allowed_paths: codeData.allowed_paths ?? [],
-        default_page: codeData.default_page ?? "/station",
+        sub: String(rec.id ?? rec.station_id ?? cleanCode),
+        role: rec.role ?? "kiosk",
+        allowed_paths: rec.allowed_paths ?? [],
+        default_page: rec.default_page ?? "/station",
         iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // 24h
       };
 
       const token = await create({ alg: "HS256", typ: "JWT" }, payload as Record<string, unknown>, key);
 
+      // Cookie + response
       const cookie = makeCookie(COOKIE_NAME, token, { sameSite: COOKIE_SAMESITE });
-      return jsonRes(req, 200, { success: true, token, redirectTo: payload.default_page }, { "Set-Cookie": cookie });
+      console.log("LOGIN: success", { sub: payload.sub, default_page: payload.default_page });
+
+      return jsonRes(
+        req,
+        200,
+        { success: true, token, redirectTo: payload.default_page },
+        { "Set-Cookie": cookie },
+      );
     } catch (e) {
-      console.error("login error:", e);
+      console.error("LOGIN: server_error", e);
       return jsonRes(req, 500, { error: "server_error", detail: String(e?.message || e) });
     }
   }
