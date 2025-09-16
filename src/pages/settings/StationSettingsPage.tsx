@@ -20,17 +20,39 @@ export default function StationSettingsPage() {
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
+        console.log('Fetching station metrics...');
+        
         // Fetch active access codes count
-        const { count: codesCount } = await supabase
+        const { count: codesCount, error: codesError } = await supabase
           .from('station_login_codes')
           .select('*', { count: 'exact', head: true })
           .eq('is_active', true);
+          
+        if (codesError) {
+          console.error('Error fetching access codes:', codesError);
+          toast({
+            title: "Database Error",
+            description: `Failed to load access codes: ${codesError.message}`,
+            variant: "destructive",
+          });
+        }
 
-        // Fetch session timeout from time_settings
-        const { data: timeSettings } = await supabase
+        // Fetch session timeout from time_settings  
+        const { data: timeSettings, error: timeError } = await supabase
           .from('time_settings')
           .select('auto_clock_out_hours')
-          .single();
+          .maybeSingle();
+          
+        if (timeError) {
+          console.error('Error fetching time settings:', timeError);
+          toast({
+            title: "Database Error", 
+            description: `Failed to load time settings: ${timeError.message}`,
+            variant: "destructive",
+          });
+        }
+
+        console.log('Metrics loaded:', { codesCount, timeSettings });
 
         setMetrics({
           activeStations: 0, // TODO: Implement active sessions tracking
@@ -40,12 +62,17 @@ export default function StationSettingsPage() {
         });
       } catch (error) {
         console.error('Failed to fetch metrics:', error);
+        toast({
+          title: "Network Error",
+          description: "Failed to load station metrics. Please refresh the page.",
+          variant: "destructive",
+        });
         setMetrics(prev => ({ ...prev, loading: false }));
       }
     };
 
     fetchMetrics();
-  }, []);
+  }, [toast]);
 
   const copyLoginLink = async () => {
     const loginUrl = `${window.location.origin}/station-login`;
