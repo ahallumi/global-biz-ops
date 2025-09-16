@@ -138,7 +138,7 @@ serve(async (req) => {
 
       // Support logout via action in root as well (defensive)
       if (action === "logout") {
-        const clearCookie = makeCookie(COOKIE_NAME, "", { maxAge: 0, sameSite: "Lax" });
+        const clearCookie = makeCookie(COOKIE_NAME, "", { maxAge: 0, sameSite: "None" });
         return jsonRes(req, 200, { ok: true }, { "Set-Cookie": clearCookie });
       }
 
@@ -185,7 +185,7 @@ serve(async (req) => {
         (Array.isArray(data.allowed_paths) && data.allowed_paths.length > 0 ? data.allowed_paths[0] : "/station");
 
       // Set cookie with proper SameSite attribute
-      const sessionCookie = makeCookie(COOKIE_NAME, jwt, { maxAge: MAX_AGE, sameSite: "Lax" });
+      const sessionCookie = makeCookie(COOKIE_NAME, jwt, { maxAge: MAX_AGE, sameSite: "None" });
       
       console.log(`Successfully authenticated code: ${code}`);
       return jsonRes(req, 200, { ok: true, redirectTo, token: jwt }, { "Set-Cookie": sessionCookie });
@@ -197,7 +197,7 @@ serve(async (req) => {
 
   // POST /station-logout -> clear cookie
   if (req.method === "POST" && pathname === "/station-logout") {
-    const clearCookie = makeCookie(COOKIE_NAME, "", { maxAge: 0, sameSite: "Lax" });
+    const clearCookie = makeCookie(COOKIE_NAME, "", { maxAge: 0, sameSite: "None" });
     return jsonRes(req, 200, { ok: true }, { "Set-Cookie": clearCookie });
   }
 

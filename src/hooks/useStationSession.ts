@@ -18,7 +18,7 @@ export function useStationSession() {
       try {
         console.log('Checking station session...');
         
-        const response = await fetch('/functions/v1/station-login/station-session', {
+        const response = await fetch('https://ffxvnhrqxkirdogknoid.supabase.co/functions/v1/station-login/station-session', {
           method: 'POST',
           credentials: 'include',
           headers: {
@@ -59,7 +59,7 @@ export function useStationSession() {
 
   const logout = async () => {
     try {
-      await fetch('/functions/v1/station-login/station-logout', {
+      await fetch('https://ffxvnhrqxkirdogknoid.supabase.co/functions/v1/station-login/station-logout', {
         method: 'POST',
         credentials: 'include',
         headers: {

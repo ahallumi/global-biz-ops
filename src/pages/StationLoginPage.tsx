@@ -34,7 +34,7 @@ export default function StationLoginPage() {
         return;
       }
 
-      const response = await fetch('/functions/v1/station-login', {
+      const response = await fetch('https://ffxvnhrqxkirdogknoid.supabase.co/functions/v1/station-login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -55,8 +55,8 @@ export default function StationLoginPage() {
         // Use redirectTo from server response, fallback to /station
         const redirectPath = data.redirectTo || '/station';
         console.log('Login successful, redirecting to:', redirectPath);
-        // Use window.location.replace to ensure session is refreshed
-        window.location.replace(redirectPath);
+        // Small delay to ensure cookie is set before navigating
+        setTimeout(() => window.location.replace(redirectPath), 150);
       } else {
         setError(data?.error || 'Login failed');
       }
