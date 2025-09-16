@@ -218,6 +218,8 @@ serve(async (req) => {
       
       const cookieToken = getCookie(req, COOKIE_NAME);
 
+      console.log("station-session: cookie?", !!cookieToken, cookieToken ? cookieToken.length : 0, "bearer?", hasValidBearer, bearerToken ? bearerToken.length : 0);
+
       // Import the key for verification
       const key = await importHmacKey(JWT_SECRET);
 
@@ -250,8 +252,23 @@ serve(async (req) => {
             default_page: payload.default_page 
           });
         } catch (bearerError) {
-          console.log("Bearer token validation failed:", bearerError);
-          return jsonRes(req, 401, { ok: false, reason: "invalid_token" });
+          console.log("Bearer token validation failed (raw):", bearerError);
+          // Try forgiving variants (strip quotes or decode URI) before failing
+          try {
+            const cleaned = bearerToken!.replace(/^"(.*)"$/, '$1');
+            const decoded = decodeURIComponent(cleaned);
+            const payload = (await verify(decoded, key, "HS256")) as any;
+            return jsonRes(req, 200, { 
+              ok: true, 
+              via: "bearer", 
+              role: payload.role, 
+              allowed_paths: payload.allowed_paths, 
+              default_page: payload.default_page 
+            });
+          } catch (secondError) {
+            console.log("Bearer token validation failed (cleaned/decoded):", secondError);
+            return jsonRes(req, 401, { ok: false, reason: "invalid_token" });
+          }
         }
       }
 
