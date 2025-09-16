@@ -10,12 +10,14 @@ const COOKIE_NAME = "station_session";
 const MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
 // Dynamic CORS headers to reflect origin for credentialed requests
-function getCorsHeaders(origin?: string) {
+function getCorsHeaders(origin?: string | null) {
+  const allowedOrigin = origin || "https://your-app.lovableproject.com"; // reflect or hardcode fallback
   return {
-    "Access-Control-Allow-Origin": origin || "*",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+    "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Headers": "authorization, content-type",
+    "Vary": "Origin",
   };
 }
 
@@ -76,7 +78,7 @@ serve(async (req) => {
     return new Response(null, { headers: getCorsHeaders(origin) });
   }
 
-  // Validate environment variables
+  // Validate environment variables and log secret consistency
   if (!JWT_SECRET) {
     console.error("STATION_JWT_SECRET is not set");
     return json({ error: "Server configuration error" }, 500);
@@ -85,6 +87,11 @@ serve(async (req) => {
     console.error("Missing Supabase environment variables");
     return json({ error: "Server configuration error" }, 500);
   }
+
+  // Log secret hash for consistency verification (safe to log; not the secret)
+  const secretHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JWT_SECRET))))
+    .map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
+  console.log("JWT secret hash:", secretHash);
 
   const url = new URL(req.url);
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -205,106 +212,58 @@ serve(async (req) => {
   // POST /station-session -> validate cookie and return session info
   if ((req.method === "POST" || req.method === "GET") && pathname === "/station-session") {
     try {
+      const origin = req.headers.get("origin");
+      
       // Extract Bearer token (ignore empty/short ones)
       const authHeader = req.headers.get("authorization") || "";
       const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
       const hasValidBearer = !!(bearerToken && bearerToken.length > 20);
 
-      // Extract cookie - prefer station_session only; legacy cookies intentionally ignored
-      const cookieHeader = req.headers.get("cookie") || "";
-      const rawCookieToken = cookieHeader
-        .split("; ")
-        .find((c) => c.startsWith(`${COOKIE_NAME}=`))
-        ?.split("=")[1] || null;
-      const cookieToken = rawCookieToken ? decodeURIComponent(rawCookieToken).replace(/^"(.*)"$/, '$1') : null;
-
-      // Compute a 'clear cookie' header for invalid cases
-      const urlInfo = new URL(req.url);
-      const isHttps = urlInfo.protocol === 'https:' || req.headers.get('x-forwarded-proto') === 'https';
-      let sameSite = 'Lax';
-      try {
-        const origin = req.headers.get('origin');
-        if (origin) {
-          const o = new URL(origin);
-          if (o.host !== urlInfo.host) sameSite = 'None';
-        }
-      } catch {}
-      const clearParts = [
-        `${COOKIE_NAME}=`,
-        'Path=/',
-        'HttpOnly',
-        'Max-Age=0',
-        `SameSite=${sameSite}`,
-      ];
-      if (isHttps) clearParts.push('Secure');
-      const clearCookie = clearParts.join('; ');
+      // Extract cookie - prefer station_session only
+      function getCookie(req: Request, name: string) {
+        const cookieHeader = req.headers.get("cookie") || "";
+        const match = cookieHeader.match(new RegExp(`(?:^|; )${name}=([^;]+)`));
+        return match ? decodeURIComponent(match[1]).replace(/^"(.*)"$/, '$1') : null;
+      }
+      
+      const cookieToken = getCookie(req, COOKIE_NAME);
 
       // Import the key for verification
       const key = await importHmacKey(JWT_SECRET);
 
-      // Try Bearer first if valid, with cookie fallback
-      if (hasValidBearer) {
-        try {
-          const payload = (await verify(bearerToken!, key, "HS256")) as any;
-          return json(
-            { ok: true, role: payload.role, allowed_paths: payload.allowed_paths, via: 'bearer' },
-            200,
-            {},
-            origin,
-          );
-        } catch (bearerError) {
-          console.log("Bearer token validation failed:", bearerError);
-          if (cookieToken) {
-            try {
-              const payload = (await verify(cookieToken, key, "HS256")) as any;
-              return json(
-                { ok: true, role: payload.role, allowed_paths: payload.allowed_paths, via: 'cookie' },
-                200,
-                {},
-                origin,
-              );
-            } catch (cookieError) {
-              console.log("Cookie token validation also failed:", cookieError);
-              return json(
-                { ok: false, reason: 'invalid_token', detail: { bearer_errors: [String(bearerError)], cookie_errors: [String(cookieError)] } },
-                401,
-                setCookie(clearCookie),
-                origin,
-              );
-            }
-          }
-          // No cookie to fall back to
-          return json(
-            { ok: false, reason: 'invalid_token', detail: { bearer_errors: [String(bearerError)] } },
-            401,
-            {},
-            origin,
-          );
-        }
-      }
-
-      // No Bearer or invalid Bearer - try cookie only
+      // 1) Cookie first (prioritized)
       if (cookieToken) {
         try {
           const payload = (await verify(cookieToken, key, "HS256")) as any;
           return json(
-            { ok: true, role: payload.role, allowed_paths: payload.allowed_paths, via: 'cookie' },
+            { ok: true, via: "cookie", role: payload.role, allowed_paths: payload.allowed_paths, default_page: payload.default_page },
             200,
             {},
             origin,
           );
         } catch (cookieError) {
           console.log("Cookie token validation failed:", cookieError);
-          return json(
-            { ok: false, reason: 'invalid_token', detail: { cookie_errors: [String(cookieError)] } },
-            401,
-            setCookie(clearCookie),
-            origin,
-          );
+          // Clear invalid cookie but continue to try Bearer
         }
       }
 
-      return json({ ok: false, reason: 'missing_token' }, 401, {}, origin);
+      // 2) Then Bearer (if present & non-empty)
+      if (hasValidBearer) {
+        try {
+          const payload = (await verify(bearerToken!, key, "HS256")) as any;
+          return json(
+            { ok: true, via: "bearer", role: payload.role, allowed_paths: payload.allowed_paths, default_page: payload.default_page },
+            200,
+            {},
+            origin,
+          );
+        } catch (bearerError) {
+          console.log("Bearer token validation failed:", bearerError);
+          return json({ ok: false, reason: "invalid_token" }, 401, {}, origin);
+        }
+      }
+
+      return json({ ok: false, reason: "missing_token" }, 401, {}, origin);
     } catch (error) {
       console.error("Session validation error:", error);
       return json({ ok: false, reason: 'server_error', detail: String(error) }, 500, {}, origin);

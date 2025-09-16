@@ -35,22 +35,27 @@ export function useStationSession() {
     
     const checkSession = async () => {
       try {
-        // First try with Bearer token if available
-        let { ok, data } = await fetchSession(true);
+        // First try cookie-only (server now prioritizes cookie)
+        let { ok, data } = await fetchSession(false);
         
         if (!ok && (data?.reason === 'invalid_token' || data?.reason === 'missing_token')) {
-          // Auto-recovery: clear stale Bearer token and retry with cookie only
-          const hasBearer = !!sessionStorage.getItem('station_jwt');
-          if (hasBearer) {
-            console.log('Bearer token issue, clearing and retrying with cookie...');
-            sessionStorage.removeItem('station_jwt');
-            ({ ok, data } = await fetchSession(false));
+          // Auto-recovery: try with Bearer if available
+          if (sessionStorage.getItem('station_jwt')) {
+            console.log('Cookie failed, trying Bearer token...');
+            ({ ok, data } = await fetchSession(true));
+            
+            if (!ok && (data?.reason === 'invalid_token' || data?.reason === 'missing_token')) {
+              console.log('Bearer also failed, clearing stale token...');
+              sessionStorage.removeItem('station_jwt');
+              // Final attempt with clean state
+              ({ ok, data } = await fetchSession(false));
+            }
           }
         }
         
         if (!cancelled) {
           if (ok) {
-            console.log('Session check successful:', data);
+            console.log('Session check successful via:', data?.via || 'unknown');
             setSession(data || { ok: false });
           } else {
             console.error('Station session check failed:', data);
