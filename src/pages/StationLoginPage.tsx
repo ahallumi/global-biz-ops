@@ -52,18 +52,19 @@ export default function StationLoginPage() {
       }
 
       if (data?.ok && data?.token) {
-        // ✅ Save token for Bearer path (works even if cookie is blocked)
-        sessionStorage.setItem("station_jwt", data.token);
+        const token = data.token as string;
+        const target = data.redirectTo || '/station';
         
-        // Use redirectTo from server response, fallback to /station
-        const redirectPath = data.redirectTo || '/station';
-        console.log('Login successful, redirecting to:', redirectPath);
+        // Build absolute URL (covers path-only and absolute URLs)
+        const url = new URL(target, window.location.origin);
         
-        // Tiny delay so cookie can land in browsers that allow it
-        await new Promise((r) => setTimeout(r, 120));
+        // Put token in the fragment (not query!) so it never hits server logs
+        url.hash = `st=${encodeURIComponent(token)}`;
         
-        // Redirect to server-provided default_page
-        window.location.assign(redirectPath);
+        console.log('Login successful, redirecting with token handoff to:', target);
+        
+        // Use replace() so Back doesn't expose the tokened URL
+        window.location.replace(url.toString());
       } else {
         setError(data?.error || 'Login failed');
       }
