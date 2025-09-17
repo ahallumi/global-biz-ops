@@ -13,6 +13,8 @@ export default function StationDebugPage() {
   const [loading, setLoading] = useState(false);
   const [testCode, setTestCode] = useState("");
   const [loginResult, setLoginResult] = useState<any>(null);
+  const [envInfo, setEnvInfo] = useState<any>(null);
+  const [secretInfo, setSecretInfo] = useState<any>(null);
 
   useEffect(() => {
     document.title = "Station Session Debug";
@@ -112,6 +114,44 @@ export default function StationDebugPage() {
       setLoading(false);
     }
   };
+  const checkEnv = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch(
+        "https://ffxvnhrqxkirdogknoid.supabase.co/functions/v1/station-login/__env",
+        { method: "GET", credentials: "include" }
+      );
+      const text = await res.text();
+      let json: any = null;
+      try { json = text ? JSON.parse(text) : null; } catch {}
+      setEnvInfo({ status: res.status, ok: res.ok, json, body: text?.slice(0, 800) });
+    } catch (e) {
+      setError("Env check failed: " + (e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkSecretHash = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch(
+        "https://ffxvnhrqxkirdogknoid.supabase.co/functions/v1/station-login/__secret-hash",
+        { method: "GET", credentials: "include" }
+      );
+      const text = await res.text();
+      let json: any = null;
+      try { json = text ? JSON.parse(text) : null; } catch {}
+      setSecretInfo({ status: res.status, ok: res.ok, json, body: text?.slice(0, 800) });
+    } catch (e) {
+      setError("Secret-hash check failed: " + (e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const doLogout = async () => {
     setError(null);
     setLoading(true);
@@ -207,6 +247,12 @@ export default function StationDebugPage() {
             </Button>
             <Button variant="secondary" onClick={whoAmICookieCheck} disabled={loading}>
               WhoAmI (Cookie)
+            </Button>
+            <Button variant="outline" onClick={checkEnv} disabled={loading}>
+              Env Check
+            </Button>
+            <Button variant="ghost" onClick={checkSecretHash} disabled={loading}>
+              Secret Hash
             </Button>
           </div>
 

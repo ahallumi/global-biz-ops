@@ -89,7 +89,9 @@ setLoading(true);
         url.hash = '';
         navigate(url.pathname + url.search, { replace: true });
       } else {
-        const errorMsg = data?.error || `Login failed (${response.status})`;
+        const reason = data?.reason ? `, reason: ${data.reason}` : '';
+        const serverErr = data?.error ? `${data.error}${reason}` : null;
+        const errorMsg = serverErr || `Login failed (${response.status}${reason})`;
         setError(errorMsg);
         setDebugInfo({ loginStatus: response.status, loginBody: text?.slice(0, 500), parsed: data });
       }
