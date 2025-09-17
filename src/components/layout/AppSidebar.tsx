@@ -11,7 +11,8 @@ import {
   Truck,
   Package,
   History,
-  Cog
+  Cog,
+  DollarSign
 } from "lucide-react"
 
 import { useAuth } from "@/hooks/useAuth"
@@ -63,6 +64,12 @@ const navigation = [
     name: 'Employees',
     href: '/employees',
     icon: Users,
+    roles: ['admin'],
+  },
+  {
+    name: 'Payroll',
+    href: '/payroll',
+    icon: DollarSign,
     roles: ['admin'],
   },
   {
@@ -171,7 +178,7 @@ export function AppSidebar() {
             >
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">
-                  {employee?.full_name}
+                  {employee?.full_name || 'Employee'}
                 </span>
                 <span className="truncate text-xs capitalize">
                   {employee?.role}

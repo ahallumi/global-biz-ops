@@ -30,6 +30,8 @@ import StationStaffPage from "./pages/StationStaffPage";
 import { StationRoute } from "./components/StationRoute";
 import NotFound from "./pages/NotFound";
 import StationDebugPage from "./pages/StationDebugPage";
+import PayrollPage from "./pages/PayrollPage";
+import ReportsPage from "./pages/ReportsPage";
 import EmployeesPage from "./pages/EmployeesPage";
 import NewEmployeePage from "./pages/NewEmployeePage";
 import { EmployeeDetailPage } from "./pages/EmployeeDetailPage";
@@ -133,6 +135,16 @@ const App = () => (
             <Route path="/settings/station" element={
               <ProtectedRoute requiredRoles={['admin']}>
                 <StationSettingsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/payroll" element={
+              <ProtectedRoute requiredRoles={['admin']}>
+                <PayrollPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/reports" element={
+              <ProtectedRoute requiredRoles={['admin', 'manager']}>
+                <ReportsPage />
               </ProtectedRoute>
             } />
             <Route path="/employees" element={
