@@ -1,6 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { create, verify } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /** ======== CONFIG (single source of truth) ======== */
 const FN_SLUG = "/station-login";
@@ -299,130 +300,88 @@ serve(async (req) => {
   // ADMIN route: POST /generate-station-code
   if (method === "POST" && path === "/generate-station-code") {
     try {
-      // Check authentication first
-      const secret = Deno.env.get("STATION_JWT_SECRET");
-      if (!secret) return jsonRes(req, 500, { error: "server_error", reason: "missing_secret" });
-      
-      const key = await importHmacKey(secret);
-      const auth = req.headers.get("authorization") || "";
-      const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-      
-      if (!bearer) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+      if (!supabaseUrl || !anonKey) {
+        return jsonRes(req, 500, { error: "server_error", reason: "missing_config" });
+      }
+
+      const authHeader = req.headers.get("authorization") || "";
+      if (!authHeader.startsWith("Bearer ")) {
         return jsonRes(req, 401, { error: "unauthorized", reason: "missing_token" });
       }
-      
-      let payload: any = null;
-      try {
-        payload = await verify(bearer, key, "HS256");
-      } catch (e) {
+
+      // Create a Supabase client scoped to the caller's JWT so RLS applies
+      const supabase = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+
+      const { data: { user }, error: userErr } = await supabase.auth.getUser();
+      if (userErr || !user) {
         return jsonRes(req, 401, { error: "unauthorized", reason: "invalid_token" });
       }
-      
-      // Check if user has admin role (assuming admin role is required)
-      if (payload.role !== "admin") {
+
+      // Fetch employee role for the current user
+      const { data: emp, error: empErr } = await supabase
+        .from("employees")
+        .select("role")
+        .eq("user_id", user.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (empErr) {
+        return jsonRes(req, 500, { error: "server_error", reason: "employee_lookup_failed", detail: empErr.message });
+      }
+
+      if (!emp || emp.role !== "admin") {
         return jsonRes(req, 403, { error: "forbidden", reason: "insufficient_permissions" });
       }
-      
+
       // Parse and validate request body
       const body = await req.json().catch(() => ({}));
-      const { label, role = "station", expires_at, allowed_paths = ["/station"], default_page = "/station" } = body;
-      
-      if (!label || typeof label !== "string") {
-        return jsonRes(req, 400, { error: "validation_error", reason: "label_required" });
-      }
-      
+      const label = typeof body?.label === "string" && body.label.length > 0 ? body.label : null;
+      const role = typeof body?.role === "string" ? body.role : "station";
+      const allowed_paths = Array.isArray(body?.allowed_paths) && body.allowed_paths.length > 0 ? body.allowed_paths : ["/station"];
+      const default_page = typeof body?.default_page === "string" ? body.default_page : "/station";
+      const expires_at = body?.expires_at ? new Date(body.expires_at).toISOString() : null;
+
       // Generate secure 12-character alphanumeric code
-      const generateCode = () => {
-        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        let result = "";
-        for (let i = 0; i < 12; i++) {
-          result += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return result;
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      const genCode = (len: number) => {
+        const arr = new Uint32Array(len);
+        crypto.getRandomValues(arr);
+        let out = "";
+        for (let i = 0; i < len; i++) out += chars[arr[i] % chars.length];
+        return out;
       };
-      
-      const code = generateCode();
-      console.log("GENERATE_CODE: creating", { code, label, role });
-      
-      // Prepare data for insertion
-      const newRecord = {
+      const code = genCode(12);
+      console.log("GENERATE_CODE: creating", { code, label, role, user_id: user.id });
+
+      const insertPayload: Record<string, any> = {
         code,
         label,
         role,
         is_active: true,
-        allowed_paths: Array.isArray(allowed_paths) ? allowed_paths : ["/station"],
-        default_page: default_page || "/station",
-        created_by: payload.sub,
+        allowed_paths,
+        default_page,
+        created_by: user.id,
         created_at: new Date().toISOString(),
       };
-      
-      if (expires_at) {
-        newRecord.expires_at = expires_at;
+      if (expires_at) insertPayload.expires_at = expires_at;
+
+      // Insert with RLS enforced (admin required by policy)
+      const { data: inserted, error: insErr, status } = await supabase
+        .from("station_login_codes")
+        .insert(insertPayload)
+        .select("*")
+        .single();
+
+      if (insErr) {
+        return jsonRes(req, 400, { error: "database_error", detail: insErr.message, status });
       }
-      
-      // Insert into database
-      const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-      
-      if (!supabaseUrl || !serviceKey) {
-        console.log("GENERATE_CODE: missing env", { hasUrl: !!supabaseUrl, hasKey: !!serviceKey });
-        return jsonRes(req, 500, { error: "server_error", reason: "missing_config" });
-      }
-      
-      const insertUrl = `${supabaseUrl}/rest/v1/station_login_codes`;
-      const insertResponse = await fetch(insertUrl, {
-        method: "POST",
-        headers: {
-          "apikey": serviceKey,
-          "Authorization": `Bearer ${serviceKey}`,
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "Prefer": "return=representation"
-        },
-        body: JSON.stringify(newRecord)
-      });
-      
-      const insertText = await insertResponse.text();
-      console.log("GENERATE_CODE: insert response", { status: insertResponse.status, body: insertText?.slice(0, 200) });
-      
-      if (!insertResponse.ok) {
-        let errorReason = "database_error";
-        if (insertResponse.status === 409) {
-          errorReason = "code_collision"; // extremely unlikely with 12 chars
-        }
-        return jsonRes(req, insertResponse.status, { 
-          error: "database_error", 
-          reason: errorReason,
-          detail: insertText 
-        });
-      }
-      
-      let insertedRecord;
-      try {
-        const parsed = JSON.parse(insertText);
-        insertedRecord = Array.isArray(parsed) ? parsed[0] : parsed;
-      } catch (e) {
-        console.error("GENERATE_CODE: parse error", e);
-        return jsonRes(req, 500, { error: "server_error", reason: "response_parse_error" });
-      }
-      
-      console.log("GENERATE_CODE: success", { id: insertedRecord?.id, code });
-      
-      return jsonRes(req, 201, {
-        success: true,
-        code: {
-          id: insertedRecord.id,
-          code: insertedRecord.code,
-          label: insertedRecord.label,
-          role: insertedRecord.role,
-          is_active: insertedRecord.is_active,
-          expires_at: insertedRecord.expires_at,
-          allowed_paths: insertedRecord.allowed_paths,
-          default_page: insertedRecord.default_page,
-          created_at: insertedRecord.created_at
-        }
-      });
-      
+
+      console.log("GENERATE_CODE: success", { id: inserted?.id, code });
+      return jsonRes(req, 201, { success: true, code: inserted });
     } catch (e) {
       console.error("GENERATE_CODE: server_error", e);
       return jsonRes(req, 500, { error: "server_error", detail: String(e?.message || e) });

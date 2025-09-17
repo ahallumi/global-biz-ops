@@ -77,30 +77,39 @@ export function StationAccessManagement() {
 
   const generateCode = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('station-login/generate-station-code', {
-        body: {
-          label: newCodeForm.label || null,
-          role: newCodeForm.role,
-          expires_at: newCodeForm.expires_at || null,
-          allowed_paths: newCodeForm.allowed_paths,
-          default_page: newCodeForm.default_page
-        }
-      });
-
-      if (error) {
-        console.error('Failed to generate code:', error);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
         toast({
-          title: "Error",
-          description: data?.error || error.message || "Failed to generate access code",
+          title: "Not authenticated",
+          description: "Please sign in as an admin to generate codes.",
           variant: "destructive",
         });
         return;
       }
 
-      if (!data?.ok) {
+      const FN_BASE = "https://ffxvnhrqxkirdogknoid.supabase.co";
+      const res = await fetch(`${FN_BASE}/functions/v1/station-login/generate-station-code`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          label: newCodeForm.label || null,
+          role: newCodeForm.role,
+          expires_at: newCodeForm.expires_at || null,
+          allowed_paths: newCodeForm.allowed_paths,
+          default_page: newCodeForm.default_page,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.success) {
+        console.error("Failed to generate code:", json);
         toast({
-          title: "Error", 
-          description: data?.error || "Failed to generate access code",
+          title: "Error",
+          description: json?.error || json?.reason || "Failed to generate access code",
           variant: "destructive",
         });
         return;
@@ -116,14 +125,14 @@ export function StationAccessManagement() {
         role: "station",
         expires_at: "",
         allowed_paths: ["/station"],
-        default_page: "/station"
+        default_page: "/station",
       });
       loadCodes();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating code:", error);
       toast({
         title: "Error",
-        description: "Failed to generate access code",
+        description: error?.message || "Failed to generate access code",
         variant: "destructive",
       });
     }
