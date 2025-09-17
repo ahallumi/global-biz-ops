@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
 
 export default function StationDebugPage() {
   const [bearerResult, setBearerResult] = useState<any>(null);
@@ -10,6 +11,8 @@ export default function StationDebugPage() {
   const [whoAmICookie, setWhoAmICookie] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [testCode, setTestCode] = useState("");
+  const [loginResult, setLoginResult] = useState<any>(null);
 
   useEffect(() => {
     document.title = "Station Session Debug";
@@ -132,6 +135,35 @@ export default function StationDebugPage() {
     sessionStorage.removeItem("station_jwt");
   };
 
+  const testLogin = async () => {
+    setError(null);
+    setLoading(true);
+    setLoginResult(null);
+    try {
+      const clean = (testCode || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      if (!clean || clean.length !== 12) {
+        setError("Provide a 12-character code to test.");
+        return;
+      }
+      const res = await fetch("https://ffxvnhrqxkirdogknoid.supabase.co/functions/v1/station-login", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: clean }),
+      });
+      const text = await res.text();
+      let json: any = null;
+      try { json = text ? JSON.parse(text) : null; } catch {}
+      setLoginResult({ status: res.status, ok: res.ok, json, body: text?.slice(0, 800) });
+      if (res.ok && json?.token) {
+        sessionStorage.setItem("station_jwt", json.token);
+      }
+    } catch (e) {
+      setError("Test login failed: " + (e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-6">
       <Card className="w-full max-w-3xl">
@@ -145,7 +177,19 @@ export default function StationDebugPage() {
             </Alert>
           )}
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Enter 12-char code"
+                value={testCode}
+                onChange={(e) => setTestCode(e.target.value)}
+                className="w-48"
+                maxLength={12}
+              />
+              <Button variant="secondary" onClick={testLogin} disabled={loading || !testCode}>
+                Test Login (raw)
+              </Button>
+            </div>
             <Button onClick={checkBearer} disabled={loading}>
               Check Bearer
             </Button>
@@ -164,6 +208,11 @@ export default function StationDebugPage() {
             <Button variant="secondary" onClick={whoAmICookieCheck} disabled={loading}>
               WhoAmI (Cookie)
             </Button>
+          </div>
+
+          <div className="mt-4">
+            <h2 className="font-semibold mb-2">Test Login Result</h2>
+            <pre className="text-sm bg-muted p-3 rounded overflow-auto max-h-80">{JSON.stringify(loginResult, null, 2)}</pre>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -10,6 +10,7 @@ export default function StationLoginPage() {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
   const navigate = useNavigate();
   const { authenticated } = useStationSession();
 
@@ -22,8 +23,9 @@ export default function StationLoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setLoading(true);
+setError(null);
+setDebugInfo(null);
+setLoading(true);
 
     try {
       const cleanCode = code.replace(/\s/g, '').toUpperCase();
@@ -69,12 +71,14 @@ export default function StationLoginPage() {
             console.warn('Token verification failed:', verifyData);
             sessionStorage.removeItem('station_jwt');
             setError(verifyData?.reason ? `Verification failed: ${verifyData.reason}` : `Verification failed (${verifyRes.status})`);
+            setDebugInfo({ verifyStatus: verifyRes.status, verifyData });
             return; // stop here, don't navigate
           }
         } catch (err) {
           console.error('Verification error:', err);
           sessionStorage.removeItem('station_jwt');
           setError('Verification network error. Please try again.');
+          setDebugInfo({ verifyError: String(err) });
           return;
         }
 
@@ -87,10 +91,12 @@ export default function StationLoginPage() {
       } else {
         const errorMsg = data?.error || `Login failed (${response.status})`;
         setError(errorMsg);
+        setDebugInfo({ loginStatus: response.status, loginBody: text?.slice(0, 500), parsed: data });
       }
     } catch (error) {
       console.error('Login error:', error);
       setError("Network error. Please try again.");
+      setDebugInfo({ fetchError: String(error) });
     } finally {
       setLoading(false);
     }
@@ -144,6 +150,12 @@ export default function StationLoginPage() {
                 <div className="text-xs text-muted-foreground text-center">
                   Need help? Open Session Debug to inspect token/cookie: <a className="underline" href="/station-debug">/station-debug</a>
                 </div>
+                {debugInfo && (
+                  <div className="mt-2">
+                    <h3 className="text-xs font-semibold text-muted-foreground">Details</h3>
+                    <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-48">{JSON.stringify(debugInfo, null, 2)}</pre>
+                  </div>
+                )}
               </>
             )}
 

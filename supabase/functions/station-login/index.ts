@@ -82,10 +82,15 @@ async function secretHash16(secret: string) {
 
 /** ======== Main ======== */
 serve(async (req) => {
-  if (req.method === "OPTIONS") return emptyRes(req);
+  if (req.method === "OPTIONS") {
+    console.log("CORS preflight", { origin: resolveOrigin(req), path: new URL(req.url).pathname, headers: Array.from(req.headers.keys()) });
+    return emptyRes(req);
+  }
 
   const path = normalizePath(req);
   const method = req.method;
+
+  console.log("REQ", { method, path, origin: resolveOrigin(req), raw_path: new URL(req.url).pathname, hasCookie: !!getCookie(req, COOKIE_NAME), hasAuth: !!req.headers.get("authorization") });
 
   // DEBUG: secret hash
   if (method === "GET" && path === "/__secret-hash") {
