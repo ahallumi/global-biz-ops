@@ -2,6 +2,8 @@ import { useLocation } from "react-router-dom"
 import { Menu } from "lucide-react"
 
 import { useAuth } from "@/hooks/useAuth"
+import { useStationSession } from "@/hooks/useStationSession"
+import { StationHeader } from "./StationHeader"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -36,8 +38,14 @@ const routeLabels: Record<string, string> = {
 
 export function EnhancedHeader() {
   const { employee, signOut } = useAuth()
+  const { authenticated: stationAuth } = useStationSession()
   const location = useLocation()
   const { toggleSidebar } = useSidebar()
+
+  // If user is authenticated via station, show station header
+  if (stationAuth && !employee) {
+    return <StationHeader />
+  }
 
   const getInitials = (fullName: string) => {
     const names = fullName?.split(' ') || []

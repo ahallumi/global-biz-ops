@@ -1,15 +1,24 @@
 import { SettingsLayout } from '@/components/layout/SettingsLayout';
 import { StationAccessManagement } from '@/components/admin/StationAccessManagement';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Shield, Monitor, Clock, Settings as SettingsIcon, ExternalLink, LogIn, Copy } from 'lucide-react';
+import { Shield, Monitor, Clock, Settings as SettingsIcon, ExternalLink, LogIn, Copy, AlertTriangle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect, useState } from 'react';
+import { useAuth } from '@/hooks/useAuth';
+import { useStationSession } from '@/hooks/useStationSession';
 
 export default function StationSettingsPage() {
   const { toast } = useToast();
+  const { user, employee } = useAuth();
+  const { authenticated: stationAuth } = useStationSession();
+  
+  // Check if user has admin access
+  const hasAdminAccess = user && employee && employee.role === 'admin';
+  const isStationUser = stationAuth && !user;
   const [metrics, setMetrics] = useState({
     activeStations: 0,
     accessCodes: 0,
@@ -97,7 +106,42 @@ export default function StationSettingsPage() {
       description="Manage station access codes, configurations, and security settings"
     >
       <div className="space-y-8">
-        {/* Station Overview */}
+        {/* Access Notice for Station Users */}
+        {isStationUser && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Admin Access Required</AlertTitle>
+            <AlertDescription>
+              This page requires administrator privileges. Station access codes cannot view or modify these settings.
+              <div className="mt-3 flex gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/admin-login">Login as Admin</Link>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/station">Back to Station</Link>
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Access Notice for Non-Admin Users */}
+        {!hasAdminAccess && !isStationUser && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Admin Access Required</AlertTitle>
+            <AlertDescription>
+              This page requires administrator privileges to manage station settings.
+              <div className="mt-3">
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/admin-login">Login as Admin</Link>
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+        {/* Station Overview - Only show if user has admin access */}
+        {hasAdminAccess && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4">
@@ -147,8 +191,11 @@ export default function StationSettingsPage() {
             </CardContent>
           </Card>
         </div>
+        )}
 
-        {/* Station Access Management */}
+        {/* Station Access Management - Only show if user has admin access */}
+        {hasAdminAccess && (
+        <>
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -233,8 +280,12 @@ export default function StationSettingsPage() {
             </div>
           </CardContent>
         </Card>
+        </>
+        )}
 
-        {/* Future Settings Sections */}
+        {/* Future Settings Sections - Only show if user has admin access */}
+        {hasAdminAccess && (
+        <div className="space-y-8">
         <Card className="opacity-60">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -289,6 +340,8 @@ export default function StationSettingsPage() {
             </p>
           </CardContent>
         </Card>
+        </div>
+        )}
       </div>
     </SettingsLayout>
   );
