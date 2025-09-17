@@ -19,39 +19,78 @@ export type Database = {
           active: boolean | null
           avatar_url: string | null
           created_at: string | null
+          department: string | null
+          display_name: string | null
+          email: string | null
+          first_name: string | null
           full_name: string
+          hire_date: string | null
           hourly_rate: number | null
           hourly_rate_cents: number | null
           id: string
+          last_name: string | null
+          pay_type: string | null
+          phone: string | null
+          pin_hash: string | null
+          pin_salt: string | null
+          position: string | null
           role: Database["public"]["Enums"]["employee_role"]
+          salary_annual: number | null
           staff_code: string | null
           staff_pin: string | null
+          status: string | null
           user_id: string
         }
         Insert: {
           active?: boolean | null
           avatar_url?: string | null
           created_at?: string | null
+          department?: string | null
+          display_name?: string | null
+          email?: string | null
+          first_name?: string | null
           full_name: string
+          hire_date?: string | null
           hourly_rate?: number | null
           hourly_rate_cents?: number | null
           id?: string
+          last_name?: string | null
+          pay_type?: string | null
+          phone?: string | null
+          pin_hash?: string | null
+          pin_salt?: string | null
+          position?: string | null
           role?: Database["public"]["Enums"]["employee_role"]
+          salary_annual?: number | null
           staff_code?: string | null
           staff_pin?: string | null
+          status?: string | null
           user_id: string
         }
         Update: {
           active?: boolean | null
           avatar_url?: string | null
           created_at?: string | null
+          department?: string | null
+          display_name?: string | null
+          email?: string | null
+          first_name?: string | null
           full_name?: string
+          hire_date?: string | null
           hourly_rate?: number | null
           hourly_rate_cents?: number | null
           id?: string
+          last_name?: string | null
+          pay_type?: string | null
+          phone?: string | null
+          pin_hash?: string | null
+          pin_salt?: string | null
+          position?: string | null
           role?: Database["public"]["Enums"]["employee_role"]
+          salary_annual?: number | null
           staff_code?: string | null
           staff_pin?: string | null
+          status?: string | null
           user_id?: string
         }
         Relationships: []
@@ -254,6 +293,42 @@ export type Database = {
           last_error?: string | null
           last_success_at?: string | null
           provider?: Database["public"]["Enums"]["pos_source"]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      payroll_settings: {
+        Row: {
+          created_at: string | null
+          id: number
+          overtime_daily: number | null
+          overtime_weekly: number | null
+          pay_period: string
+          payroll_day: number | null
+          rounding_minutes: number | null
+          timezone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: number
+          overtime_daily?: number | null
+          overtime_weekly?: number | null
+          pay_period?: string
+          payroll_day?: number | null
+          rounding_minutes?: number | null
+          timezone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: number
+          overtime_daily?: number | null
+          overtime_weekly?: number | null
+          pay_period?: string
+          payroll_day?: number | null
+          rounding_minutes?: number | null
+          timezone?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -832,6 +907,13 @@ export type Database = {
             referencedRelation: "shifts"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "shift_breaks_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "v_time_entries"
+            referencedColumns: ["id"]
+          },
         ]
       }
       shifts: {
@@ -1181,6 +1263,32 @@ export type Database = {
           },
         ]
       }
+      v_time_entries: {
+        Row: {
+          break_minutes: number | null
+          clock_in_at: string | null
+          clock_out_at: string | null
+          created_at: string | null
+          department: string | null
+          employee_id: string | null
+          employee_name: string | null
+          hourly_rate: number | null
+          id: string | null
+          pay_type: string | null
+          status: string | null
+          work_date: string | null
+          work_hours: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shifts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       v_timesheet_daily: {
         Row: {
           break_seconds: number | null
@@ -1203,6 +1311,21 @@ export type Database = {
       }
     }
     Functions: {
+      calculate_employee_hours: {
+        Args: {
+          p_employee_id: string
+          p_end_date: string
+          p_rounding_minutes?: number
+          p_start_date: string
+        }
+        Returns: {
+          entries_count: number
+          overtime_hours: number
+          regular_hours: number
+          total_hours: number
+          work_date: string
+        }[]
+      }
       ct_date: {
         Args: { ts: string }
         Returns: string
@@ -1249,6 +1372,10 @@ export type Database = {
           p_integration_id: string
         }
         Returns: undefined
+      }
+      verify_employee_pin: {
+        Args: { p_hash: string; p_pin: string; p_salt: string }
+        Returns: boolean
       }
     }
     Enums: {
