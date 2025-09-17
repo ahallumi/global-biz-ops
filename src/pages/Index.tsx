@@ -52,7 +52,7 @@ const Index = () => {
   }
 
   // Handle user with restricted access (online_access_enabled: false)
-  if (user && !employee) {
+  if (user && (!employee || (employee as any).hasRestrictedAccess)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center">
         <Card className="max-w-md mx-auto">

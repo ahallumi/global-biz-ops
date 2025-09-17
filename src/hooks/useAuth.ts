@@ -68,19 +68,27 @@ export function useAuth() {
 
       if (error) {
         console.error('Error fetching employee data:', error);
+        // If no employee record found, this user might not have been set up yet
+        if (error.code === 'PGRST116') {
+          console.warn('No employee record found for user');
+        }
+        setEmployee(null);
         return;
       }
 
       // Check if employee has online access enabled
       if (!data.online_access_enabled) {
-        console.warn('Employee does not have online access enabled');
-        setEmployee(null);
+        console.warn('Employee does not have online access enabled:', data.full_name);
+        // Still set the employee data but mark it for restricted access handling
+        setEmployee({ ...data, hasRestrictedAccess: true } as Employee & { hasRestrictedAccess: boolean });
         return;
       }
 
+      console.log('Employee data loaded successfully:', { name: data.full_name, role: data.role });
       setEmployee(data);
     } catch (error) {
       console.error('Error in fetchEmployeeData:', error);
+      setEmployee(null);
     }
   };
 

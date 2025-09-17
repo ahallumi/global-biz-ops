@@ -25,6 +25,16 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
     return <Navigate to="/auth" replace />;
   }
 
+  // Handle users with restricted access
+  if (user && employee && (employee as any).hasRestrictedAccess) {
+    return <Navigate to="/" replace />;
+  }
+
+  // Handle users without employee data (not set up yet)
+  if (user && !employee) {
+    return <Navigate to="/" replace />;
+  }
+
   if (requiredRoles && employee && !requiredRoles.includes(employee.role)) {
     // Special case: Allow admin to access staff dashboard if acting as staff
     if (requiredRoles.includes('staff') && employee.role === 'admin' && actingAsStaff) {
