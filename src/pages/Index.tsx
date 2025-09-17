@@ -27,7 +27,8 @@ const Index = () => {
   useEffect(() => {
     console.log('Index component auth state:', { user: !!user, employee: !!employee, loading });
     
-    if (!loading && user && employee) {
+    // Only redirect if user has employee data AND is not restricted
+    if (!loading && user && employee && !(employee as any).hasRestrictedAccess) {
       // Redirect based on role
       if (employee.role === 'staff') {
         navigate('/staff-dashboard');
@@ -81,7 +82,7 @@ const Index = () => {
   }
 
   // Handle authenticated user with employee data (will redirect)
-  if (user && employee) {
+  if (user && employee && !(employee as any).hasRestrictedAccess) {
     return null;
   }
 
