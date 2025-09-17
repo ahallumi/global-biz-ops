@@ -54,9 +54,33 @@ export default function StationLoginPage() {
         
         // Save token for bearer auth; avoid putting it in the URL
         sessionStorage.setItem('station_jwt', token);
-        
-        console.log('Login successful, token saved; redirecting to:', target);
-        
+
+        // Immediately verify token via station-session (Bearer path)
+        try {
+          const verifyRes = await fetch('https://ffxvnhrqxkirdogknoid.supabase.co/functions/v1/station-login/station-session', {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+          const verifyData = await verifyRes.json().catch(() => ({}));
+          if (!verifyRes.ok || verifyData?.ok !== true) {
+            console.warn('Token verification failed:', verifyData);
+            sessionStorage.removeItem('station_jwt');
+            setError(verifyData?.reason ? `Verification failed: ${verifyData.reason}` : `Verification failed (${verifyRes.status})`);
+            return; // stop here, don't navigate
+          }
+        } catch (err) {
+          console.error('Verification error:', err);
+          sessionStorage.removeItem('station_jwt');
+          setError('Verification network error. Please try again.');
+          return;
+        }
+
+        console.log('Login + verification successful; redirecting to:', target);
+
         // Navigate within SPA without token fragments
         const url = new URL(target, window.location.origin);
         url.hash = '';

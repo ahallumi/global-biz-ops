@@ -25,7 +25,7 @@ export function useStationSession() {
         if (t) headers["Authorization"] = `Bearer ${t}`;
       }
       const res = await fetch('https://ffxvnhrqxkirdogknoid.supabase.co/functions/v1/station-login/station-session', {
-        method: "POST",
+        method: "GET",
         credentials: "include",   // still allow cookie path if it works
         headers,
       });

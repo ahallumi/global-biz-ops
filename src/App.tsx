@@ -29,6 +29,7 @@ import StationInventoryPage from "./pages/StationInventoryPage";
 import StationStaffPage from "./pages/StationStaffPage";
 import { StationRoute } from "./components/StationRoute";
 import NotFound from "./pages/NotFound";
+import StationDebugPage from "./pages/StationDebugPage";
 
 const queryClient = new QueryClient();
 
@@ -191,6 +192,8 @@ const App = () => (
             />
             {/* Redirect to dashboard for authenticated users */}
             <Route path="/app" element={<Navigate to="/dashboard" replace />} />
+            {/* Debug route for station session checks */}
+            <Route path="/station-debug" element={<StationDebugPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
