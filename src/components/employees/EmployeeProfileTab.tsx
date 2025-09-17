@@ -10,6 +10,12 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Edit, Save, X, Key } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
+import { Mail, Shield, UserCheck, Clock, AlertCircle } from 'lucide-react';
 
 interface EmployeeProfileTabProps {
   employee: Employee;
@@ -18,6 +24,7 @@ interface EmployeeProfileTabProps {
 export function EmployeeProfileTab({ employee }: EmployeeProfileTabProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isChangingPin, setIsChangingPin] = useState(false);
+  const [sendingInvite, setSendingInvite] = useState(false);
   const [formData, setFormData] = useState<UpdateEmployeeRequest>({
     first_name: employee.first_name,
     last_name: employee.last_name,
@@ -29,8 +36,12 @@ export function EmployeeProfileTab({ employee }: EmployeeProfileTabProps) {
     hourly_rate: employee.hourly_rate || 0,
     salary_annual: employee.salary_annual || 0,
     status: employee.status,
+    online_access_enabled: employee.online_access_enabled,
+    role: employee.role,
   });
   const [newPin, setNewPin] = useState('');
+  
+  const { isAdmin } = useAuth();
 
   const updateEmployee = useUpdateEmployee();
 
@@ -64,10 +75,46 @@ export function EmployeeProfileTab({ employee }: EmployeeProfileTabProps) {
       hourly_rate: employee.hourly_rate || 0,
       salary_annual: employee.salary_annual || 0,
       status: employee.status,
+      online_access_enabled: employee.online_access_enabled,
+      role: employee.role,
     });
     setIsEditing(false);
     setIsChangingPin(false);
     setNewPin('');
+  };
+
+  const handleSendInvite = async () => {
+    if (!employee.email) {
+      toast({
+        title: "No email address",
+        description: "Employee must have an email address to send an invite.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setSendingInvite(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-employee-invite', {
+        body: { employee_id: employee.id }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Invite sent!",
+        description: `Setup invitation has been sent to ${employee.email}`,
+      });
+    } catch (error: any) {
+      console.error('Error sending invite:', error);
+      toast({
+        title: "Failed to send invite",
+        description: error.message || "Please try again later.",
+        variant: "destructive"
+      });
+    } finally {
+      setSendingInvite(false);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -196,26 +243,50 @@ export function EmployeeProfileTab({ employee }: EmployeeProfileTabProps) {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="status">Status</Label>
-            {isEditing ? (
-              <Select
-                value={formData.status}
-                onValueChange={(value: 'active' | 'inactive') => 
-                  setFormData({ ...formData, status: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            ) : (
-              <div className="py-2">{getStatusBadge(employee.status)}</div>
-            )}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              {isEditing ? (
+                <Select
+                  value={formData.status}
+                  onValueChange={(value: 'active' | 'inactive') => 
+                    setFormData({ ...formData, status: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="py-2">{getStatusBadge(employee.status)}</div>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="role">Role</Label>
+              {isEditing && isAdmin() ? (
+                <Select
+                  value={formData.role}
+                  onValueChange={(value: 'admin' | 'staff' | 'manager') => 
+                    setFormData({ ...formData, role: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="staff">Staff</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <p className="text-sm py-2 capitalize">{employee.role}</p>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -286,6 +357,96 @@ export function EmployeeProfileTab({ employee }: EmployeeProfileTabProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Online Access & Security Card */}
+      {isAdmin() && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Shield className="h-5 w-5" />
+              <span>Online Access & Security</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="online_access">Online System Access</Label>
+                <p className="text-sm text-muted-foreground">
+                  Allow employee to access the online system
+                </p>
+              </div>
+              <Switch
+                id="online_access"
+                checked={formData.online_access_enabled}
+                onCheckedChange={(checked) => 
+                  setFormData({ ...formData, online_access_enabled: checked })
+                }
+                disabled={!isEditing}
+              />
+            </div>
+
+            <Separator />
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="flex items-center space-x-2">
+                  <UserCheck className="h-4 w-4" />
+                  <span>Account Status</span>
+                </Label>
+                <div className="flex items-center space-x-2">
+                  {employee.account_setup_completed ? (
+                    <Badge variant="default">Setup Complete</Badge>
+                  ) : (
+                    <Badge variant="secondary">Setup Pending</Badge>
+                  )}
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label className="flex items-center space-x-2">
+                  <Clock className="h-4 w-4" />
+                  <span>Last Invited</span>
+                </Label>
+                <p className="text-sm py-2">
+                  {employee.invited_at 
+                    ? new Date(employee.invited_at).toLocaleDateString()
+                    : 'Never'
+                  }
+                </p>
+              </div>
+            </div>
+
+            {employee.email && (
+              <div className="pt-2">
+                <Button
+                  variant="outline"
+                  onClick={handleSendInvite}
+                  disabled={sendingInvite || !employee.online_access_enabled}
+                  className="flex items-center space-x-2"
+                >
+                  <Mail className="h-4 w-4" />
+                  <span>{sendingInvite ? 'Sending...' : 'Send Setup Invite'}</span>
+                </Button>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {!employee.online_access_enabled 
+                    ? 'Enable online access first to send invites'
+                    : 'Sends a secure link to set up their account and password'
+                  }
+                </p>
+              </div>
+            )}
+
+            {!employee.email && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Employee must have an email address to send setup invitations.
+                </AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

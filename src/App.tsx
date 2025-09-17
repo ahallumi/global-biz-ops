@@ -37,6 +37,7 @@ import ReportsPage from "./pages/ReportsPage";
 import EmployeesPage from "./pages/EmployeesPage";
 import NewEmployeePage from "./pages/NewEmployeePage";
 import { EmployeeDetailPage } from "./pages/EmployeeDetailPage";
+import EmployeeSetupPage from "./pages/EmployeeSetupPage";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +51,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/employee-setup" element={<EmployeeSetupPage />} />
             <Route path="/staff-login" element={<StaffLogin />} />
             <Route path="/admin-login" element={<AdminLogin />} />
             <Route 

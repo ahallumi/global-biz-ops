@@ -13,6 +13,12 @@ export interface Employee {
   hourly_rate?: number;
   salary_annual?: number;
   created_at: string;
+  online_access_enabled: boolean;
+  account_setup_completed: boolean;
+  invited_at?: string;
+  setup_token?: string;
+  setup_token_expires?: string;
+  role: 'admin' | 'staff' | 'manager';
 }
 
 export interface CreateEmployeeRequest {
@@ -31,6 +37,8 @@ export interface CreateEmployeeRequest {
 
 export interface UpdateEmployeeRequest extends Partial<CreateEmployeeRequest> {
   status?: 'active' | 'inactive';
+  online_access_enabled?: boolean;
+  role?: 'admin' | 'staff' | 'manager';
 }
 
 export interface PayrollEntry {

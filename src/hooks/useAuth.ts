@@ -71,6 +71,13 @@ export function useAuth() {
         return;
       }
 
+      // Check if employee has online access enabled
+      if (!data.online_access_enabled) {
+        console.warn('Employee does not have online access enabled');
+        setEmployee(null);
+        return;
+      }
+
       setEmployee(data);
     } catch (error) {
       console.error('Error in fetchEmployeeData:', error);

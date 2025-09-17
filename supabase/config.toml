@@ -83,6 +83,9 @@ verify_jwt = true
 [functions.cleanup-product-data]
 verify_jwt = true
 
+[functions.send-employee-invite]
+verify_jwt = true
+
 [functions.station-login]
 verify_jwt = false
 
