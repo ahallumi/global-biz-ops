@@ -6,6 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useStationSession } from "@/hooks/useStationSession";
 
+const REASON_MESSAGES: Record<string, string> = {
+  not_found: "Access code not recognized. Ask an admin to generate one.",
+  disabled: "This code is disabled. Ask an admin to enable or replace it.",
+  expired: "This code has expired. Ask an admin for a new code.",
+  missing_secret: "Server setup issue (missing secret). Contact an admin.",
+  server_error: "Server error. Please try again or contact an admin.",
+};
+
 export default function StationLoginPage() {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -89,10 +97,12 @@ setLoading(true);
         url.hash = '';
         navigate(url.pathname + url.search, { replace: true });
       } else {
-        const reason = data?.reason ? `, reason: ${data.reason}` : '';
-        const serverErr = data?.error ? `${data.error}${reason}` : null;
-        const errorMsg = serverErr || `Login failed (${response.status}${reason})`;
-        setError(errorMsg);
+        // Map server reason to user-friendly message
+        const friendlyMessage = data?.reason && REASON_MESSAGES[data.reason] 
+          ? REASON_MESSAGES[data.reason]
+          : data?.error || `Login failed (${response.status})`;
+        
+        setError(friendlyMessage);
         setDebugInfo({ loginStatus: response.status, loginBody: text?.slice(0, 500), parsed: data });
       }
     } catch (error) {
