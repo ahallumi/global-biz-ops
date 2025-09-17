@@ -19,7 +19,7 @@ export function useStationSession() {
     let cancelled = false;
 
     const fetchSession = async (withBearer: boolean) => {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const headers: Record<string, string> = {};
       if (withBearer) {
         const t = sessionStorage.getItem(STORAGE_KEY);
         if (t) headers["Authorization"] = `Bearer ${t}`;

@@ -284,10 +284,12 @@ serve(async (req) => {
           default_page: p.default_page,
         });
       } catch (e) {
+        console.log("SESSION: invalid bearer token", { error: String(e?.message || e) });
         return jsonRes(req, 401, { ok: false, reason: "invalid_token" });
       }
     }
 
+    console.log("SESSION: 401", { hasCookie: !!cookieToken, hasBearer: !!bearer, reason: cookieToken ? "invalid_token" : "missing_token" });
     return jsonRes(req, 401, { ok: false, reason: cookieToken ? "invalid_token" : "missing_token" });
   }
 

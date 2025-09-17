@@ -6,6 +6,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 export default function StationDebugPage() {
   const [bearerResult, setBearerResult] = useState<any>(null);
   const [cookieResult, setCookieResult] = useState<any>(null);
+  const [whoAmIBearer, setWhoAmIBearer] = useState<any>(null);
+  const [whoAmICookie, setWhoAmICookie] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -28,10 +30,9 @@ export default function StationDebugPage() {
         {
           method: "GET",
           credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
         }
       );
       const data = await res.json().catch(() => ({}));
@@ -52,7 +53,6 @@ export default function StationDebugPage() {
         {
           method: "GET",
           credentials: "include",
-          headers: { "Content-Type": "application/json" },
         }
       );
       const data = await res.json().catch(() => ({}));
@@ -64,6 +64,51 @@ export default function StationDebugPage() {
     }
   };
 
+  const whoAmIBearerCheck = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const token = sessionStorage.getItem("station_jwt");
+      if (!token) {
+        setWhoAmIBearer({ error: "No station_jwt in sessionStorage" });
+        return;
+      }
+      const res = await fetch(
+        "https://ffxvnhrqxkirdogknoid.supabase.co/functions/v1/station-login/__whoami",
+        {
+          method: "GET",
+          credentials: "include",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      setWhoAmIBearer({ status: res.status, ok: res.ok, data });
+    } catch (e) {
+      setError("WhoAmI Bearer failed: " + (e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const whoAmICookieCheck = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch(
+        "https://ffxvnhrqxkirdogknoid.supabase.co/functions/v1/station-login/__whoami",
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      setWhoAmICookie({ status: res.status, ok: res.ok, data });
+    } catch (e) {
+      setError("WhoAmI Cookie failed: " + (e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
   const doLogout = async () => {
     setError(null);
     setLoading(true);
@@ -113,6 +158,12 @@ export default function StationDebugPage() {
             <Button variant="ghost" onClick={clearToken} disabled={loading}>
               Clear Token (sessionStorage)
             </Button>
+            <Button variant="secondary" onClick={whoAmIBearerCheck} disabled={loading}>
+              WhoAmI (Bearer)
+            </Button>
+            <Button variant="secondary" onClick={whoAmICookieCheck} disabled={loading}>
+              WhoAmI (Cookie)
+            </Button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -126,6 +177,21 @@ export default function StationDebugPage() {
               <h2 className="font-semibold mb-2">Cookie Result</h2>
               <pre className="text-sm bg-muted p-3 rounded overflow-auto max-h-80">
 {JSON.stringify(cookieResult, null, 2)}
+              </pre>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <h2 className="font-semibold mb-2">WhoAmI (Bearer)</h2>
+              <pre className="text-sm bg-muted p-3 rounded overflow-auto max-h-80">
+{JSON.stringify(whoAmIBearer, null, 2)}
+              </pre>
+            </div>
+            <div>
+              <h2 className="font-semibold mb-2">WhoAmI (Cookie)</h2>
+              <pre className="text-sm bg-muted p-3 rounded overflow-auto max-h-80">
+{JSON.stringify(whoAmICookie, null, 2)}
               </pre>
             </div>
           </div>

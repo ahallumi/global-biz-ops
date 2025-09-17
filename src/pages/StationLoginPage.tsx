@@ -61,7 +61,6 @@ export default function StationLoginPage() {
             method: 'GET',
             credentials: 'include',
             headers: {
-              'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`,
             },
           });
@@ -138,9 +137,14 @@ export default function StationLoginPage() {
             </div>
 
             {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
+              <>
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+                <div className="text-xs text-muted-foreground text-center">
+                  Need help? Open Session Debug to inspect token/cookie: <a className="underline" href="/station-debug">/station-debug</a>
+                </div>
+              </>
             )}
 
             <Button
