@@ -32,6 +32,7 @@ import NotFound from "./pages/NotFound";
 import StationDebugPage from "./pages/StationDebugPage";
 import EmployeesPage from "./pages/EmployeesPage";
 import NewEmployeePage from "./pages/NewEmployeePage";
+import { EmployeeDetailPage } from "./pages/EmployeeDetailPage";
 
 const queryClient = new QueryClient();
 
@@ -142,6 +143,11 @@ const App = () => (
             <Route path="/employees/new" element={
               <ProtectedRoute requiredRoles={['admin']}>
                 <NewEmployeePage />
+              </ProtectedRoute>
+            } />
+            <Route path="/employees/:id" element={
+              <ProtectedRoute requiredRoles={['admin']}>
+                <EmployeeDetailPage />
               </ProtectedRoute>
             } />
             <Route 
