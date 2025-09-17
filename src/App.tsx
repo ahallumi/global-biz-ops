@@ -19,6 +19,7 @@ import SuppliersPage from "./pages/SuppliersPage";
 import SettingsPage from "./pages/SettingsPage";
 import InventorySettingsPage from "./pages/settings/InventorySettingsPage";
 import StationSettingsPage from "./pages/settings/StationSettingsPage";
+import PayrollSettingsPage from "./pages/PayrollSettingsPage";
 import ProductsPage from "./pages/ProductsPage";
 import SyncQueuePage from "./pages/SyncQueuePage";
 import StationLoginPage from "./pages/StationLoginPage";
@@ -135,6 +136,11 @@ const App = () => (
             <Route path="/settings/station" element={
               <ProtectedRoute requiredRoles={['admin']}>
                 <StationSettingsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/settings/payroll" element={
+              <ProtectedRoute requiredRoles={['admin']}>
+                <PayrollSettingsPage />
               </ProtectedRoute>
             } />
             <Route path="/payroll" element={

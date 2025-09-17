@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Package, Shield, Users, BarChart3, Settings as SettingsIcon, Building2 } from 'lucide-react';
+import { Package, Shield, Users, BarChart3, DollarSign, Building2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function SettingsPage() {
@@ -21,6 +21,14 @@ export default function SettingsPage() {
       description: 'Manage station access codes and terminal configurations',
       icon: Shield,
       href: '/settings/station',
+      roles: ['admin'],
+      status: 'Active'
+    },
+    {
+      title: 'Payroll Settings',
+      description: 'Configure payroll calculation rules and overtime policies',
+      icon: DollarSign,
+      href: '/settings/payroll',
       roles: ['admin'],
       status: 'Active'
     },

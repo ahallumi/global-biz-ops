@@ -4,37 +4,60 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Calendar, DollarSign, Users, Clock, FileText, Download } from 'lucide-react';
-import { useEmployees } from '@/hooks/useEmployees';
+import { usePayrollCalculation } from '@/hooks/usePayrollCalculation';
 import { formatCurrency } from '@/lib/utils';
+import { DateRange } from 'react-day-picker';
+import { addDays, startOfWeek, endOfWeek, subWeeks } from 'date-fns';
 
 export default function PayrollPage() {
   const [selectedPeriod, setSelectedPeriod] = useState('current');
-  const { data: employees = [] } = useEmployees();
+  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
   
-  // Mock payroll data - replace with actual hook
-  const payrollSummary = {
-    totalEmployees: employees.length,
-    totalHours: 1250.5,
-    regularHours: 1050.5,
-    overtimeHours: 200.0,
-    totalPayroll: 31265.50,
-    payPeriod: 'Dec 16 - Dec 22, 2024'
+  // Calculate date range based on selected period
+  const getDateRange = () => {
+    const now = new Date();
+    switch (selectedPeriod) {
+      case 'current':
+        return {
+          startDate: startOfWeek(now),
+          endDate: endOfWeek(now)
+        };
+      case 'previous':
+        const prevWeekStart = startOfWeek(subWeeks(now, 1));
+        return {
+          startDate: prevWeekStart,
+          endDate: endOfWeek(prevWeekStart)
+        };
+      case 'custom':
+        return {
+          startDate: customDateRange?.from,
+          endDate: customDateRange?.to
+        };
+      default:
+        return {
+          startDate: startOfWeek(now),
+          endDate: endOfWeek(now)
+        };
+    }
   };
 
-  const payrollEntries = employees.map(emp => ({
-    id: emp.id,
-    name: emp.display_name || `${emp.first_name} ${emp.last_name}`,
-    department: emp.department || 'General',
-    regularHours: Math.floor(Math.random() * 40) + 30,
-    overtimeHours: Math.floor(Math.random() * 10),
-    hourlyRate: emp.hourly_rate || 15.00,
-    grossPay: 0,
-    status: 'pending'
-  })).map(entry => ({
-    ...entry,
-    grossPay: (entry.regularHours * entry.hourlyRate) + (entry.overtimeHours * entry.hourlyRate * 1.5)
-  }));
+  const { startDate, endDate } = getDateRange();
+  const { data: payrollData, isLoading } = usePayrollCalculation({
+    startDate,
+    endDate
+  });
+
+  const handleExportPayroll = () => {
+    // TODO: Implement payroll export functionality
+    console.log('Exporting payroll data...');
+  };
+
+  const handleProcessPayroll = () => {
+    // TODO: Implement payroll processing functionality
+    console.log('Processing payroll...');
+  };
 
   return (
     <Layout>
@@ -47,17 +70,28 @@ export default function PayrollPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-              <SelectTrigger className="w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="current">Current Period</SelectItem>
-                <SelectItem value="previous">Previous Period</SelectItem>
-                <SelectItem value="custom">Custom Range</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button>
+            <div className="flex items-center gap-3">
+              <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                <SelectTrigger className="w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="current">Current Period</SelectItem>
+                  <SelectItem value="previous">Previous Period</SelectItem>
+                  <SelectItem value="custom">Custom Range</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              {selectedPeriod === 'custom' && (
+                <DateRangePicker
+                  date={customDateRange}
+                  onDateChange={setCustomDateRange}
+                  placeholder="Select date range"
+                />
+              )}
+            </div>
+            
+            <Button onClick={handleExportPayroll}>
               <Download className="mr-2 h-4 w-4" />
               Export Payroll
             </Button>
@@ -72,7 +106,7 @@ export default function PayrollPage() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{payrollSummary.totalEmployees}</div>
+              <div className="text-2xl font-bold">{payrollData?.summary.totalEmployees || 0}</div>
               <p className="text-xs text-muted-foreground">Active employees</p>
             </CardContent>
           </Card>
@@ -83,9 +117,9 @@ export default function PayrollPage() {
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{payrollSummary.totalHours}</div>
+              <div className="text-2xl font-bold">{payrollData?.summary.totalHours.toFixed(1) || 0}</div>
               <p className="text-xs text-muted-foreground">
-                {payrollSummary.regularHours} regular + {payrollSummary.overtimeHours} overtime
+                {payrollData?.summary.regularHours.toFixed(1) || 0} regular + {payrollData?.summary.overtimeHours.toFixed(1) || 0} overtime
               </p>
             </CardContent>
           </Card>
@@ -96,8 +130,8 @@ export default function PayrollPage() {
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(payrollSummary.totalPayroll)}</div>
-              <p className="text-xs text-muted-foreground">For {payrollSummary.payPeriod}</p>
+              <div className="text-2xl font-bold">{formatCurrency(payrollData?.summary.totalPayroll || 0)}</div>
+              <p className="text-xs text-muted-foreground">For {payrollData?.summary.payPeriod || 'Current Period'}</p>
             </CardContent>
           </Card>
           
@@ -108,7 +142,7 @@ export default function PayrollPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">Weekly</div>
-              <p className="text-xs text-muted-foreground">{payrollSummary.payPeriod}</p>
+              <p className="text-xs text-muted-foreground">{payrollData?.summary.payPeriod || 'Current Period'}</p>
             </CardContent>
           </Card>
         </div>
@@ -122,53 +156,65 @@ export default function PayrollPage() {
             </p>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {payrollEntries.map((entry) => (
-                <div key={entry.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex-1">
-                    <h4 className="font-medium">{entry.name}</h4>
-                    <p className="text-sm text-muted-foreground">{entry.department}</p>
-                  </div>
-                  
-                  <div className="flex items-center gap-6 text-sm">
-                    <div className="text-center">
-                      <div className="font-medium">{entry.regularHours}h</div>
-                      <div className="text-muted-foreground">Regular</div>
-                    </div>
-                    
-                    <div className="text-center">
-                      <div className="font-medium">{entry.overtimeHours}h</div>
-                      <div className="text-muted-foreground">Overtime</div>
-                    </div>
-                    
-                    <div className="text-center">
-                      <div className="font-medium">{formatCurrency(entry.hourlyRate)}/hr</div>
-                      <div className="text-muted-foreground">Rate</div>
-                    </div>
-                    
-                    <div className="text-center">
-                      <div className="font-medium">{formatCurrency(entry.grossPay)}</div>
-                      <div className="text-muted-foreground">Gross Pay</div>
-                    </div>
-                    
-                    <Badge variant={entry.status === 'pending' ? 'secondary' : 'default'}>
-                      {entry.status}
-                    </Badge>
-                  </div>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="text-center">
+                  <div className="text-muted-foreground">Loading payroll data...</div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : payrollData?.entries.length ? (
+              <div className="space-y-4">
+                {payrollData.entries.map((entry) => (
+                  <div key={entry.employeeId} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex-1">
+                      <h4 className="font-medium">{entry.employeeName}</h4>
+                      <p className="text-sm text-muted-foreground">{entry.department}</p>
+                    </div>
+                    
+                    <div className="flex items-center gap-6 text-sm">
+                      <div className="text-center">
+                        <div className="font-medium">{entry.regularHours.toFixed(1)}h</div>
+                        <div className="text-muted-foreground">Regular</div>
+                      </div>
+                      
+                      <div className="text-center">
+                        <div className="font-medium">{entry.overtimeHours.toFixed(1)}h</div>
+                        <div className="text-muted-foreground">Overtime</div>
+                      </div>
+                      
+                      <div className="text-center">
+                        <div className="font-medium">{formatCurrency(entry.hourlyRate)}/hr</div>
+                        <div className="text-muted-foreground">Rate</div>
+                      </div>
+                      
+                      <div className="text-center">
+                        <div className="font-medium">{formatCurrency(entry.grossPay)}</div>
+                        <div className="text-muted-foreground">Gross Pay</div>
+                      </div>
+                      
+                      <Badge variant={entry.status === 'pending' ? 'secondary' : 'default'}>
+                        {entry.status}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                No payroll data found for the selected period
+              </div>
+            )}
             
             <div className="flex justify-between items-center mt-6 pt-6 border-t">
               <div className="text-sm text-muted-foreground">
-                {payrollEntries.length} employees • Total: {formatCurrency(payrollEntries.reduce((sum, e) => sum + e.grossPay, 0))}
+                {payrollData?.entries.length || 0} employees • Total: {formatCurrency(payrollData?.summary.totalPayroll || 0)}
               </div>
               <div className="flex gap-2">
-                <Button variant="outline">
+                <Button variant="outline" onClick={handleExportPayroll}>
                   <FileText className="mr-2 h-4 w-4" />
                   Generate Report
                 </Button>
-                <Button>Process Payroll</Button>
+                <Button onClick={handleProcessPayroll}>Process Payroll</Button>
               </div>
             </div>
           </CardContent>
