@@ -5,49 +5,29 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Clock, Calendar as CalendarIcon, Filter } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Clock, Calendar as CalendarIcon, Filter, AlertCircle } from 'lucide-react';
 import { formatTime, formatDuration } from '@/lib/timeUtils';
 import { format } from 'date-fns';
+import { useEmployeeTimeEntries } from '@/hooks/useEmployeeTimeEntries';
 
 interface EmployeeTimeTabProps {
   employeeId: string;
 }
 
-// Mock data for now - will be replaced with actual hooks later
-const mockTimeEntries = [
-  {
-    id: '1',
-    date: '2024-01-15',
-    clockIn: '2024-01-15T08:00:00Z',
-    clockOut: '2024-01-15T17:30:00Z',
-    breakMinutes: 30,
-    totalHours: 9.0,
-    status: 'completed'
-  },
-  {
-    id: '2',
-    date: '2024-01-14',
-    clockIn: '2024-01-14T08:15:00Z',
-    clockOut: '2024-01-14T17:00:00Z',
-    breakMinutes: 45,
-    totalHours: 8.25,
-    status: 'completed'
-  },
-  {
-    id: '3',
-    date: '2024-01-13',
-    clockIn: '2024-01-13T08:00:00Z',
-    clockOut: null,
-    breakMinutes: 0,
-    totalHours: 0,
-    status: 'open'
-  }
-];
-
 export function EmployeeTimeTab({ employeeId }: EmployeeTimeTabProps) {
-  const [timeEntries] = useState(mockTimeEntries);
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  const { 
+    data: timeEntries = [], 
+    isLoading, 
+    error 
+  } = useEmployeeTimeEntries({
+    employeeId,
+    dateFilter: selectedDate,
+    statusFilter
+  });
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
@@ -58,13 +38,59 @@ export function EmployeeTimeTab({ employeeId }: EmployeeTimeTabProps) {
     return <Badge variant={variants[status] || 'outline'}>{status.toUpperCase()}</Badge>;
   };
 
-  const filteredEntries = timeEntries.filter(entry => {
-    if (statusFilter !== 'all' && entry.status !== statusFilter) return false;
-    if (selectedDate && entry.date !== format(selectedDate, 'yyyy-MM-dd')) return false;
-    return true;
-  });
+  const totalHours = timeEntries.reduce((sum, entry) => sum + entry.totalHours, 0);
 
-  const totalHours = filteredEntries.reduce((sum, entry) => sum + entry.totalHours, 0);
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Time Summary</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="text-center space-y-2">
+                  <Skeleton className="h-8 w-12 mx-auto" />
+                  <Skeleton className="h-4 w-20 mx-auto" />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Time Entries</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-20 w-full" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
+              <p className="text-muted-foreground">Error loading time entries</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                {error instanceof Error ? error.message : 'Unknown error'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -75,7 +101,7 @@ export function EmployeeTimeTab({ employeeId }: EmployeeTimeTabProps) {
         <CardContent>
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center">
-              <p className="text-2xl font-bold">{filteredEntries.length}</p>
+              <p className="text-2xl font-bold">{timeEntries.length}</p>
               <p className="text-sm text-muted-foreground">Total Entries</p>
             </div>
             <div className="text-center">
@@ -84,7 +110,7 @@ export function EmployeeTimeTab({ employeeId }: EmployeeTimeTabProps) {
             </div>
             <div className="text-center">
               <p className="text-2xl font-bold">
-                {filteredEntries.filter(e => e.status === 'completed').length}
+                {timeEntries.filter(e => e.status === 'completed').length}
               </p>
               <p className="text-sm text-muted-foreground">Completed Shifts</p>
             </div>
@@ -138,14 +164,14 @@ export function EmployeeTimeTab({ employeeId }: EmployeeTimeTabProps) {
           </div>
         </CardHeader>
         <CardContent>
-          {filteredEntries.length === 0 ? (
+          {timeEntries.length === 0 ? (
             <div className="text-center py-8">
               <Clock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <p className="text-muted-foreground">No time entries found</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredEntries.map((entry) => (
+              {timeEntries.map((entry) => (
                 <div
                   key={entry.id}
                   className="flex items-center justify-between p-4 border rounded-lg"
