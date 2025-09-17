@@ -47,13 +47,8 @@ export default function StationLoginPage() {
       let data: any = {};
       try { data = JSON.parse(text); } catch {}
       
-      if (!response.ok || !data?.token) {
-        const errorMsg = data?.error || `Login failed (${response.status})`;
-        setError(errorMsg);
-        return;
-      }
-
-      if (data?.ok && data?.token) {
+      // Accept success either by HTTP status or explicit flags
+      if (response.ok && data?.token) {
         const token = data.token as string;
         const target = data.redirectTo || '/station';
         
@@ -68,7 +63,8 @@ export default function StationLoginPage() {
         // Use replace() so Back doesn't expose the tokened URL
         window.location.replace(url.toString());
       } else {
-        setError(data?.error || 'Login failed');
+        const errorMsg = data?.error || `Login failed (${response.status})`;
+        setError(errorMsg);
       }
     } catch (error) {
       console.error('Login error:', error);
