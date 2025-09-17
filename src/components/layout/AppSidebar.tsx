@@ -60,6 +60,12 @@ const navigation = [
     roles: ['staff', 'admin', 'manager'],
   },
   {
+    name: 'Employees',
+    href: '/employees',
+    icon: Users,
+    roles: ['admin'],
+  },
+  {
     name: 'Intakes',
     href: '/intakes',
     icon: Truck,
