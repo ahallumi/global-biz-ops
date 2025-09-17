@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       employees: {
         Row: {
+          account_setup_completed: boolean
           active: boolean | null
           avatar_url: string | null
           created_at: string | null
@@ -28,7 +29,9 @@ export type Database = {
           hourly_rate: number | null
           hourly_rate_cents: number | null
           id: string
+          invited_at: string | null
           last_name: string | null
+          online_access_enabled: boolean
           pay_type: string | null
           phone: string | null
           pin_hash: string | null
@@ -36,12 +39,15 @@ export type Database = {
           position: string | null
           role: Database["public"]["Enums"]["employee_role"]
           salary_annual: number | null
+          setup_token: string | null
+          setup_token_expires: string | null
           staff_code: string | null
           staff_pin: string | null
           status: string | null
           user_id: string
         }
         Insert: {
+          account_setup_completed?: boolean
           active?: boolean | null
           avatar_url?: string | null
           created_at?: string | null
@@ -54,7 +60,9 @@ export type Database = {
           hourly_rate?: number | null
           hourly_rate_cents?: number | null
           id?: string
+          invited_at?: string | null
           last_name?: string | null
+          online_access_enabled?: boolean
           pay_type?: string | null
           phone?: string | null
           pin_hash?: string | null
@@ -62,12 +70,15 @@ export type Database = {
           position?: string | null
           role?: Database["public"]["Enums"]["employee_role"]
           salary_annual?: number | null
+          setup_token?: string | null
+          setup_token_expires?: string | null
           staff_code?: string | null
           staff_pin?: string | null
           status?: string | null
           user_id: string
         }
         Update: {
+          account_setup_completed?: boolean
           active?: boolean | null
           avatar_url?: string | null
           created_at?: string | null
@@ -80,7 +91,9 @@ export type Database = {
           hourly_rate?: number | null
           hourly_rate_cents?: number | null
           id?: string
+          invited_at?: string | null
           last_name?: string | null
+          online_access_enabled?: boolean
           pay_type?: string | null
           phone?: string | null
           pin_hash?: string | null
@@ -88,6 +101,8 @@ export type Database = {
           position?: string | null
           role?: Database["public"]["Enums"]["employee_role"]
           salary_annual?: number | null
+          setup_token?: string | null
+          setup_token_expires?: string | null
           staff_code?: string | null
           staff_pin?: string | null
           status?: string | null
