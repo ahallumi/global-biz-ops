@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,15 +8,18 @@ import { ArrowLeft, Clock } from "lucide-react";
 import { useStationSession } from "@/hooks/useStationSession";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { formatTime } from "@/lib/timeUtils";
+import { useServerTime } from "@/hooks/useServerTime";
 import { useNavigate } from "react-router-dom";
 
 export default function StationClockPage() {
   const { logout } = useStationSession();
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isSuccessAction, setIsSuccessAction] = useState(false);
+  const [countdown, setCountdown] = useState(0);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { serverTime } = useServerTime(1000);
 
   const handlePinInput = (digit: string) => {
     if (pin.length < 6) {
@@ -26,6 +29,25 @@ export default function StationClockPage() {
 
   const clearPin = () => {
     setPin("");
+  };
+
+  // Auto-logout countdown timer
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isSuccessAction && countdown > 0) {
+      timer = setTimeout(() => {
+        setCountdown(countdown - 1);
+      }, 1000);
+    } else if (isSuccessAction && countdown === 0) {
+      // Auto redirect to station page
+      navigate('/station');
+    }
+    return () => clearTimeout(timer);
+  }, [isSuccessAction, countdown, navigate]);
+
+  const startCountdown = () => {
+    setIsSuccessAction(true);
+    setCountdown(10);
   };
 
   const handleClockAction = async (action: 'CLOCK_IN' | 'CLOCK_OUT' | 'BREAK_START' | 'BREAK_END') => {
@@ -49,33 +71,56 @@ export default function StationClockPage() {
 
       if (error) {
         console.error('Clock punch error:', error);
+        let errorMessage = "Network error. Please check your connection and try again.";
+        
+        if (error.message) {
+          errorMessage = error.message;
+        }
+        
         toast({
-          title: "Error",
-          description: error.message || "Failed to process clock action",
+          title: "Connection Error",
+          description: errorMessage,
           variant: "destructive",
         });
         return;
       }
 
       if (!data?.ok) {
+        let errorMessage = data?.error || "Failed to process clock action";
+        
+        // Provide user-friendly error messages
+        if (errorMessage === "Invalid PIN") {
+          errorMessage = "PIN not recognized. Please check your 4-digit PIN and try again.";
+        } else if (errorMessage.includes("already clocked in")) {
+          errorMessage = "You are already clocked in. Please clock out first.";
+        } else if (errorMessage.includes("No open shift")) {
+          errorMessage = "You need to clock in first before performing this action.";
+        }
+        
         toast({
-          title: "Error",
-          description: data?.error || "Failed to process clock action",
+          title: "Clock Action Failed",
+          description: errorMessage,
           variant: "destructive",
         });
+        setPin("");
         return;
       }
 
+      // Success case
       toast({
-        title: "Success",
-        description: data.message || `${action.replace('_', ' ').toLowerCase()} recorded`,
+        title: "Success!",
+        description: data.message || `${action.replace('_', ' ').toLowerCase()} recorded successfully`,
       });
       setPin("");
+      
+      // Start auto-logout timer
+      startCountdown();
+      
     } catch (error) {
       console.error('Clock punch error:', error);
       toast({
-        title: "Error",
-        description: "Failed to process clock action",
+        title: "System Error",
+        description: "Unable to connect to the time clock system. Please try again or contact support.",
         variant: "destructive",
       });
     } finally {
@@ -100,7 +145,7 @@ export default function StationClockPage() {
                 Time Clock
               </h1>
               <p className="text-sm text-muted-foreground">
-                {formatTime(new Date())}
+                {serverTime ? serverTime.formatted : 'Loading time...'}
               </p>
             </div>
           </div>
@@ -111,6 +156,28 @@ export default function StationClockPage() {
       </header>
 
       <main className="p-6 max-w-4xl mx-auto">
+        {/* Success Message with Countdown */}
+        {isSuccessAction && countdown > 0 && (
+          <Card className="mb-6 border-success bg-success/5">
+            <CardContent className="pt-6">
+              <div className="text-center space-y-2">
+                <div className="text-success font-medium">
+                  Action completed successfully!
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Returning to main page in {countdown} seconds...
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/station')}
+                  className="mt-2"
+                >
+                  Return Now
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
         <div className="grid gap-6 md:grid-cols-2">
           {/* PIN Entry */}
           <Card>

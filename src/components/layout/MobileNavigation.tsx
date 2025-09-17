@@ -14,7 +14,12 @@ import {
   Warehouse,
   Settings,
   LogOut,
-  X
+  Clock,
+  DollarSign,
+  BarChart3,
+  Truck,
+  Package2,
+  RefreshCw
 } from 'lucide-react';
 
 const navigation = [
@@ -22,30 +27,66 @@ const navigation = [
     name: 'Dashboard',
     href: '/dashboard',
     icon: LayoutDashboard,
+    roles: ['admin', 'manager']
+  },
+  {
+    name: 'Staff Dashboard',
+    href: '/staff-dashboard',
+    icon: LayoutDashboard,
+    roles: ['staff']
+  },
+  {
+    name: 'Time Clock',
+    href: '/clock',
+    icon: Clock,
     roles: ['admin', 'staff', 'manager']
   },
   {
-    name: 'Product Intake',
-    href: '/product-intake',
+    name: 'Intakes',
+    href: '/intakes',
     icon: Package,
     roles: ['admin', 'staff', 'manager']
   },
   {
-    name: 'Review Intakes',
-    href: '/review',
-    icon: ClipboardCheck,
-    roles: ['admin']
+    name: 'Products',
+    href: '/products',
+    icon: Package2,
+    roles: ['admin', 'staff', 'manager']
   },
   {
-    name: 'Inventory',
-    href: '/inventory',
-    icon: Warehouse,
-    roles: ['admin']
+    name: 'Suppliers',
+    href: '/suppliers',
+    icon: Truck,
+    roles: ['admin', 'staff', 'manager']
   },
   {
     name: 'Employees',
     href: '/employees',
     icon: Users,
+    roles: ['admin']
+  },
+  {
+    name: 'Payroll',
+    href: '/payroll',
+    icon: DollarSign,
+    roles: ['admin']
+  },
+  {
+    name: 'Reports',
+    href: '/reports',
+    icon: BarChart3,
+    roles: ['admin', 'manager']
+  },
+  {
+    name: 'Sync Queue',
+    href: '/sync-queue',
+    icon: RefreshCw,
+    roles: ['admin', 'staff', 'manager']
+  },
+  {
+    name: 'Settings',
+    href: '/settings',
+    icon: Settings,
     roles: ['admin']
   }
 ];
