@@ -139,7 +139,7 @@ async function handleGetEmployees(supabase: any, params: URLSearchParams) {
     .select(`
       id, first_name, last_name, display_name, email, phone, 
       position, department, status, hire_date, pay_type, 
-      hourly_rate_cents, salary_annual, created_at, updated_at
+      hourly_rate_cents, salary_annual, created_at
     `)
     .order('created_at', { ascending: false });
 

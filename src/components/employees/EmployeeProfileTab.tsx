@@ -352,9 +352,9 @@ export function EmployeeProfileTab({ employee }: EmployeeProfileTabProps) {
               </p>
             </div>
             <div className="space-y-2">
-              <Label>Last Updated</Label>
+              <Label>Created</Label>
               <p className="text-sm py-2">
-                {new Date(employee.updated_at).toLocaleDateString()}
+                {new Date(employee.created_at).toLocaleDateString()}
               </p>
             </div>
           </div>
