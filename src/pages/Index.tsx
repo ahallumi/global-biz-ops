@@ -13,16 +13,20 @@ import {
   ArrowRight,
   CheckCircle,
   Sparkles,
-  Building2
+  Building2,
+  AlertCircle,
+  LogOut
 } from 'lucide-react';
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const Index = () => {
-  const { user, employee, loading } = useAuth();
+  const { user, employee, loading, signOut } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
+    console.log('Index component auth state:', { user: !!user, employee: !!employee, loading });
+    
     if (!loading && user && employee) {
       // Redirect based on role
       if (employee.role === 'staff') {
@@ -47,8 +51,38 @@ const Index = () => {
     );
   }
 
-  if (user) {
-    return null; // Will redirect to dashboard
+  // Handle user with restricted access (online_access_enabled: false)
+  if (user && !employee) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center">
+        <Card className="max-w-md mx-auto">
+          <CardHeader className="text-center">
+            <div className="w-12 h-12 bg-destructive/10 rounded-lg flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-6 h-6 text-destructive" />
+            </div>
+            <CardTitle className="text-xl">Access Restricted</CardTitle>
+            <CardDescription>
+              Your account does not have online access enabled. Please contact your administrator to enable online access.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center">
+            <Button 
+              variant="outline" 
+              onClick={signOut}
+              className="gap-2"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Handle authenticated user with employee data (will redirect)
+  if (user && employee) {
+    return null;
   }
 
   return (
