@@ -52,16 +52,15 @@ export default function StationLoginPage() {
         const token = data.token as string;
         const target = data.redirectTo || '/station';
         
-        // Build absolute URL (covers path-only and absolute URLs)
+        // Save token for bearer auth; avoid putting it in the URL
+        sessionStorage.setItem('station_jwt', token);
+        
+        console.log('Login successful, token saved; redirecting to:', target);
+        
+        // Navigate within SPA without token fragments
         const url = new URL(target, window.location.origin);
-        
-        // Put token in the fragment (not query!) so it never hits server logs
-        url.hash = `st=${encodeURIComponent(token)}`;
-        
-        console.log('Login successful, redirecting with token handoff to:', target);
-        
-        // Use replace() so Back doesn't expose the tokened URL
-        window.location.replace(url.toString());
+        url.hash = '';
+        navigate(url.pathname + url.search, { replace: true });
       } else {
         const errorMsg = data?.error || `Login failed (${response.status})`;
         setError(errorMsg);
