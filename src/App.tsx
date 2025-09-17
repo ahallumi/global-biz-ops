@@ -30,6 +30,8 @@ import StationStaffPage from "./pages/StationStaffPage";
 import { StationRoute } from "./components/StationRoute";
 import NotFound from "./pages/NotFound";
 import StationDebugPage from "./pages/StationDebugPage";
+import EmployeesPage from "./pages/EmployeesPage";
+import NewEmployeePage from "./pages/NewEmployeePage";
 
 const queryClient = new QueryClient();
 
@@ -130,6 +132,16 @@ const App = () => (
             <Route path="/settings/station" element={
               <ProtectedRoute requiredRoles={['admin']}>
                 <StationSettingsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/employees" element={
+              <ProtectedRoute requiredRoles={['admin']}>
+                <EmployeesPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/employees/new" element={
+              <ProtectedRoute requiredRoles={['admin']}>
+                <NewEmployeePage />
               </ProtectedRoute>
             } />
             <Route 
