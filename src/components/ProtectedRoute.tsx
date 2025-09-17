@@ -30,9 +30,17 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
     return <Navigate to="/" replace />;
   }
 
-  // Handle users without employee data (not set up yet)
+  // Handle users without employee data (not set up yet) - show loader to avoid redirect loop
   if (user && !employee) {
-    return <Navigate to="/" replace />;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-pulse text-center">
+          <div className="h-8 w-40 bg-muted rounded mb-4 mx-auto"></div>
+          <div className="h-4 w-52 bg-muted rounded mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading your access...</p>
+        </div>
+      </div>
+    );
   }
 
   if (requiredRoles && employee && !requiredRoles.includes(employee.role)) {

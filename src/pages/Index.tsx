@@ -18,25 +18,24 @@ import {
   LogOut
 } from 'lucide-react';
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const Index = () => {
   const { user, employee, loading, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     console.log('Index component auth state:', { user: !!user, employee: !!employee, loading });
     
     // Only redirect if user has employee data AND is not restricted
     if (!loading && user && employee && !(employee as any).hasRestrictedAccess) {
-      // Redirect based on role
-      if (employee.role === 'staff') {
-        navigate('/staff-dashboard');
-      } else {
-        navigate('/dashboard');
+      const target = employee.role === 'staff' ? '/staff-dashboard' : '/dashboard';
+      if (location.pathname !== target) {
+        navigate(target, { replace: true });
       }
     }
-  }, [user, employee, loading, navigate]);
+  }, [user, employee, loading, navigate, location.pathname]);
 
   if (loading) {
     return (
