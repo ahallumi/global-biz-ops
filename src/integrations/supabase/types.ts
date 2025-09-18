@@ -1353,6 +1353,10 @@ export type Database = {
       }
     }
     Functions: {
+      admin_update_user_password: {
+        Args: { new_password: string; reset_token: string; user_id: string }
+        Returns: undefined
+      }
       calculate_employee_hours: {
         Args: {
           p_employee_id: string
