@@ -14,7 +14,11 @@ export function usePasswordReset() {
   return useMutation({
     mutationFn: async ({ email, user_id }: PasswordResetRequest) => {
       const { data, error } = await supabase.functions.invoke('send-password-reset', {
-        body: { email, user_id }
+        body: { 
+          email, 
+          user_id,
+          app_url: window.location.origin
+        }
       });
 
       if (error) {

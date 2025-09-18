@@ -12,6 +12,7 @@ const corsHeaders = {
 interface PasswordResetRequest {
   email: string;
   user_id: string;
+  app_url?: string;
 }
 
 serve(async (req) => {
@@ -73,7 +74,7 @@ serve(async (req) => {
       );
     }
 
-    const { email, user_id }: PasswordResetRequest = await req.json();
+    const { email, user_id, app_url }: PasswordResetRequest = await req.json();
 
     if (!email || !user_id) {
       return new Response(
@@ -84,22 +85,31 @@ serve(async (req) => {
 
     console.log(`Admin ${user.id} initiating password reset for user ${user_id} (${email})`);
 
-    // Generate password reset for the user
-    const redirectUrl = `${Deno.env.get('SUPABASE_URL')?.replace('/supabase', '') || 'http://localhost:3000'}/password-reset`;
-    
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: redirectUrl,
-    });
+    // Generate custom reset token
+    const resetToken = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
 
-    if (resetError) {
-      console.error('Supabase password reset error:', resetError);
+    // Store the reset token in database
+    const { error: tokenError } = await supabase
+      .from('password_reset_tokens')
+      .insert({
+        user_id: user_id,
+        token: resetToken,
+        expires_at: expiresAt.toISOString()
+      });
+
+    if (tokenError) {
+      console.error('Failed to create reset token:', tokenError);
       return new Response(
-        JSON.stringify({ error: 'Failed to send password reset email' }),
+        JSON.stringify({ error: 'Failed to create password reset token' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Send additional notification email to user
+    // Create password reset link with custom token
+    const resetUrl = `${app_url || 'http://localhost:3000'}/password-reset?token=${resetToken}`;
+
+    // Send password reset email via Resend
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #333; text-align: center;">Password Reset Request</h2>
@@ -108,14 +118,25 @@ serve(async (req) => {
             Hello,
           </p>
           <p style="color: #666; font-size: 16px; line-height: 1.5;">
-            An administrator has initiated a password reset for your account. You should receive a password reset email shortly with instructions to set a new password.
+            An administrator has initiated a password reset for your account. Click the link below to set a new password:
           </p>
-          <p style="color: #666; font-size: 16px; line-height: 1.5;">
-            If you did not expect this password reset or have any concerns, please contact your administrator immediately.
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetUrl}" style="background: #2196f3; color: white; text-decoration: none; padding: 12px 24px; border-radius: 4px; display: inline-block; font-weight: bold;">
+              Reset Your Password
+            </a>
+          </div>
+          <p style="color: #666; font-size: 14px; line-height: 1.5;">
+            If the button doesn't work, copy and paste this link into your browser:
+          </p>
+          <p style="color: #2196f3; font-size: 14px; word-break: break-all;">
+            ${resetUrl}
+          </p>
+          <p style="color: #666; font-size: 14px; line-height: 1.5;">
+            This link will expire in 1 hour for security reasons.
           </p>
           <div style="margin: 30px 0; padding: 15px; background: #e3f2fd; border-radius: 4px; border-left: 4px solid #2196f3;">
             <p style="color: #1976d2; font-size: 14px; margin: 0;">
-              <strong>Security Notice:</strong> This password reset was initiated by an administrator. If this wasn't expected, please contact support.
+              <strong>Security Notice:</strong> This password reset was initiated by an administrator. If this wasn't expected, please contact support immediately.
             </p>
           </div>
         </div>
@@ -131,12 +152,15 @@ serve(async (req) => {
       await resend.emails.send({
         from: 'System Admin <noreply@resend.dev>',
         to: [email],
-        subject: 'Password Reset Initiated by Administrator',
+        subject: 'Password Reset Request - Action Required',
         html: emailHtml,
       });
     } catch (emailError) {
-      console.error('Failed to send notification email:', emailError);
-      // Don't fail the whole request if notification email fails
+      console.error('Failed to send reset email:', emailError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to send password reset email' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     console.log(`Password reset successfully initiated for user ${user_id}`);
