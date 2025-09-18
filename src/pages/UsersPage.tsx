@@ -16,13 +16,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 export default function UsersPage() {
   const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<string>('');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
   const [userDialogOpen, setUserDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   const { data: users, isLoading } = useUsers({ 
     search: search || undefined, 
-    role: roleFilter || undefined 
+    role: roleFilter === 'all' ? undefined : roleFilter 
   });
   const deleteUser = useDeleteUser();
 
@@ -166,7 +166,7 @@ export default function UsersPage() {
               <SelectValue placeholder="Filter by role" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Roles</SelectItem>
+              <SelectItem value="all">All Roles</SelectItem>
               <SelectItem value="admin">Admin</SelectItem>
               <SelectItem value="staff">Staff</SelectItem>
             </SelectContent>
@@ -278,12 +278,12 @@ export default function UsersPage() {
                 <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-medium">No users found</h3>
                 <p className="text-muted-foreground mb-4">
-                  {search || roleFilter 
+                  {search || (roleFilter && roleFilter !== 'all') 
                     ? "No users match your current filters." 
                     : "Get started by adding your first user account."
                   }
                 </p>
-                {(!search && !roleFilter) && (
+                {(!search && (!roleFilter || roleFilter === 'all')) && (
                   <Button onClick={() => handleOpenUserDialog()}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add User
