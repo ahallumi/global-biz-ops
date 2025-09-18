@@ -28,7 +28,12 @@ export default function PasswordResetPage() {
     // Get custom token from URL parameters
     const token = searchParams.get('token');
     
+    console.log('Password reset page loaded');
+    console.log('Current URL:', window.location.href);
+    console.log('Token from URL:', token);
+    
     if (!token) {
+      console.error('No token found in URL parameters');
       setError('Invalid or expired reset link. Please request a new password reset.');
       setValidatingToken(false);
       return;
@@ -37,20 +42,30 @@ export default function PasswordResetPage() {
     // Validate the custom token
     const validateToken = async () => {
       try {
+        console.log('Validating token:', token);
+        
         const { data, error } = await supabase
           .from('password_reset_tokens')
           .select('user_id, expires_at, used_at')
           .eq('token', token)
           .single();
         
+        console.log('Token validation response:', { data, error });
+        
         if (error || !data) {
+          console.error('Token validation failed:', error);
           setError('Invalid or expired reset link. Please request a new password reset.');
           setValidatingToken(false);
           return;
         }
 
         // Check if token is expired
-        if (new Date(data.expires_at) < new Date()) {
+        const expiresAt = new Date(data.expires_at);
+        const now = new Date();
+        console.log('Token expires at:', expiresAt, 'Current time:', now);
+        
+        if (expiresAt < now) {
+          console.error('Token has expired');
           setError('This reset link has expired. Please request a new password reset.');
           setValidatingToken(false);
           return;
@@ -58,11 +73,13 @@ export default function PasswordResetPage() {
 
         // Check if token has already been used
         if (data.used_at) {
+          console.error('Token has already been used:', data.used_at);
           setError('This reset link has already been used. Please request a new password reset.');
           setValidatingToken(false);
           return;
         }
 
+        console.log('Token is valid for user:', data.user_id);
         setUserId(data.user_id);
       } catch (err) {
         console.error('Error validating token:', err);

@@ -84,6 +84,7 @@ serve(async (req) => {
     }
 
     console.log(`Admin ${user.id} initiating password reset for user ${user_id} (${email})`);
+    console.log(`App URL provided: ${app_url}`);
 
     // Generate custom reset token
     const resetToken = crypto.randomUUID();
@@ -106,8 +107,12 @@ serve(async (req) => {
       );
     }
 
-    // Create password reset link with custom token
-    const resetUrl = `${app_url || 'http://localhost:3000'}/password-reset?token=${resetToken}`;
+    // Create password reset link with custom token - hardcode memne.com domain
+    const baseUrl = 'https://memne.com';
+    const encodedToken = encodeURIComponent(resetToken);
+    const resetUrl = `${baseUrl}/password-reset?token=${encodedToken}`;
+    
+    console.log(`Generated reset URL: ${resetUrl}`);
 
     // Send password reset email via Resend
     const emailHtml = `
