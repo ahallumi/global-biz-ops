@@ -150,7 +150,7 @@ serve(async (req) => {
 
     try {
       await resend.emails.send({
-        from: 'System Admin <noreply@resend.dev>',
+        from: 'System Admin <noreply@memne.com>',
         to: [email],
         subject: 'Password Reset Request - Action Required',
         html: emailHtml,
