@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Users, Shield, Eye, EyeOff, MoreHorizontal } from 'lucide-react';
+import { Plus, Users, Shield, Eye, EyeOff, MoreHorizontal, KeyRound } from 'lucide-react';
 import { Layout } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,16 +8,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useUsers, useDeleteUser, User } from '@/hooks/useUsers';
 import { UserDialog } from '@/components/users/UserDialog';
+import { PasswordResetDialog } from '@/components/users/PasswordResetDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function UsersPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [userDialogOpen, setUserDialogOpen] = useState(false);
+  const [passwordResetDialogOpen, setPasswordResetDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   const { data: users, isLoading } = useUsers({ 
@@ -80,6 +82,16 @@ export default function UsersPage() {
   const handleCloseUserDialog = () => {
     setSelectedUser(null);
     setUserDialogOpen(false);
+  };
+
+  const handleOpenPasswordResetDialog = (user: User) => {
+    setSelectedUser(user);
+    setPasswordResetDialogOpen(true);
+  };
+
+  const handleClosePasswordResetDialog = () => {
+    setSelectedUser(null);
+    setPasswordResetDialogOpen(false);
   };
 
   if (isLoading) {
@@ -238,6 +250,11 @@ export default function UsersPage() {
                           <DropdownMenuItem onClick={() => handleOpenUserDialog(user)}>
                             Edit User
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleOpenPasswordResetDialog(user)}>
+                            <KeyRound className="h-4 w-4 mr-2" />
+                            Reset Password
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <DropdownMenuItem 
@@ -300,6 +317,13 @@ export default function UsersPage() {
           onOpenChange={setUserDialogOpen}
           user={selectedUser}
           onClose={handleCloseUserDialog}
+        />
+        
+        {/* Password Reset Dialog */}
+        <PasswordResetDialog
+          open={passwordResetDialogOpen}
+          onOpenChange={setPasswordResetDialogOpen}
+          user={selectedUser}
         />
       </div>
     </Layout>
