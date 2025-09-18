@@ -44,7 +44,7 @@ export type Database = {
           staff_code: string | null
           staff_pin: string | null
           status: string | null
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           account_setup_completed?: boolean
@@ -75,7 +75,7 @@ export type Database = {
           staff_code?: string | null
           staff_pin?: string | null
           status?: string | null
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           account_setup_completed?: boolean
@@ -106,7 +106,7 @@ export type Database = {
           staff_code?: string | null
           staff_pin?: string | null
           status?: string | null
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: []
       }

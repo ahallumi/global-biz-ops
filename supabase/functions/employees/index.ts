@@ -177,6 +177,8 @@ async function handleGetEmployees(supabase: any, params: URLSearchParams) {
 }
 
 async function handleCreateEmployee(supabase: any, data: CreateEmployeeRequest) {
+  console.log('Creating employee with data:', { ...data, pin_raw: data.pin_raw ? '[REDACTED]' : undefined });
+  
   const { pin_raw, hourly_rate, ...employeeData } = data;
   
   // Hash PIN if provided
@@ -190,22 +192,40 @@ async function handleCreateEmployee(supabase: any, data: CreateEmployeeRequest) 
 
   // Convert hourly rate to cents
   const hourly_rate_cents = hourly_rate ? Math.round(hourly_rate * 100) : null;
+  
+  // Set required fields that were missing
+  const full_name = `${data.first_name} ${data.last_name}`.trim();
+  const display_name = full_name; // Use full name as display name by default
+  
+  const insertData = {
+    ...employeeData,
+    full_name,
+    display_name,
+    hourly_rate_cents,
+    pin_salt,
+    pin_hash,
+    status: 'active',
+    online_access_enabled: false, // New employees don't have online access initially
+    account_setup_completed: false,
+    user_id: null // No user account initially
+  };
+  
+  console.log('Inserting employee data:', { ...insertData, pin_salt: insertData.pin_salt ? '[REDACTED]' : undefined, pin_hash: insertData.pin_hash ? '[REDACTED]' : undefined });
 
   const { data: employee, error } = await supabase
     .from('employees')
-    .insert({
-      ...employeeData,
-      hourly_rate_cents,
-      pin_salt,
-      pin_hash,
-      status: 'active'
-    })
+    .insert(insertData)
     .select()
     .single();
 
   if (error) {
+    console.error('Employee creation failed:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        details: error.details,
+        hint: error.hint
+      }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
