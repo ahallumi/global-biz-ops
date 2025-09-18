@@ -38,6 +38,7 @@ import EmployeesPage from "./pages/EmployeesPage";
 import NewEmployeePage from "./pages/NewEmployeePage";
 import { EmployeeDetailPage } from "./pages/EmployeeDetailPage";
 import EmployeeSetupPage from "./pages/EmployeeSetupPage";
+import UsersPage from "./pages/UsersPage";
 
 const queryClient = new QueryClient();
 
@@ -174,6 +175,11 @@ const App = () => (
             <Route path="/employees/:id" element={
               <ProtectedRoute requiredRoles={['admin']}>
                 <EmployeeDetailPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/users" element={
+              <ProtectedRoute requiredRoles={['admin']}>
+                <UsersPage />
               </ProtectedRoute>
             } />
             <Route 

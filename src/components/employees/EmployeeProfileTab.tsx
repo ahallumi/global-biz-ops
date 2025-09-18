@@ -358,16 +358,31 @@ export function EmployeeProfileTab({ employee }: EmployeeProfileTabProps) {
         </CardContent>
       </Card>
 
-      {/* Online Access & Security Card */}
+      {/* User Account & Online Access Card */}
       {isAdmin() && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Shield className="h-5 w-5" />
-              <span>Online Access & Security</span>
+              <span>User Account & Online Access</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label>User Account Status</Label>
+                <p className="text-sm text-muted-foreground">
+                  {employee.online_access_enabled 
+                    ? "Employee has a user account and can access the online system"
+                    : "Employee does not have online system access"
+                  }
+                </p>
+              </div>
+              <Badge variant={employee.online_access_enabled ? "default" : "secondary"}>
+                {employee.online_access_enabled ? "Account Active" : "No Account"}
+              </Badge>
+            </div>
+
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <Label htmlFor="online_access">Online System Access</Label>
@@ -416,27 +431,34 @@ export function EmployeeProfileTab({ employee }: EmployeeProfileTabProps) {
               </div>
             </div>
 
-            {employee.email && (
+            {employee.email && employee.online_access_enabled && (
               <div className="pt-2">
                 <Button
                   variant="outline"
                   onClick={handleSendInvite}
-                  disabled={sendingInvite || !employee.online_access_enabled}
+                  disabled={sendingInvite}
                   className="flex items-center space-x-2"
                 >
                   <Mail className="h-4 w-4" />
                   <span>{sendingInvite ? 'Sending...' : 'Send Setup Invite'}</span>
                 </Button>
                 <p className="text-xs text-muted-foreground mt-2">
-                  {!employee.online_access_enabled 
-                    ? 'Enable online access first to send invites'
-                    : 'Sends a secure link to set up their account and password'
-                  }
+                  Sends a secure link to set up their account and password
                 </p>
               </div>
             )}
 
-            {!employee.email && (
+            {!employee.online_access_enabled && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Online access is disabled. Enable it to allow this employee to use the web system. 
+                  You can also manage user accounts from the <a href="/users" className="underline text-primary">Users page</a>.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {!employee.email && employee.online_access_enabled && (
               <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
