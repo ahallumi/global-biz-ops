@@ -107,11 +107,22 @@ serve(async (req) => {
       );
     }
 
-    // Create password reset link with custom token - hardcode memne.com domain
-    const baseUrl = 'https://memne.com';
+    // Build password reset link using current working domain from app_url or Origin header
+    const ensureHttps = (u: string | null | undefined) => {
+      if (!u) return '';
+      let s = u.trim();
+      if (s.startsWith('http://')) s = 'https://' + s.slice(7);
+      if (!s.startsWith('http')) s = 'https://' + s;
+      return s.replace(/\/+$/, '');
+    };
+
+    const originHeader = req.headers.get('origin') || req.headers.get('referer');
+    const candidateBase = ensureHttps(app_url) || ensureHttps(originHeader) || 'https://memne.com';
     const encodedToken = encodeURIComponent(resetToken);
-    const resetUrl = `${baseUrl}/password-reset?token=${encodedToken}`;
+    const resetUrl = `${candidateBase}/password-reset?token=${encodedToken}`;
     
+    console.log(`Origin header: ${originHeader}`);
+    console.log(`Using base URL for reset: ${candidateBase}`);
     console.log(`Generated reset URL: ${resetUrl}`);
 
     // Send password reset email via Resend
