@@ -40,6 +40,7 @@ import { EmployeeDetailPage } from "./pages/EmployeeDetailPage";
 import EmployeeSetupPage from "./pages/EmployeeSetupPage";
 import UsersPage from "./pages/UsersPage";
 import PasswordResetPage from "./pages/PasswordResetPage";
+import PasswordResetTestPage from "./pages/PasswordResetTestPage";
 
 const queryClient = new QueryClient();
 
@@ -184,6 +185,7 @@ const App = () => (
               </ProtectedRoute>
             } />
             <Route path="/password-reset" element={<PasswordResetPage />} />
+            <Route path="/password-reset-test" element={<PasswordResetTestPage />} />
             <Route 
               path="/products"
               element={

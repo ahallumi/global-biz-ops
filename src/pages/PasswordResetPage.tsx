@@ -28,9 +28,13 @@ export default function PasswordResetPage() {
     // Get custom token from URL parameters
     const token = searchParams.get('token');
     
-    console.log('Password reset page loaded');
+    console.log('=== PASSWORD RESET PAGE DEBUG ===');
+    console.log('Page loaded at:', new Date().toISOString());
     console.log('Current URL:', window.location.href);
+    console.log('Search params:', window.location.search);
     console.log('Token from URL:', token);
+    console.log('User agent:', navigator.userAgent.substring(0, 100));
+    console.log('Referrer:', document.referrer || 'none');
     
     if (!token) {
       console.error('No token found in URL parameters');
