@@ -181,12 +181,17 @@ serve(async (req) => {
     const originHeader = req.headers.get('origin') || req.headers.get('referer');
     const candidateBase = ensureHttps(configuredBaseUrl) || ensureHttps(app_url) || ensureHttps(originHeader) || 'https://memne.com';
     const encodedToken = encodeURIComponent(resetToken);
-    const resetUrl = `${candidateBase}/password-reset?token=${encodedToken}`;
+    
+    // Use hash routing to avoid server 404s (works even without SPA rewrites)
+    const useHashRouting = (Deno.env.get('USE_HASH_ROUTING') ?? 'true') === 'true';
+    const path = useHashRouting ? '/#/password-reset' : '/password-reset';
+    const resetUrl = `${candidateBase}${path}?token=${encodedToken}`;
     
     console.log(`Configured base URL: ${configuredBaseUrl}`);
     console.log(`App URL provided: ${app_url}`);
     console.log(`Origin header: ${originHeader}`);
     console.log(`Using base URL for reset: ${candidateBase}`);
+    console.log(`Using hash routing: ${useHashRouting}`);
     console.log(`Generated reset URL: ${resetUrl}`);
 
     // Send password reset email via Resend

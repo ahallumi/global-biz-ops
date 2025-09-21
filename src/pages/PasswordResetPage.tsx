@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,13 +7,14 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
+import { useResetToken } from '@/hooks/useResetToken';
 import { Eye, EyeOff, CheckCircle, ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function PasswordResetPage() {
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const token = useResetToken();
   
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -25,14 +26,12 @@ export default function PasswordResetPage() {
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Get custom token from URL parameters
-    const token = searchParams.get('token');
-    
     console.log('=== PASSWORD RESET PAGE DEBUG ===');
     console.log('Page loaded at:', new Date().toISOString());
     console.log('Current URL:', window.location.href);
     console.log('Search params:', window.location.search);
-    console.log('Token from URL:', token);
+    console.log('Hash:', window.location.hash);
+    console.log('Token extracted:', token);
     console.log('User agent:', navigator.userAgent.substring(0, 100));
     console.log('Referrer:', document.referrer || 'none');
     
@@ -94,7 +93,7 @@ export default function PasswordResetPage() {
     };
 
     validateToken();
-  }, [searchParams]);
+  }, [token]);
 
   const handlePasswordReset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,7 +122,9 @@ export default function PasswordResetPage() {
     setError(null);
 
     try {
-      const token = searchParams.get('token');
+      if (!token) {
+        throw new Error('No reset token available');
+      }
       
       // Update the user's password using admin function
       const { error: updateError } = await supabase.rpc('admin_update_user_password', {
