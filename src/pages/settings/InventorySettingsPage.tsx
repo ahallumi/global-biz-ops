@@ -22,7 +22,8 @@ import {
 import { useInventoryIntegrations, useUpdateInventoryIntegration, useCreateInventoryIntegration, useTestConnection, useImportProducts, useCredentialStatus, useSaveCredentials } from '@/hooks/useInventoryIntegrations';
 import { useImportProgress } from '@/hooks/useImportProgress';
 import { ImportProgressDialog } from '@/components/imports/ImportProgressDialog';
-import { AlertCircle, CheckCircle, Package, Upload, Download, Key, Shield, Loader2 } from 'lucide-react';
+import { AlertCircle, CheckCircle, Package, Upload, Download, Key, Shield, Loader2, Trash2 } from 'lucide-react';
+import { CatalogResetDialog } from '@/components/products/CatalogResetDialog';
 import { Badge } from '@/components/ui/badge';
 
 const integrationSchema = z.object({
@@ -39,6 +40,7 @@ export default function InventorySettingsPage() {
   const [connectionResult, setConnectionResult] = useState<any>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importMode, setImportMode] = useState<'START' | 'RESUME'>('START');
+  const [showResetDialog, setShowResetDialog] = useState(false);
 
   const { data: integrations, isLoading: isLoadingIntegrations } = useInventoryIntegrations();
   const updateIntegration = useUpdateInventoryIntegration();
@@ -482,6 +484,16 @@ export default function InventorySettingsPage() {
                         Resume Import
                       </Button>
                     )}
+
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={() => setShowResetDialog(true)}
+                      disabled={!activeIntegration}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Reset Catalog
+                    </Button>
                   </div>
 
                   <Button type="submit">
@@ -549,6 +561,11 @@ export default function InventorySettingsPage() {
         onOpenChange={setShowImportDialog}
         mode={importMode}
         integrationId={activeIntegration?.id}
+      />
+
+      <CatalogResetDialog
+        open={showResetDialog}
+        onOpenChange={setShowResetDialog}
       />
     </SettingsLayout>
   );

@@ -91,3 +91,9 @@ verify_jwt = false
 
 [functions.station-clock-punch]
 verify_jwt = false
+
+[functions.product-catalog-backup]
+verify_jwt = true
+
+[functions.reset-product-catalog]
+verify_jwt = true
