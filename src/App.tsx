@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { HashRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import Index from "./pages/Index";
@@ -44,18 +44,6 @@ import PasswordResetTestPage from "./pages/PasswordResetTestPage";
 
 const queryClient = new QueryClient();
 
-// Remove after verification
-function DebugBanner() {
-  const loc = useLocation();
-  return (
-    <div style={{position:"fixed",zIndex:99999,top:0,left:0,right:0,fontSize:12,padding:"6px 10px",background:"rgba(0,0,0,.7)",color:"#fff"}}>
-      href: {window.location.href}
-      {" | "}pathname: {loc.pathname}
-      {" | "}search: {loc.search}
-      {" | "}hash: {loc.hash}
-    </div>
-  );
-}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -64,7 +52,6 @@ const App = () => (
         <Toaster />
         <Sonner />
         <HashRouter>
-          <DebugBanner />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
