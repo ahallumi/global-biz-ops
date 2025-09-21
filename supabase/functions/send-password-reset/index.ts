@@ -40,9 +40,21 @@ serve(async (req) => {
       }
     });
 
-    // Get the authorization header
+    // Enhanced debugging for authentication
     const authHeader = req.headers.get('Authorization');
+    const origin = req.headers.get('origin');
+    const referer = req.headers.get('referer');
+    const userAgent = req.headers.get('user-agent');
+    
+    console.log(`=== Authentication Debug ===`);
+    console.log(`Request origin: ${origin}`);
+    console.log(`Request referer: ${referer}`);
+    console.log(`User agent: ${userAgent}`);
+    console.log(`Auth header present: ${!!authHeader}`);
+    console.log(`Auth header length: ${authHeader?.length || 0}`);
+    
     if (!authHeader) {
+      console.log('ERROR: Missing authorization header');
       return new Response(
         JSON.stringify({ error: 'Authorization header required' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -51,23 +63,69 @@ serve(async (req) => {
 
     // Verify the user is an admin
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    console.log(`Token format valid: ${token !== authHeader}`);
+    console.log(`Token length: ${token.length}`);
+    console.log(`Token preview: ${token.substring(0, 20)}...`);
+    
+    // Use anon key instead of service key for user auth validation
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        },
+        global: {
+          headers: {
+            Authorization: authHeader
+          }
+        }
+      }
+    );
+    
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    
+    console.log(`Auth error: ${authError?.message || 'none'}`);
+    console.log(`User found: ${!!user}`);
+    console.log(`User ID: ${user?.id || 'none'}`);
     
     if (authError || !user) {
+      console.log(`Authentication failed: ${authError?.message || 'Unknown error'}`);
       return new Response(
-        JSON.stringify({ error: 'Invalid authentication' }),
+        JSON.stringify({ 
+          error: 'Invalid authentication',
+          details: authError?.message || 'User not found'
+        }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Check if user is admin
-    const { data: employee } = await supabase
+    // Check if user is admin using the same authenticated client
+    console.log(`Checking admin role for user: ${user.id}`);
+    const { data: employee, error: roleError } = await supabaseClient
       .from('employees')
       .select('role')
       .eq('user_id', user.id)
       .single();
 
+    console.log(`Role query error: ${roleError?.message || 'none'}`);
+    console.log(`Employee found: ${!!employee}`);
+    console.log(`Employee role: ${employee?.role || 'none'}`);
+
+    if (roleError) {
+      console.log(`Failed to fetch employee role: ${roleError.message}`);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to verify admin privileges',
+          details: roleError.message
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     if (!employee || employee.role !== 'admin') {
+      console.log(`Access denied - user role: ${employee?.role || 'none'}, required: admin`);
       return new Response(
         JSON.stringify({ error: 'Admin access required' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -90,7 +148,7 @@ serve(async (req) => {
     const resetToken = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
 
-    // Store the reset token in database
+    // Store the reset token in database using service role for elevated privileges
     const { error: tokenError } = await supabase
       .from('password_reset_tokens')
       .insert({
@@ -106,6 +164,8 @@ serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log(`Reset token created successfully for user ${user_id}`);
 
     // Build password reset link - prioritize environment variable
     const ensureHttps = (u: string | null | undefined) => {
