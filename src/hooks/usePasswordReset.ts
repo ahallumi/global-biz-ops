@@ -16,8 +16,7 @@ export function usePasswordReset() {
       const { data, error } = await supabase.functions.invoke('send-password-reset', {
         body: { 
           email, 
-          user_id,
-          app_url: window.location.origin
+          user_id
         }
       });
 

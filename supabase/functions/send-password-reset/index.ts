@@ -107,7 +107,7 @@ serve(async (req) => {
       );
     }
 
-    // Build password reset link using current working domain from app_url or Origin header
+    // Build password reset link - prioritize environment variable
     const ensureHttps = (u: string | null | undefined) => {
       if (!u) return '';
       let s = u.trim();
@@ -116,11 +116,15 @@ serve(async (req) => {
       return s.replace(/\/+$/, '');
     };
 
+    // Priority: 1) Environment variable, 2) app_url, 3) origin header, 4) fallback
+    const configuredBaseUrl = Deno.env.get('PASSWORD_RESET_BASE_URL');
     const originHeader = req.headers.get('origin') || req.headers.get('referer');
-    const candidateBase = ensureHttps(app_url) || ensureHttps(originHeader) || 'https://memne.com';
+    const candidateBase = ensureHttps(configuredBaseUrl) || ensureHttps(app_url) || ensureHttps(originHeader) || 'https://memne.com';
     const encodedToken = encodeURIComponent(resetToken);
     const resetUrl = `${candidateBase}/password-reset?token=${encodedToken}`;
     
+    console.log(`Configured base URL: ${configuredBaseUrl}`);
+    console.log(`App URL provided: ${app_url}`);
     console.log(`Origin header: ${originHeader}`);
     console.log(`Using base URL for reset: ${candidateBase}`);
     console.log(`Generated reset URL: ${resetUrl}`);
