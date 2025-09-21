@@ -38,4 +38,10 @@ window.addEventListener('error', (event) => {
   }
 }, true); // Use capture phase to catch all resource errors
 
+// TEMPORARY for password-reset rollout; remove after first successful test
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister()));
+  if (window.caches?.keys) caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+}
+
 createRoot(document.getElementById("root")!).render(<App />);
