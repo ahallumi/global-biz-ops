@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>global-biz-ops</title>
+    
+    <!-- Hash deep-link shim: turns "#/password-reset?token=..." into "/password-reset?token=..." -->
+    <script>
+    (function () {
+      try {
+        if (location.hash && location.hash.startsWith('#/password-reset')) {
+          var u = new URL(location.hash.slice(1), location.origin);
+          history.replaceState(null, '', u.pathname + u.search + u.hash);
+        }
+      } catch (e) { /* no-op */ }
+    })();
+    </script>
     <meta name="description" content="MEMNE- GLOBAL">
     <meta name="author" content="Lovable" />
 

@@ -38,12 +38,4 @@ window.addEventListener('error', (event) => {
   }
 }, true); // Use capture phase to catch all resource errors
 
-// Hash deep-link shim: convert "#/password-reset?token=..." to "/password-reset?token=..."
-if (location.hash && location.hash.startsWith('#/password-reset')) {
-  try {
-    const u = new URL(location.hash.slice(1), location.origin); // "/password-reset?token=..."
-    history.replaceState(null, '', u.pathname + u.search);      // now the router sees "/password-reset?token=..."
-  } catch { /* no-op */ }
-}
-
 createRoot(document.getElementById("root")!).render(<App />);
