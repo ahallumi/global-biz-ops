@@ -304,6 +304,112 @@ serve(async (req) => {
     return jsonRes(req, 200, { success: true }, { "Set-Cookie": expired });
   }
 
+  // REFRESH: POST /refresh (refresh station permissions)
+  if (method === "POST" && path === "/refresh") {
+    const secret = Deno.env.get("STATION_JWT_SECRET");
+    if (!secret) return jsonRes(req, 500, { error: "server_error", reason: "missing_secret" });
+    const key = await importHmacKey(secret);
+
+    // Try to get current token (Bearer first, then cookie)
+    let currentToken = "";
+    let via: "bearer" | "cookie" = "bearer";
+    
+    const auth = req.headers.get("authorization") || "";
+    const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+    if (bearer) {
+      currentToken = bearer;
+    } else {
+      const cookieToken = getCookie(req, COOKIE_NAME);
+      if (cookieToken) {
+        currentToken = cookieToken;
+        via = "cookie";
+      }
+    }
+
+    if (!currentToken) {
+      return jsonRes(req, 401, { error: "missing_token", reason: "no_token_provided" });
+    }
+
+    // Verify current token and extract sub (code ID)
+    let payload: any;
+    try {
+      payload = await verify(currentToken, key, "HS256");
+    } catch (e) {
+      console.log("REFRESH: invalid token", { error: String(e?.message || e) });
+      return jsonRes(req, 401, { error: "invalid_token", reason: "token_verification_failed" });
+    }
+
+    const codeId = payload.sub;
+    console.log("REFRESH: start", { codeId, via });
+
+    // Fetch fresh station login code data
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    if (!supabaseUrl || !serviceKey) {
+      return jsonRes(req, 500, { error: "server_error", reason: "missing_config" });
+    }
+
+    const getById = async (table: string, id: string) => {
+      const url = `${supabaseUrl}/rest/v1/${table}?select=*&id=eq.${encodeURIComponent(id)}&limit=1`;
+      const r = await fetch(url, {
+        headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, Accept: "application/json" },
+      });
+      const txt = await r.text();
+      let json: any = null;
+      try { json = txt ? JSON.parse(txt) : null; } catch {}
+      console.log("REFRESH: rest", { table, status: r.status, body: txt?.slice(0, 200) });
+      if (!r.ok) return { ok: false as const, data: null };
+      if (Array.isArray(json) && json.length > 0) return { ok: true as const, data: json[0] };
+      return { ok: false as const, data: null };
+    };
+
+    // Try both table names
+    let rec: any = null;
+    let r = await getById("station_login_codes", codeId);
+    if (r.ok) rec = r.data; else {
+      r = await getById("station_access_codes", codeId);
+      if (r.ok) rec = r.data;
+    }
+
+    if (!rec) {
+      console.log("REFRESH: code not found", { codeId });
+      return jsonRes(req, 404, { error: "code_not_found", reason: "station_code_missing" });
+    }
+
+    // Validate code is still active and not expired
+    if (rec.expires_at && new Date(rec.expires_at) < new Date()) {
+      console.log("REFRESH: expired", rec.expires_at);
+      return jsonRes(req, 401, { error: "code_expired", reason: "expired" });
+    }
+    if (rec.is_active === false) {
+      console.log("REFRESH: disabled");
+      return jsonRes(req, 403, { error: "code_disabled", reason: "disabled" });
+    }
+
+    // Create new JWT with fresh permissions
+    const newPayload = {
+      sub: String(rec.id ?? rec.station_id ?? codeId),
+      role: rec.role ?? "kiosk",
+      allowed_paths: rec.allowed_paths ?? [],
+      default_page: rec.default_page ?? "/station",
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
+    };
+
+    const newToken = await create({ alg: "HS256", typ: "JWT" }, newPayload as Record<string, unknown>, key);
+
+    // Set new cookie and return token
+    const cookie = makeCookie(COOKIE_NAME, newToken, { sameSite: COOKIE_SAMESITE });
+    console.log("REFRESH: success", { sub: newPayload.sub, allowed_paths: newPayload.allowed_paths });
+
+    return jsonRes(
+      req,
+      200,
+      { success: true, token: newToken, allowed_paths: newPayload.allowed_paths, role: newPayload.role },
+      { "Set-Cookie": cookie },
+    );
+  }
+
   // ADMIN route: POST /generate-station-code
   if (method === "POST" && path === "/generate-station-code") {
     try {

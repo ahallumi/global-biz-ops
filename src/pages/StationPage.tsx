@@ -8,20 +8,30 @@ import { StationHeader } from "@/components/layout/StationHeader";
 import { toast } from "@/hooks/use-toast";
 
 export default function StationPage() {
-  const { logout, role, allowedPaths, refetchSession } = useStationSession();
+  const { logout, role, allowedPaths, refetchSession, refreshPermissions } = useStationSession();
   const navigate = useNavigate();
 
   const handleRefreshAccess = async () => {
     try {
-      await refetchSession();
-      toast({
-        title: "Access Refreshed",
-        description: "Your station permissions have been updated.",
-      });
+      const result = await refreshPermissions();
+      if (result.success) {
+        toast({
+          title: "Access refreshed",
+          description: "Your station permissions have been updated.",
+        });
+      } else {
+        toast({
+          title: "Refresh failed",
+          description: result.error === 'missing_token' || result.error === 'invalid_token' 
+            ? "Please sign in again at /station-login"
+            : "Could not refresh your access. Please try again.",
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       toast({
-        title: "Refresh Failed", 
-        description: "Unable to refresh permissions. Please try again.",
+        title: "Refresh failed",
+        description: "Could not refresh your access. Please try again.",
         variant: "destructive",
       });
     }

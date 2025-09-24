@@ -76,6 +76,41 @@ export function useStationSession() {
     };
   }, []);
 
+  const refreshPermissions = async () => {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      // Add Bearer token if available
+      const token = sessionStorage.getItem(STORAGE_KEY);
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const res = await fetch('https://ffxvnhrqxkirdogknoid.supabase.co/functions/v1/station-login/refresh', {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+      });
+
+      const data = await res.json().catch(() => ({}));
+      
+      if (res.ok && data.success && data.token) {
+        // Store new token and update session
+        sessionStorage.setItem(STORAGE_KEY, data.token);
+        await refetchSession();
+        return { success: true };
+      } else {
+        console.log('Refresh failed:', data.error || 'Unknown error');
+        return { success: false, error: data.error || 'refresh_failed' };
+      }
+    } catch (error) {
+      console.error('Refresh permissions error:', error);
+      return { success: false, error: 'network_error' };
+    }
+  };
+
   const logout = async () => {
     // Clear Bearer first so the next check doesn't get poisoned
     sessionStorage.removeItem(STORAGE_KEY);
@@ -132,6 +167,7 @@ export function useStationSession() {
     allowedPaths: session.allowed_paths,
     defaultPage: session.default_page,
     logout,
-    refetchSession
+    refetchSession,
+    refreshPermissions
   };
 }
