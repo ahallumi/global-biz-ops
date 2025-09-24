@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, Package, Scan, Users, Clock } from "lucide-react";
+import { LogOut, Package, Scan, Users, Clock, Printer } from "lucide-react";
 import { useStationSession } from "@/hooks/useStationSession";
 import { useNavigate } from "react-router-dom";
 
@@ -32,6 +32,14 @@ export default function StationPage() {
       action: () => navigate('/station/inventory'),
       disabled: false,
       path: "/station/inventory"
+    },
+    {
+      title: "Label Printing",
+      description: "Print product labels and barcodes",
+      icon: Printer,
+      action: () => navigate('/label-print'),
+      disabled: false,
+      path: "/label-print"
     },
     {
       title: "Staff Tools",
@@ -94,13 +102,26 @@ export default function StationPage() {
         <div className="mt-8">
           <Card>
             <CardHeader>
-              <CardTitle>Welcome to Station Terminal</CardTitle>
+              <CardTitle>Station Terminal Overview</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">
-                This is your station interface. Use the tools above to perform various operations.
-                The interface will be expanded with actual functionality based on your needs.
+              <p className="text-muted-foreground mb-4">
+                Welcome to your station interface. Select from the available tools above to perform operations. 
+                Your access level is <span className="font-medium text-foreground">{role}</span>.
               </p>
+              {availableTools.length === 0 && (
+                <div className="p-4 border border-destructive/20 bg-destructive/5 rounded-lg">
+                  <p className="text-sm text-destructive">
+                    No tools are currently available for your access level. Contact an administrator to update your permissions.
+                  </p>
+                </div>
+              )}
+              {availableTools.length > 0 && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span className="h-2 w-2 bg-primary rounded-full"></span>
+                  <span>{availableTools.length} tool{availableTools.length !== 1 ? 's' : ''} available</span>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
