@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Copy, Eye, EyeOff, Plus, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { Copy, Eye, EyeOff, Plus, Trash2, ToggleLeft, ToggleRight, Edit } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -31,6 +31,8 @@ export function StationAccessManagement() {
   const [loading, setLoading] = useState(true);
   const [showCodes, setShowCodes] = useState<Record<string, boolean>>({});
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingCode, setEditingCode] = useState<StationCode | null>(null);
   const { toast } = useToast();
 
   // Form state for creating new codes
@@ -42,12 +44,22 @@ export function StationAccessManagement() {
     default_page: "/station"
   });
 
+  // Form state for editing existing codes
+  const [editCodeForm, setEditCodeForm] = useState({
+    label: "",
+    role: "station",
+    expires_at: "",
+    allowed_paths: ["/station"],
+    default_page: "/station"
+  });
+
   const availablePages = [
     { path: "/station", label: "Station Home" },
     { path: "/station/clock", label: "Time Clock" },
     { path: "/station/intake", label: "Quick Intake" },
     { path: "/station/inventory", label: "Inventory Check" },
-    { path: "/station/staff", label: "Staff Tools" }
+    { path: "/station/staff", label: "Staff Tools" },
+    { path: "/label-print", label: "Label Printing" }
   ];
 
   const loadCodes = async () => {
@@ -203,6 +215,59 @@ export function StationAccessManagement() {
     }
   };
 
+  const openEditDialog = (code: StationCode) => {
+    setEditingCode(code);
+    setEditCodeForm({
+      label: code.label || "",
+      role: code.role,
+      expires_at: code.expires_at ? new Date(code.expires_at).toISOString().slice(0, 16) : "",
+      allowed_paths: code.allowed_paths,
+      default_page: code.allowed_paths[0] || "/station"
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const updateCode = async () => {
+    if (!editingCode) return;
+
+    try {
+      const { error } = await supabase
+        .from("station_login_codes")
+        .update({
+          label: editCodeForm.label || null,
+          role: editCodeForm.role,
+          expires_at: editCodeForm.expires_at || null,
+          allowed_paths: editCodeForm.allowed_paths,
+          default_page: editCodeForm.default_page
+        })
+        .eq("id", editingCode.id);
+
+      if (error) throw error;
+      
+      toast({
+        title: "Success",
+        description: "Access code updated successfully",
+      });
+      setIsEditDialogOpen(false);
+      setEditingCode(null);
+      setEditCodeForm({
+        label: "",
+        role: "station",
+        expires_at: "",
+        allowed_paths: ["/station"],
+        default_page: "/station"
+      });
+      loadCodes();
+    } catch (error) {
+      console.error("Error updating code:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update access code",
+        variant: "destructive",
+      });
+    }
+  };
+
   const maskCode = (code: string) => {
     return "•".repeat(8) + code.slice(-4);
   };
@@ -349,6 +414,113 @@ export function StationAccessManagement() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Edit Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Access Code</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="edit-label">Label (Optional)</Label>
+                <Input
+                  id="edit-label"
+                  value={editCodeForm.label}
+                  onChange={(e) => setEditCodeForm(prev => ({ ...prev, label: e.target.value }))}
+                  placeholder="e.g., Receiving Desk iPad"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="edit-role">Role</Label>
+                <Select value={editCodeForm.role} onValueChange={(value) => 
+                  setEditCodeForm(prev => ({ ...prev, role: value }))
+                }>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="station">Station</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-expires">Expiry Date (Optional)</Label>
+                <Input
+                  id="edit-expires"
+                  type="datetime-local"
+                  value={editCodeForm.expires_at}
+                  onChange={(e) => setEditCodeForm(prev => ({ ...prev, expires_at: e.target.value }))}
+                />
+              </div>
+
+              <div>
+                <Label>Allowed Pages</Label>
+                <div className="space-y-2 mt-2">
+                  {availablePages.map((page) => (
+                    <div key={page.path} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id={`edit-${page.path}`}
+                        checked={editCodeForm.allowed_paths.includes(page.path)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setEditCodeForm(prev => ({
+                              ...prev,
+                              allowed_paths: [...prev.allowed_paths, page.path]
+                            }));
+                          } else {
+                            setEditCodeForm(prev => ({
+                              ...prev,
+                              allowed_paths: prev.allowed_paths.filter(p => p !== page.path)
+                            }));
+                          }
+                        }}
+                        className="rounded border-gray-300"
+                      />
+                      <Label htmlFor={`edit-${page.path}`} className="text-sm">
+                        {page.label}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-default-page">Default Page After Login</Label>
+                <Select 
+                  value={editCodeForm.default_page} 
+                  onValueChange={(value) => setEditCodeForm(prev => ({ ...prev, default_page: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availablePages
+                      .filter(page => editCodeForm.allowed_paths.includes(page.path))
+                      .map((page) => (
+                        <SelectItem key={page.path} value={page.path}>
+                          {page.label}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={updateCode}>
+                  Update Code
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </CardHeader>
       <CardContent>
         {codes.length === 0 ? (
@@ -446,16 +618,26 @@ export function StationAccessManagement() {
                       <span className="text-muted-foreground">Never</span>
                     )}
                   </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteCode(code.id)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
+                   <TableCell>
+                     <div className="flex items-center gap-1">
+                       <Button
+                         variant="ghost"
+                         size="sm"
+                         onClick={() => openEditDialog(code)}
+                         className="text-muted-foreground hover:text-foreground"
+                       >
+                         <Edit className="h-4 w-4" />
+                       </Button>
+                       <Button
+                         variant="ghost"
+                         size="sm"
+                         onClick={() => deleteCode(code.id)}
+                         className="text-destructive hover:text-destructive"
+                       >
+                         <Trash2 className="h-4 w-4" />
+                       </Button>
+                     </div>
+                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>

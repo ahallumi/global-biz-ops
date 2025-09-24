@@ -207,9 +207,9 @@ const App = () => (
              <Route 
                path="/label-print" 
                element={
-                 <ProtectedRoute requiredRoles={['admin', 'staff', 'manager']}>
+                 <StationRoute>
                    <LabelPrintPage />
-                 </ProtectedRoute>
+                 </StationRoute>
                } 
              />
             {/* Station routes */}
