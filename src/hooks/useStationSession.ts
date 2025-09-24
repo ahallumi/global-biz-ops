@@ -15,23 +15,23 @@ export function useStationSession() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<SessionState>({ ok: false });
 
+  const fetchSession = async (withBearer: boolean) => {
+    const headers: Record<string, string> = {};
+    if (withBearer) {
+      const t = sessionStorage.getItem(STORAGE_KEY);
+      if (t) headers["Authorization"] = `Bearer ${t}`;
+    }
+    const res = await fetch('https://ffxvnhrqxkirdogknoid.supabase.co/functions/v1/station-login/station-session', {
+      method: "GET",
+      credentials: "include",   // still allow cookie path if it works
+      headers,
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok && data?.ok === true, data };
+  };
+
   useEffect(() => {
     let cancelled = false;
-
-    const fetchSession = async (withBearer: boolean) => {
-      const headers: Record<string, string> = {};
-      if (withBearer) {
-        const t = sessionStorage.getItem(STORAGE_KEY);
-        if (t) headers["Authorization"] = `Bearer ${t}`;
-      }
-      const res = await fetch('https://ffxvnhrqxkirdogknoid.supabase.co/functions/v1/station-login/station-session', {
-        method: "GET",
-        credentials: "include",   // still allow cookie path if it works
-        headers,
-      });
-      const data = await res.json().catch(() => ({}));
-      return { ok: res.ok && data?.ok === true, data };
-    };
 
     const check = async () => {
       try {
@@ -94,11 +94,44 @@ export function useStationSession() {
     window.location.assign('/station-login');
   };
 
+  const refetchSession = async () => {
+    setLoading(true);
+    try {
+      console.log('Refreshing station session...');
+      
+      // Try with Bearer if we have one
+      let { ok, data } = await fetchSession(true);
+      
+      // If Bearer is bad/missing, clear it and retry cookie-only
+      if (!ok && (data?.reason === "invalid_token" || data?.reason === "missing_token")) {
+        if (sessionStorage.getItem(STORAGE_KEY)) {
+          sessionStorage.removeItem(STORAGE_KEY);
+        }
+        ({ ok, data } = await fetchSession(false));
+      }
+
+      if (ok) {
+        console.log('Session refresh successful via:', data?.via, 'role:', data?.role);
+        setSession(data);
+      } else {
+        console.log('Session refresh failed:', data?.reason || 'Unknown reason');
+        setSession({ ok: false, reason: data?.reason });
+      }
+    } catch (e) {
+      console.error('Station session refresh error:', e);
+      setSession({ ok: false });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return { 
     loading, 
     authenticated: session.ok, 
     role: session.role, 
     allowedPaths: session.allowed_paths,
-    logout 
+    defaultPage: session.default_page,
+    logout,
+    refetchSession
   };
 }
