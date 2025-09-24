@@ -196,14 +196,22 @@ const App = () => (
                 </ProtectedRoute>
               } 
             />
-            <Route 
-              path="/sync-queue" 
-              element={
-                <ProtectedRoute requiredRoles={['admin', 'manager', 'staff']}>
-                  <SyncQueuePage />
-                </ProtectedRoute>
-              } 
-            />
+             <Route 
+               path="/sync-queue" 
+               element={
+                 <ProtectedRoute requiredRoles={['admin', 'manager', 'staff']}>
+                   <SyncQueuePage />
+                 </ProtectedRoute>
+               } 
+             />
+             <Route 
+               path="/label-print" 
+               element={
+                 <ProtectedRoute requiredRoles={['admin', 'staff', 'manager']}>
+                   <LabelPrintPage />
+                 </ProtectedRoute>
+               } 
+             />
             {/* Station routes */}
             <Route path="/station-login" element={<StationLoginPage />} />
             <Route 

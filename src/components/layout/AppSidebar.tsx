@@ -12,7 +12,8 @@ import {
   Package,
   History,
   Cog,
-  DollarSign
+  DollarSign,
+  Printer
 } from "lucide-react"
 
 import { useAuth } from "@/hooks/useAuth"
@@ -84,18 +85,24 @@ const navigation = [
     icon: Building2,
     roles: ['admin', 'manager', 'staff'],
   },
-  {
-    name: 'Products',
-    href: '/products',
-    icon: Package,
-    roles: ['admin', 'manager', 'staff'],
-  },
-  {
-    name: 'Sync Queue',
-    href: '/sync-queue',
-    icon: History,
-    roles: ['admin', 'manager', 'staff'],
-  },
+   {
+     name: 'Products',
+     href: '/products',
+     icon: Package,
+     roles: ['admin', 'manager', 'staff'],
+   },
+   {
+     name: 'Label Print',
+     href: '/label-print',
+     icon: Printer,
+     roles: ['admin', 'manager', 'staff'],
+   },
+   {
+     name: 'Sync Queue',
+     href: '/sync-queue',
+     icon: History,
+     roles: ['admin', 'manager', 'staff'],
+   },
   {
     name: 'Settings',
     href: '/settings',
