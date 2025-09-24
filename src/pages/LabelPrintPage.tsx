@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -7,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useLabelPrint } from '@/hooks/useLabelPrint';
-import { Printer, Search, Zap, Package, Tag, Barcode } from 'lucide-react';
+import { Printer, Search, Zap, Package, Tag, Barcode, ArrowLeft } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface Product {
@@ -22,6 +23,7 @@ interface Product {
 }
 
 export default function LabelPrintPage() {
+  const navigate = useNavigate();
   const [selectedPrinterId, setSelectedPrinterId] = useState<string>('');
   const [showResults, setShowResults] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -128,11 +130,17 @@ export default function LabelPrintPage() {
   return (
     <Layout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">Label Print</h1>
-          <p className="text-muted-foreground">
-            Scan or search for products to print labels
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Label Print</h1>
+            <p className="text-muted-foreground">
+              Scan or search for products to print labels
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => navigate('/station')} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Station Terminal
+          </Button>
         </div>
 
         {/* Status Cards */}
