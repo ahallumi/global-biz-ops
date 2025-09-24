@@ -97,3 +97,21 @@ verify_jwt = true
 
 [functions.reset-product-catalog]
 verify_jwt = true
+
+[functions.search-products]
+verify_jwt = true
+
+[functions.generate-label]
+verify_jwt = true
+
+[functions.printnode-printers]
+verify_jwt = true
+
+[functions.printnode-print]
+verify_jwt = true
+
+[functions.get-label-print-config]
+verify_jwt = true
+
+[functions.update-label-print-config]
+verify_jwt = true

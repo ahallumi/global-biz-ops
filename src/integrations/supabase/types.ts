@@ -312,6 +312,33 @@ export type Database = {
         }
         Relationships: []
       }
+      label_print_overrides: {
+        Row: {
+          created_at: string | null
+          default_printer_id: string | null
+          id: string
+          profile_id: string
+          station_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          default_printer_id?: string | null
+          id?: string
+          profile_id: string
+          station_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          default_printer_id?: string | null
+          id?: string
+          profile_id?: string
+          station_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       password_reset_tokens: {
         Row: {
           created_at: string
@@ -1160,6 +1187,30 @@ export type Database = {
           state?: string | null
           terms?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      system_settings: {
+        Row: {
+          created_at: string | null
+          id: string
+          key: string
+          updated_at: string | null
+          value: Json
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          key: string
+          updated_at?: string | null
+          value: Json
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          key?: string
+          updated_at?: string | null
+          value?: Json
         }
         Relationships: []
       }

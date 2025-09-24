@@ -41,6 +41,7 @@ import EmployeeSetupPage from "./pages/EmployeeSetupPage";
 import UsersPage from "./pages/UsersPage";
 import PasswordResetPage from "./pages/PasswordResetPage";
 import PasswordResetTestPage from "./pages/PasswordResetTestPage";
+import LabelPrintPage from "./pages/LabelPrintPage";
 
 const queryClient = new QueryClient();
 
