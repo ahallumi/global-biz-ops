@@ -52,9 +52,14 @@ export function useStationSession() {
         }
 
         if (!cancelled) {
-          if (ok) {
-            console.log('Session check successful via:', data?.via, 'role:', data?.role);
-            setSession(data);
+        if (ok) {
+          // Normalize allowed_paths - trim whitespace and ensure consistent format
+          const normalizedData = {
+            ...data,
+            allowed_paths: data?.allowed_paths?.map((path: string) => path.trim().toLowerCase()) || []
+          };
+          console.log('Session check successful via:', data?.via, 'role:', data?.role, 'allowed_paths:', normalizedData.allowed_paths);
+          setSession(normalizedData);
           } else {
             console.log('Session check failed:', data?.reason || 'Unknown reason');
             setSession({ ok: false, reason: data?.reason });
@@ -146,8 +151,13 @@ export function useStationSession() {
       }
 
       if (ok) {
-        console.log('Session refresh successful via:', data?.via, 'role:', data?.role);
-        setSession(data);
+        // Normalize allowed_paths - trim whitespace and ensure consistent format
+        const normalizedData = {
+          ...data,
+          allowed_paths: data?.allowed_paths?.map((path: string) => path.trim().toLowerCase()) || []
+        };
+        console.log('Session refresh successful via:', data?.via, 'role:', data?.role, 'allowed_paths:', normalizedData.allowed_paths);
+        setSession(normalizedData);
       } else {
         console.log('Session refresh failed:', data?.reason || 'Unknown reason');
         setSession({ ok: false, reason: data?.reason });

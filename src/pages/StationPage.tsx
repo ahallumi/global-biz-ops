@@ -80,14 +80,22 @@ export default function StationPage() {
     }
   ];
 
-  // Filter tools based on allowed paths
-  const availableTools = stationTools.filter(tool => 
-    allowedPaths?.includes(tool.path) || tool.path === undefined
-  );
+  // Filter tools based on allowed paths with normalized comparison
+  const availableTools = stationTools.filter(tool => {
+    if (!tool.path) return true; // Include tools without specific paths
+    
+    // Normalize tool path for comparison
+    const normalizedToolPath = tool.path.trim().toLowerCase();
+    const isAllowed = allowedPaths?.includes(normalizedToolPath);
+    
+    console.log(`Tool "${tool.title}" path: "${normalizedToolPath}", allowed:`, isAllowed, 'allowedPaths:', allowedPaths);
+    return isAllowed;
+  });
 
   // Get readable names for allowed paths
   const getPathName = (path: string) => {
-    const tool = stationTools.find(t => t.path === path);
+    const normalizedPath = path.trim().toLowerCase();
+    const tool = stationTools.find(t => t.path?.trim().toLowerCase() === normalizedPath);
     return tool?.title || path;
   };
 
