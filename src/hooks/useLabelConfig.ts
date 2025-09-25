@@ -53,16 +53,61 @@ export function useLabelConfig(stationId?: string) {
   // Update configuration (admin only)
   const updateConfig = useMutation({
     mutationFn: async (updates: ConfigUpdate) => {
-      const { data: { session } } = await supabase.auth.getSession();
+      // Get current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
+      // Check if session exists and is valid
+      if (sessionError) {
+        throw new Error('Authentication error: Please log in again');
+      }
+      
+      if (!session?.access_token) {
+        throw new Error('No active session: Please log in as an admin');
+      }
+      
+      // Check if session is expired
+      const now = Math.floor(Date.now() / 1000);
+      if (session.expires_at && session.expires_at < now) {
+        // Try to refresh the session
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError || !refreshData.session?.access_token) {
+          throw new Error('Session expired: Please log in again');
+        }
+        
+        // Use refreshed session
+        const { data, error } = await supabase.functions.invoke('update-label-print-config', {
+          body: updates,
+          headers: {
+            Authorization: `Bearer ${refreshData.session.access_token}`,
+          },
+        });
+        
+        if (error) {
+          if (error.message?.includes('Admin access required') || error.message?.includes('403')) {
+            throw new Error('Admin access required: Please log in as an administrator');
+          }
+          throw error;
+        }
+        return data;
+      }
+      
+      // Use current session
       const { data, error } = await supabase.functions.invoke('update-label-print-config', {
         body: updates,
         headers: {
-          Authorization: `Bearer ${session?.access_token}`,
+          Authorization: `Bearer ${session.access_token}`,
         },
       });
       
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('Admin access required') || error.message?.includes('403')) {
+          throw new Error('Admin access required: Please log in as an administrator');
+        }
+        if (error.message?.includes('Invalid token') || error.message?.includes('401')) {
+          throw new Error('Authentication failed: Please log in again');
+        }
+        throw error;
+      }
       return data;
     },
     onSuccess: (data) => {
