@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import puppeteer from "https://deno.land/x/puppeteer@16.2.0/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -253,16 +254,44 @@ serve(async (req) => {
     // Generate HTML
     const html = generateLabelHTML(template_id, data, options);
 
-    // For now, we'll return the HTML directly
-    // In a production environment, you would use Puppeteer to convert to PDF
-    const mockPdfBase64 = btoa(`PDF-${template_id}-${data.id}-${Date.now()}`);
-
-    return new Response(JSON.stringify({
-      pdf_base64: mockPdfBase64,
-      html: html // Include for debugging
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    // Convert HTML to PDF using Puppeteer
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
+
+    try {
+      const page = await browser.newPage();
+      
+      // Set the content
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+      
+      // Generate PDF with exact dimensions
+      const pdfBuffer = await page.pdf({
+        width: `${options.width_mm}mm`,
+        height: `${options.height_mm}mm`,
+        margin: {
+          top: `${options.margin_mm}mm`,
+          right: `${options.margin_mm}mm`,
+          bottom: `${options.margin_mm}mm`,
+          left: `${options.margin_mm}mm`
+        },
+        printBackground: true,
+        preferCSSPageSize: true
+      });
+
+      // Convert PDF buffer to base64
+      const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfBuffer)));
+
+      return new Response(JSON.stringify({
+        pdf_base64: pdfBase64
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+
+    } finally {
+      await browser.close();
+    }
 
   } catch (error) {
     console.error('Error generating label:', error);
