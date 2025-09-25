@@ -170,7 +170,7 @@ serve(async (req) => {
         await supabase
           .from('inventory_integrations')
           .update({
-            last_error: error.message
+            last_error: (error as any)?.message || 'Unknown error'
           })
           .eq('id', integrationId)
       }
@@ -181,7 +181,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         ok: false, 
-        error: error.message,
+        error: (error as any)?.message || 'Unknown error',
         debug: {
           timestamp: new Date().toISOString(),
           functionName: 'square-test-connection'

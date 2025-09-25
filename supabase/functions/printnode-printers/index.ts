@@ -73,7 +73,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error fetching printers:', error);
     return new Response(JSON.stringify({ 
-      error: error.message || 'Failed to fetch printers' 
+      error: (error as any)?.message || 'Failed to fetch printers' 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

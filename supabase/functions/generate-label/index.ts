@@ -267,7 +267,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error generating label:', error);
     return new Response(JSON.stringify({ 
-      error: error.message || 'Failed to generate label' 
+      error: (error as any)?.message || 'Failed to generate label' 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

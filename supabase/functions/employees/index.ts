@@ -165,7 +165,7 @@ async function handleGetEmployees(supabase: any, params: URLSearchParams) {
   }
 
   // Convert hourly_rate_cents to dollars for response
-  const employees = data.map(emp => ({
+  const employees = data.map((emp: any) => ({
     ...emp,
     hourly_rate: emp.hourly_rate_cents ? emp.hourly_rate_cents / 100 : null
   }));
@@ -252,13 +252,13 @@ async function handleUpdateEmployee(supabase: any, employeeId: string, data: Upd
   // Hash PIN if provided
   if (pin_raw) {
     const pinData = await hashPin(pin_raw);
-    updateData.pin_salt = pinData.salt;
-    updateData.pin_hash = pinData.hash;
+    (updateData as any).pin_salt = pinData.salt;
+    (updateData as any).pin_hash = pinData.hash;
   }
 
   // Convert hourly rate to cents
   if (hourly_rate !== undefined) {
-    updateData.hourly_rate_cents = hourly_rate ? Math.round(hourly_rate * 100) : null;
+    (updateData as any).hourly_rate_cents = hourly_rate ? Math.round(hourly_rate * 100) : null;
   }
 
   const { data: employee, error } = await supabase

@@ -114,18 +114,18 @@ serve(async (req) => {
 
     if (cookieToken && key) {
       try {
-        payload = await verify(cookieToken, key, "HS256");
+        payload = await verify(cookieToken, key);
         via = "cookie";
       } catch (e) {
-        errors.cookie = String(e?.message || e);
+        errors.cookie = String((e as any)?.message || e);
       }
     }
     if (via === "none" && bearer && key) {
       try {
-        payload = await verify(bearer, key, "HS256");
+        payload = await verify(bearer, key);
         via = "bearer";
       } catch (e) {
-        errors.bearer = String(e?.message || e);
+        errors.bearer = String((e as any)?.message || e);
       }
     }
 
@@ -270,7 +270,7 @@ serve(async (req) => {
       );
     } catch (e) {
       console.error("LOGIN: server_error", e);
-      return jsonRes(req, 500, { error: "server_error", detail: String(e?.message || e) });
+      return jsonRes(req, 500, { error: "server_error", detail: String((e as any)?.message || e) });
     }
   }
 
@@ -283,7 +283,7 @@ serve(async (req) => {
     const cookieToken = getCookie(req, COOKIE_NAME);
     if (cookieToken) {
       try {
-        const p: any = await verify(cookieToken, key, "HS256");
+        const p: any = await verify(cookieToken, key);
         return jsonRes(req, 200, {
           ok: true,
           via: "cookie",
@@ -300,7 +300,7 @@ serve(async (req) => {
     const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
     if (bearer && bearer.length > 20) {
       try {
-        const p: any = await verify(bearer, key, "HS256");
+        const p: any = await verify(bearer, key);
         return jsonRes(req, 200, {
           ok: true,
           via: "bearer",
@@ -309,7 +309,7 @@ serve(async (req) => {
           default_page: p.default_page,
         });
       } catch (e) {
-        console.log("SESSION: invalid bearer token", { error: String(e?.message || e) });
+        console.log("SESSION: invalid bearer token", { error: String((e as any)?.message || e) });
         return jsonRes(req, 401, { ok: false, reason: "invalid_token" });
       }
     }
@@ -353,9 +353,9 @@ serve(async (req) => {
     // Verify current token and extract sub (code ID)
     let payload: any;
     try {
-      payload = await verify(currentToken, key, "HS256");
+      payload = await verify(currentToken, key);
     } catch (e) {
-      console.log("REFRESH: invalid token", { error: String(e?.message || e) });
+      console.log("REFRESH: invalid token", { error: String((e as any)?.message || e) });
       return jsonRes(req, 401, { error: "invalid_token", reason: "token_verification_failed" });
     }
 
@@ -536,7 +536,7 @@ serve(async (req) => {
       return jsonRes(req, 201, { success: true, code: inserted });
     } catch (e) {
       console.error("GENERATE_CODE: server_error", e);
-      return jsonRes(req, 500, { error: "server_error", detail: String(e?.message || e) });
+      return jsonRes(req, 500, { error: "server_error", detail: String((e as any)?.message || e) });
     }
   }
 

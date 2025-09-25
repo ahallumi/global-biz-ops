@@ -45,7 +45,7 @@ serve(async (req) => {
     console.log(`Watchdog complete: ${cleanedCount} stale runs cleaned`)
 
     if (cleanedCount > 0) {
-      console.log('Cleaned runs:', staleResults.map(r => `${r.run_id} (${r.old_status} → ${r.new_status}): ${r.error_msg}`))
+      console.log('Cleaned runs:', staleResults.map((r: any) => `${r.run_id} (${r.old_status} → ${r.new_status}): ${r.error_msg}`))
     }
 
     return new Response(
@@ -69,7 +69,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error.message 
+        error: (error as any)?.message || 'Unknown error' 
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

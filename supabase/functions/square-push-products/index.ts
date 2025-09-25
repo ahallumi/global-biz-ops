@@ -268,7 +268,7 @@ serve(async (req) => {
         errors.push({
           product_id: product.id,
           product_name: product.name,
-          error: error.message
+          error: (error as any)?.message || 'Unknown error'
         });
       }
     }
@@ -309,7 +309,7 @@ serve(async (req) => {
     console.error('Error in square-push-products:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: (error as any)?.message || 'Unknown error',
         success: false 
       }),
       { 

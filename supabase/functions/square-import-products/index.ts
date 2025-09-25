@@ -3,6 +3,9 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// Sleep utility function
+const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const IMPORT_MAX_SECONDS = Number(Deno.env.get("IMPORT_MAX_SECONDS") ?? 50);
@@ -1206,7 +1209,7 @@ async function createNewProduct(supabaseAdmin: any, extractedData: any): Promise
   };
   
   try {
-    const { data: newProduct, error: insertError } = await supabase
+    const { data: newProduct, error: insertError } = await supabaseAdmin
       .from('products')
       .insert([productData])
       .select()
@@ -1216,19 +1219,12 @@ async function createNewProduct(supabaseAdmin: any, extractedData: any): Promise
       // Handle UPC conflict specifically
       if (insertError.code === '23505' && insertError.message?.includes('upc')) {
         console.log(`⚠️ UPC_CONFLICT: Cannot create product with UPC ${extractedData.upc} - already exists`);
-        await appendError(runId, 'UPC_CONFLICT', `UPC conflict during creation: ${extractedData.upc}`, {
-          op: 'create_product',
-          upc: extractedData.upc,
-          detail: 'Product creation skipped due to UPC conflict'
-        });
+        // Note: appendError would need runId parameter which isn't available in this context
         throw new Error(`UPC conflict: ${extractedData.upc} already exists. Product creation skipped.`);
       }
       
       console.error(`Failed to create product:`, insertError);
-      await appendError(runId, 'UPSERT_FAILED', `Failed to create product: ${insertError.message}`, {
-        op: 'create_product',
-        detail: insertError.message
-      });
+      // Note: appendError would need runId parameter which isn't available in this context
       throw insertError;
     }
     
@@ -1245,7 +1241,7 @@ async function ensurePosLink(
   integrationId: string,
   squareItemId: string,
   squareVariationId?: string | null
-) {
+): Promise<{ success: boolean; conflictProductId?: string; error?: any }> {
   try {
     const linkData: any = {
       product_id: productId,
@@ -1261,16 +1257,32 @@ async function ensurePosLink(
       
     if (error && error.code !== '23505') { // Ignore unique constraint violations (link already exists)
       console.error(`Failed to create POS link for product ${productId}:`, error);
-      throw error;
+      return { success: false, error };
     }
     
     if (error?.code === '23505') {
+      // Handle conflict - find existing product with this POS link
+      const { data: existingLink } = await supabase
+        .from('product_pos_links')
+        .select('product_id')
+        .eq('integration_id', integrationId)
+        .eq('pos_item_id', squareItemId)
+        .eq('pos_variation_id', squareVariationId || null)
+        .single();
+        
+      if (existingLink && existingLink.product_id !== productId) {
+        console.log(`ℹ️ Link conflict - existing product ${existingLink.product_id} for POS link`);
+        return { success: false, conflictProductId: existingLink.product_id };
+      }
+      
       console.log(`ℹ️ Link already exists for product ${productId} (idempotent)`);
+      return { success: true };
     } else {
       console.log(`✅ Created POS link for product ${productId}`);
+      return { success: true };
     }
   } catch (error) {
     console.error(`Error ensuring POS link:`, error);
-    throw error;
+    return { success: false, error };
   }
 }

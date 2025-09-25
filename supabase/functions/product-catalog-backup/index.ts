@@ -104,7 +104,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Backup error:', error);
     return new Response(JSON.stringify({ 
-      error: error.message,
+      error: (error as any)?.message || 'Unknown error',
       success: false 
     }), {
       status: 500,

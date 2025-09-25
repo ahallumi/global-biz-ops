@@ -84,7 +84,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error submitting print job:', error);
     return new Response(JSON.stringify({ 
-      error: error.message || 'Failed to submit print job' 
+      error: (error as any)?.message || 'Failed to submit print job' 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -112,7 +112,7 @@ serve(async (req) => {
 
       } catch (error) {
         console.error(`Exception deleting from ${table}:`, error);
-        deletionSummary.errors.push(`Exception on ${table}: ${error.message}`);
+        deletionSummary.errors.push(`Exception on ${table}: ${(error as any)?.message || 'Unknown error'}`);
       }
     }
 
@@ -142,7 +142,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Reset error:', error);
     return new Response(JSON.stringify({ 
-      error: error.message,
+      error: (error as any)?.message || 'Unknown error',
       success: false 
     }), {
       status: 500,

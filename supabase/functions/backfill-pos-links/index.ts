@@ -157,10 +157,10 @@ serve(async (req) => {
       status: 200,
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Backfill failed:', error);
     return new Response(JSON.stringify({ 
-      error: error.message,
+      error: error?.message || 'Unknown error',
       matched_count: 0,
       details: []
     }), {
