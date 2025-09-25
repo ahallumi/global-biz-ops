@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, Package, Scan, Users, Clock, Printer, RefreshCw } from "lucide-react";
+import { LogOut, Package, Scan, Users, Clock, Printer, RefreshCw, Copy, Eye } from "lucide-react";
 import { useStationSession } from "@/hooks/useStationSession";
 import { useNavigate } from "react-router-dom";
 import { StationHeader } from "@/components/layout/StationHeader";
@@ -35,6 +35,20 @@ export default function StationPage() {
         variant: "destructive",
       });
     }
+  };
+
+  const copySessionInfo = () => {
+    const sessionInfo = {
+      role,
+      allowedPaths,
+      timestamp: new Date().toISOString(),
+      availableToolsCount: availableTools.length
+    };
+    navigator.clipboard.writeText(JSON.stringify(sessionInfo, null, 2));
+    toast({
+      title: "Session info copied",
+      description: "Session details have been copied to clipboard.",
+    });
   };
 
   const stationTools = [
@@ -104,40 +118,58 @@ export default function StationPage() {
       <StationHeader />
 
       <main className="p-6">
-        {/* Status Bar */}
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="h-2 w-2 bg-primary rounded-full"></span>
-              <span>{availableTools.length} tool{availableTools.length !== 1 ? 's' : ''} available</span>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefreshAccess}
-              className="gap-2"
-            >
-              <RefreshCw className="h-3 w-3" />
-              Refresh Access
-            </Button>
-          </div>
-          
-          {/* Active Permissions */}
-          {allowedPaths && allowedPaths.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Access:</span>
-              {allowedPaths.slice(0, 3).map((path) => (
-                <Badge key={path} variant="secondary" className="text-xs">
-                  {getPathName(path)}
-                </Badge>
-              ))}
-              {allowedPaths.length > 3 && (
-                <Badge variant="outline" className="text-xs">
-                  +{allowedPaths.length - 3} more
-                </Badge>
-              )}
-            </div>
-          )}
+        {/* Access Inspector */}
+        <div className="mb-6">
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Eye className="h-4 w-4 text-blue-600" />
+                Access Inspector
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Role:</span>
+                    <Badge variant={role === 'admin' ? 'default' : 'secondary'}>
+                      {role}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Paths:</span>
+                    <span className="text-sm text-muted-foreground">
+                      [{allowedPaths?.join(', ') || 'none'}]
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span className="h-2 w-2 bg-primary rounded-full"></span>
+                    <span>{availableTools.length} tool{availableTools.length !== 1 ? 's' : ''} available</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={copySessionInfo}
+                    className="gap-2"
+                  >
+                    <Copy className="h-3 w-3" />
+                    Copy Info
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRefreshAccess}
+                    className="gap-2"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Refresh Access
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Tools Grid */}

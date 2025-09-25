@@ -227,14 +227,34 @@ serve(async (req) => {
         return jsonRes(req, 500, { error: "Server configuration error: missing secret" });
       }
       const key = await importHmacKey(secret);
+      
+      // Normalize allowed_paths and add guardrails
+      const rawPaths = rec.allowed_paths ?? [];
+      const normalizedPaths = Array.from(new Set([
+        "/station", // Always include station home
+        ...rawPaths.map((path: string) => path.trim().toLowerCase()).filter(Boolean)
+      ]));
+      
+      const defaultPage = rec.default_page ?? "/station";
+      // Ensure default_page is in allowed_paths
+      if (!normalizedPaths.includes(defaultPage.trim().toLowerCase())) {
+        normalizedPaths.push(defaultPage.trim().toLowerCase());
+      }
+      
       const payload = {
         sub: String(rec.id ?? rec.station_id ?? code),
         role: rec.role ?? "kiosk",
-        allowed_paths: rec.allowed_paths ?? [],
-        default_page: rec.default_page ?? "/station",
+        allowed_paths: normalizedPaths,
+        default_page: defaultPage,
         iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
       };
+      
+      console.log("LOGIN: normalized payload", { 
+        role: payload.role, 
+        allowed_paths: payload.allowed_paths, 
+        default_page: payload.default_page 
+      });
 
       const token = await create({ alg: "HS256", typ: "JWT" }, payload as Record<string, unknown>, key);
 
@@ -387,14 +407,33 @@ serve(async (req) => {
     }
 
     // Create new JWT with fresh permissions
+    // Normalize allowed_paths and add guardrails
+    const rawPaths = rec.allowed_paths ?? [];
+    const normalizedPaths = Array.from(new Set([
+      "/station", // Always include station home
+      ...rawPaths.map((path: string) => path.trim().toLowerCase()).filter(Boolean)
+    ]));
+    
+    const defaultPage = rec.default_page ?? "/station";
+    // Ensure default_page is in allowed_paths
+    if (!normalizedPaths.includes(defaultPage.trim().toLowerCase())) {
+      normalizedPaths.push(defaultPage.trim().toLowerCase());
+    }
+    
     const newPayload = {
       sub: String(rec.id ?? rec.station_id ?? codeId),
       role: rec.role ?? "kiosk",
-      allowed_paths: rec.allowed_paths ?? [],
-      default_page: rec.default_page ?? "/station",
+      allowed_paths: normalizedPaths,
+      default_page: defaultPage,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
     };
+    
+    console.log("REFRESH: normalized payload", { 
+      role: newPayload.role, 
+      allowed_paths: newPayload.allowed_paths, 
+      default_page: newPayload.default_page 
+    });
 
     const newToken = await create({ alg: "HS256", typ: "JWT" }, newPayload as Record<string, unknown>, key);
 

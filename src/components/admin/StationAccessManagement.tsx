@@ -99,6 +99,17 @@ export function StationAccessManagement() {
         return;
       }
 
+      // Apply guardrails: ensure /station is included and default_page is in allowed_paths
+      const normalizedPaths = Array.from(new Set([
+        "/station", // Always include station home
+        ...newCodeForm.allowed_paths.map(path => path.trim().toLowerCase()).filter(Boolean)
+      ]));
+      
+      const defaultPage = newCodeForm.default_page.trim().toLowerCase();
+      if (!normalizedPaths.includes(defaultPage)) {
+        normalizedPaths.push(defaultPage);
+      }
+
       const FN_BASE = "https://ffxvnhrqxkirdogknoid.supabase.co";
       const res = await fetch(`${FN_BASE}/functions/v1/station-login/generate-station-code`, {
         method: "POST",
@@ -110,7 +121,7 @@ export function StationAccessManagement() {
           label: newCodeForm.label || null,
           role: newCodeForm.role,
           expires_at: newCodeForm.expires_at || null,
-          allowed_paths: newCodeForm.allowed_paths,
+          allowed_paths: normalizedPaths,
           default_page: newCodeForm.default_page,
         }),
       });
@@ -231,13 +242,24 @@ export function StationAccessManagement() {
     if (!editingCode) return;
 
     try {
+      // Apply guardrails: ensure /station is included and default_page is in allowed_paths
+      const normalizedPaths = Array.from(new Set([
+        "/station", // Always include station home
+        ...editCodeForm.allowed_paths.map(path => path.trim().toLowerCase()).filter(Boolean)
+      ]));
+      
+      const defaultPage = editCodeForm.default_page.trim().toLowerCase();
+      if (!normalizedPaths.includes(defaultPage)) {
+        normalizedPaths.push(defaultPage);
+      }
+
       const { error } = await supabase
         .from("station_login_codes")
         .update({
           label: editCodeForm.label || null,
           role: editCodeForm.role,
           expires_at: editCodeForm.expires_at || null,
-          allowed_paths: editCodeForm.allowed_paths,
+          allowed_paths: normalizedPaths,
           default_page: editCodeForm.default_page
         })
         .eq("id", editingCode.id);
