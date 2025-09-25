@@ -21,6 +21,7 @@ import InventorySettingsPage from "./pages/settings/InventorySettingsPage";
 import StationSettingsPage from "./pages/settings/StationSettingsPage";
 import PayrollSettingsPage from "./pages/PayrollSettingsPage";
 import TimeSettingsPage from "./pages/TimeSettingsPage";
+import PrintingSettingsPage from "./pages/settings/PrintingSettingsPage";
 import ProductsPage from "./pages/ProductsPage";
 import SyncQueuePage from "./pages/SyncQueuePage";
 import StationLoginPage from "./pages/StationLoginPage";
@@ -154,6 +155,11 @@ const App = () => (
             <Route path="/settings/time" element={
               <ProtectedRoute requiredRoles={['admin']}>
                 <TimeSettingsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/settings/printing" element={
+              <ProtectedRoute requiredRoles={['admin']}>
+                <PrintingSettingsPage />
               </ProtectedRoute>
             } />
             <Route path="/payroll" element={

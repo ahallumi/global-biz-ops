@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, Package, Shield } from 'lucide-react';
+import { ChevronLeft, Package, Shield, Printer } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SettingsLayoutProps {
@@ -24,6 +24,11 @@ export function SettingsLayout({ children, title, description }: SettingsLayoutP
       name: 'Station Access',
       href: '/settings/station',
       icon: Shield,
+    },
+    {
+      name: 'Printing',
+      href: '/settings/printing',
+      icon: Printer,
     }
   ];
 

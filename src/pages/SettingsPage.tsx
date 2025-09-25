@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Package, Shield, Users, BarChart3, DollarSign, Building2, Clock } from 'lucide-react';
+import { Package, Shield, Users, BarChart3, DollarSign, Building2, Clock, Printer } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function SettingsPage() {
@@ -37,6 +37,14 @@ export default function SettingsPage() {
       description: 'Configure timezone, time tracking rules, and clock settings',
       icon: Clock,
       href: '/settings/time',
+      roles: ['admin'],
+      status: 'Active'
+    },
+    {
+      title: 'Printing Settings',
+      description: 'Manage label printing profiles, printer configurations, and station overrides',
+      icon: Printer,
+      href: '/settings/printing',
       roles: ['admin'],
       status: 'Active'
     },
