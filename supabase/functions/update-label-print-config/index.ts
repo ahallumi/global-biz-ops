@@ -170,10 +170,10 @@ serve(async (req) => {
     // Update the configuration
     const { error: updateError } = await supabaseClient
       .from('system_settings')
-      .upsert({
-        key: 'label_print.config',
-        value: newConfig
-      });
+      .upsert(
+        { key: 'label_print.config', value: newConfig },
+        { onConflict: 'key' }
+      );
 
     if (updateError) {
       console.error('Error updating config:', updateError);
