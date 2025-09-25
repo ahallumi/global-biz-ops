@@ -11,6 +11,8 @@ interface LabelProfile {
   height_mm: number;
   dpi: number;
   margin_mm: number;
+  unit: 'mm' | 'inches';
+  orientation: 'portrait' | 'landscape';
 }
 
 interface LabelConfig {
@@ -51,8 +53,13 @@ export function useLabelConfig(stationId?: string) {
   // Update configuration (admin only)
   const updateConfig = useMutation({
     mutationFn: async (updates: ConfigUpdate) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
       const { data, error } = await supabase.functions.invoke('update-label-print-config', {
-        body: updates
+        body: updates,
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+        },
       });
       
       if (error) throw error;

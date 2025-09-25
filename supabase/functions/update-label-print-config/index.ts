@@ -14,6 +14,8 @@ interface LabelProfile {
   height_mm: number;
   dpi: number;
   margin_mm: number;
+  unit: 'mm' | 'inches';
+  orientation: 'portrait' | 'landscape';
 }
 
 interface ConfigUpdate {
@@ -36,16 +38,28 @@ function validateProfile(profile: LabelProfile): string[] {
     errors.push('Label name is required');
   }
   
-  if (profile.width_mm < 10 || profile.width_mm > 200) {
-    errors.push('Width must be between 10 and 200 mm');
+  // Convert to mm if needed for validation
+  const widthMm = profile.unit === 'inches' ? profile.width_mm * 25.4 : profile.width_mm;
+  const heightMm = profile.unit === 'inches' ? profile.height_mm * 25.4 : profile.height_mm;
+  
+  if (widthMm < 10 || widthMm > 200) {
+    errors.push('Width must be between 10 and 200 mm (0.4" and 7.9")');
   }
   
-  if (profile.height_mm < 10 || profile.height_mm > 200) {
-    errors.push('Height must be between 10 and 200 mm');
+  if (heightMm < 10 || heightMm > 200) {
+    errors.push('Height must be between 10 and 200 mm (0.4" and 7.9")');
   }
   
-  if (![203, 300, 600].includes(profile.dpi)) {
-    errors.push('DPI must be 203, 300, or 600');
+  if (![150, 200, 203, 300, 600].includes(profile.dpi)) {
+    errors.push('DPI must be 150, 200, 203, 300, or 600');
+  }
+  
+  if (!['mm', 'inches'].includes(profile.unit)) {
+    errors.push('Unit must be mm or inches');
+  }
+  
+  if (!['portrait', 'landscape'].includes(profile.orientation)) {
+    errors.push('Orientation must be portrait or landscape');
   }
   
   if (profile.margin_mm < 0 || profile.margin_mm > 10) {

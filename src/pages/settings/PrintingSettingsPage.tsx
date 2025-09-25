@@ -9,12 +9,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { useLabelConfig } from '@/hooks/useLabelConfig';
-import { Printer, Settings, TestTube, Plus, Edit, Trash2, Monitor, Check } from 'lucide-react';
+import { Printer, Settings, TestTube, Plus, Edit, Trash2, Monitor, Check, RotateCw } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from '@/hooks/use-toast';
+import { convertUnit, formatDimension } from '@/lib/unitConversion';
 
 // Import the LabelProfile type from the hook
 interface LabelProfile {
@@ -25,24 +27,28 @@ interface LabelProfile {
   height_mm: number;
   dpi: number;
   margin_mm: number;
+  unit: 'mm' | 'inches';
+  orientation: 'portrait' | 'landscape';
 }
 
 const profileSchema = z.object({
   label_name: z.string().min(1, 'Profile name is required'),
-  width_mm: z.number().min(1, 'Width must be greater than 0'),
-  height_mm: z.number().min(1, 'Height must be greater than 0'),
+  width_mm: z.number().min(0.1, 'Width must be greater than 0'),
+  height_mm: z.number().min(0.1, 'Height must be greater than 0'),
   margin_mm: z.number().min(0, 'Margin must be 0 or greater'),
   dpi: z.number().min(72, 'DPI must be at least 72'),
+  unit: z.enum(['mm', 'inches']),
+  orientation: z.enum(['portrait', 'landscape']),
 });
 
 type ProfileFormData = z.infer<typeof profileSchema>;
 
 const LABEL_PRESETS = [
-  { name: '4" x 6" (Standard)', width: 101.6, height: 152.4 },
-  { name: '2" x 1" (Small)', width: 50.8, height: 25.4 },
-  { name: '4" x 3" (Medium)', width: 101.6, height: 76.2 },
-  { name: '3" x 2" (Compact)', width: 76.2, height: 50.8 },
-  { name: '2.25" x 1.25" (Address)', width: 57.15, height: 31.75 },
+  { name: '4" x 6" (Standard)', width_mm: 101.6, height_mm: 152.4, width_in: 4, height_in: 6 },
+  { name: '2" x 1" (Small)', width_mm: 50.8, height_mm: 25.4, width_in: 2, height_in: 1 },
+  { name: '4" x 3" (Medium)', width_mm: 101.6, height_mm: 76.2, width_in: 4, height_in: 3 },
+  { name: '3" x 2" (Compact)', width_mm: 76.2, height_mm: 50.8, width_in: 3, height_in: 2 },
+  { name: '2.25" x 1.25" (Address)', width_mm: 57.15, height_mm: 31.75, width_in: 2.25, height_in: 1.25 },
 ];
 
 export default function PrintingSettingsPage() {
@@ -58,6 +64,8 @@ export default function PrintingSettingsPage() {
       height_mm: 152.4,
       margin_mm: 2,
       dpi: 300,
+      unit: 'mm',
+      orientation: 'portrait',
     },
   });
 
@@ -70,6 +78,8 @@ export default function PrintingSettingsPage() {
       height_mm: data.height_mm,
       margin_mm: data.margin_mm,
       dpi: data.dpi,
+      unit: data.unit,
+      orientation: data.orientation,
     };
 
     const updatedConfig = {
@@ -77,13 +87,9 @@ export default function PrintingSettingsPage() {
       profiles: [...(config?.profiles || []), newProfile],
     };
 
-    updateConfig(updatedConfig, {
-      onSuccess: () => {
-        toast({ title: 'Profile created successfully' });
-        setIsProfileDialogOpen(false);
-        form.reset();
-      },
-    });
+    updateConfig(updatedConfig);
+    setIsProfileDialogOpen(false);
+    form.reset();
   };
 
   const handleUpdateProfile = (data: ProfileFormData) => {
@@ -97,6 +103,8 @@ export default function PrintingSettingsPage() {
         height_mm: data.height_mm,
         margin_mm: data.margin_mm,
         dpi: data.dpi,
+        unit: data.unit,
+        orientation: data.orientation,
       } : p
     ) || [];
 
@@ -105,14 +113,10 @@ export default function PrintingSettingsPage() {
       profiles: updatedProfiles,
     };
 
-    updateConfig(updatedConfig, {
-      onSuccess: () => {
-        toast({ title: 'Profile updated successfully' });
-        setEditingProfile(null);
-        setIsProfileDialogOpen(false);
-        form.reset();
-      },
-    });
+    updateConfig(updatedConfig);
+    setEditingProfile(null);
+    setIsProfileDialogOpen(false);
+    form.reset();
   };
 
   const handleDeleteProfile = (profileId: string) => {
@@ -123,11 +127,7 @@ export default function PrintingSettingsPage() {
       active_profile_id: config?.active_profile_id === profileId ? null : config?.active_profile_id,
     };
 
-    updateConfig(updatedConfig, {
-      onSuccess: () => {
-        toast({ title: 'Profile deleted successfully' });
-      },
-    });
+    updateConfig(updatedConfig);
   };
 
   const handleSetActiveProfile = (profileId: string) => {
@@ -136,11 +136,7 @@ export default function PrintingSettingsPage() {
       active_profile_id: profileId,
     };
 
-    updateConfig(updatedConfig, {
-      onSuccess: () => {
-        toast({ title: 'Active profile updated' });
-      },
-    });
+    updateConfig(updatedConfig);
   };
 
   const openEditDialog = (profile: any) => {
@@ -151,6 +147,8 @@ export default function PrintingSettingsPage() {
       height_mm: profile.height_mm,
       margin_mm: profile.margin_mm,
       dpi: profile.dpi,
+      unit: profile.unit || 'mm',
+      orientation: profile.orientation || 'portrait',
     });
     setIsProfileDialogOpen(true);
   };
@@ -162,8 +160,50 @@ export default function PrintingSettingsPage() {
   };
 
   const applyPreset = (preset: typeof LABEL_PRESETS[0]) => {
-    form.setValue('width_mm', preset.width);
-    form.setValue('height_mm', preset.height);
+    const currentUnit = form.getValues('unit');
+    const currentOrientation = form.getValues('orientation');
+    
+    let width = currentUnit === 'mm' ? preset.width_mm : preset.width_in;
+    let height = currentUnit === 'mm' ? preset.height_mm : preset.height_in;
+    
+    // Swap dimensions if landscape
+    if (currentOrientation === 'landscape') {
+      [width, height] = [height, width];
+    }
+    
+    form.setValue('width_mm', width);
+    form.setValue('height_mm', height);
+  };
+
+  const handleUnitChange = (newUnit: 'mm' | 'inches') => {
+    const currentUnit = form.getValues('unit');
+    if (currentUnit === newUnit) return;
+
+    const currentWidth = form.getValues('width_mm');
+    const currentHeight = form.getValues('height_mm');
+    const currentMargin = form.getValues('margin_mm');
+
+    const newWidth = convertUnit(currentWidth, currentUnit, newUnit);
+    const newHeight = convertUnit(currentHeight, currentUnit, newUnit);
+    const newMargin = convertUnit(currentMargin, currentUnit, newUnit);
+
+    form.setValue('unit', newUnit);
+    form.setValue('width_mm', newWidth);
+    form.setValue('height_mm', newHeight);
+    form.setValue('margin_mm', newMargin);
+  };
+
+  const handleOrientationToggle = () => {
+    const currentOrientation = form.getValues('orientation');
+    const newOrientation = currentOrientation === 'portrait' ? 'landscape' : 'portrait';
+    
+    // Swap width and height
+    const currentWidth = form.getValues('width_mm');
+    const currentHeight = form.getValues('height_mm');
+    
+    form.setValue('orientation', newOrientation);
+    form.setValue('width_mm', currentHeight);
+    form.setValue('height_mm', currentWidth);
   };
 
   return (
@@ -255,9 +295,19 @@ export default function PrintingSettingsPage() {
                           </Badge>
                         )}
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        {profile.width_mm}×{profile.height_mm}mm • {profile.dpi}dpi • {profile.margin_mm}mm margin
-                      </p>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>
+                          {formatDimension(profile.width_mm, profile.unit || 'mm')}×{formatDimension(profile.height_mm, profile.unit || 'mm')}
+                        </span>
+                        <span>•</span>
+                        <span>{profile.dpi}dpi</span>
+                        <span>•</span>
+                        <span>{formatDimension(profile.margin_mm, profile.unit || 'mm')} margin</span>
+                        <span>•</span>
+                        <Badge variant="secondary" className="text-xs">
+                          {(profile.orientation || 'portrait') === 'portrait' ? '↕' : '↔'} {profile.orientation || 'portrait'}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
                   
@@ -347,6 +397,56 @@ export default function PrintingSettingsPage() {
                   )}
                 />
 
+                {/* Unit and Orientation Controls */}
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="unit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Units</FormLabel>
+                        <FormControl>
+                          <Select value={field.value} onValueChange={handleUnitChange}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="mm">Millimeters (mm)</SelectItem>
+                              <SelectItem value="inches">Inches (")</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="orientation"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Orientation</FormLabel>
+                        <FormControl>
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={handleOrientationToggle}
+                              className="flex items-center gap-2"
+                            >
+                              <RotateCw className="h-4 w-4" />
+                              {field.value === 'portrait' ? '↕ Portrait' : '↔ Landscape'}
+                            </Button>
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
                 <div className="space-y-3">
                   <Label>Quick Presets</Label>
                   <div className="grid grid-cols-2 gap-2">
@@ -373,15 +473,23 @@ export default function PrintingSettingsPage() {
                     name="width_mm"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Width (mm)</FormLabel>
+                        <FormLabel>
+                          Width ({form.watch('unit') === 'mm' ? 'mm' : 'inches'})
+                        </FormLabel>
                         <FormControl>
                           <Input 
                             type="number" 
-                            step="0.1"
+                            step={form.watch('unit') === 'mm' ? '0.1' : '0.01'}
                             {...field}
                             onChange={(e) => field.onChange(parseFloat(e.target.value))}
                           />
                         </FormControl>
+                        <FormDescription>
+                          {form.watch('unit') === 'mm' 
+                            ? `${convertUnit(field.value || 0, 'mm', 'inches').toFixed(2)}"`
+                            : `${convertUnit(field.value || 0, 'inches', 'mm').toFixed(1)}mm`
+                          }
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -392,15 +500,23 @@ export default function PrintingSettingsPage() {
                     name="height_mm"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Height (mm)</FormLabel>
+                        <FormLabel>
+                          Height ({form.watch('unit') === 'mm' ? 'mm' : 'inches'})
+                        </FormLabel>
                         <FormControl>
                           <Input 
                             type="number" 
-                            step="0.1"
+                            step={form.watch('unit') === 'mm' ? '0.1' : '0.01'}
                             {...field}
                             onChange={(e) => field.onChange(parseFloat(e.target.value))}
                           />
                         </FormControl>
+                        <FormDescription>
+                          {form.watch('unit') === 'mm' 
+                            ? `${convertUnit(field.value || 0, 'mm', 'inches').toFixed(2)}"`
+                            : `${convertUnit(field.value || 0, 'inches', 'mm').toFixed(1)}mm`
+                          }
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -413,17 +529,22 @@ export default function PrintingSettingsPage() {
                     name="margin_mm"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Margin (mm)</FormLabel>
+                        <FormLabel>
+                          Margin ({form.watch('unit') === 'mm' ? 'mm' : 'inches'})
+                        </FormLabel>
                         <FormControl>
                           <Input 
                             type="number" 
-                            step="0.1"
+                            step={form.watch('unit') === 'mm' ? '0.1' : '0.01'}
                             {...field}
                             onChange={(e) => field.onChange(parseFloat(e.target.value))}
                           />
                         </FormControl>
                         <FormDescription>
-                          Space around label content
+                          Space around label content • {form.watch('unit') === 'mm' 
+                            ? `${convertUnit(field.value || 0, 'mm', 'inches').toFixed(3)}"`
+                            : `${convertUnit(field.value || 0, 'inches', 'mm').toFixed(1)}mm`
+                          }
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
