@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { htmlToPdfBase64, downloadPdf } from '@/lib/htmlToPdf';
 
 interface LabelProfile {
   id: string;
@@ -108,14 +109,21 @@ export function useLabelConfig(stationId?: string) {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data) => {
-      // Download the calibration PDF
-      const link = document.createElement('a');
-      link.href = `data:application/pdf;base64,${data.pdf_base64}`;
-      link.download = 'calibration-grid.pdf';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+    onSuccess: async (data) => {
+      // Generate PDF from HTML if not provided
+      let pdfBase64 = data.pdf_base64;
+      if (!pdfBase64 && data.html) {
+        pdfBase64 = await htmlToPdfBase64(data.html, {
+          width_mm: data.width_mm,
+          height_mm: data.height_mm,
+          margin_mm: data.margin_mm,
+          dpi: data.dpi
+        });
+      }
+
+      if (pdfBase64) {
+        downloadPdf(pdfBase64, 'calibration-grid.pdf');
+      }
 
       toast({
         title: 'Calibration Generated',

@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import puppeteer from "https://deno.land/x/puppeteer@16.2.0/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -210,6 +209,93 @@ function generateLabelHTML(templateId: string, data: LabelData, options: LabelOp
     </html>`;
   }
 
+  if (templateId === 'calibration-grid') {
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        @page { 
+          size: ${width_mm}mm ${height_mm}mm; 
+          margin: ${margin_mm}mm; 
+        }
+        html, body { 
+          width: ${width_mm}mm; 
+          height: ${height_mm}mm; 
+          margin: 0; 
+          padding: 0;
+          font-family: Arial, sans-serif;
+          box-sizing: border-box;
+        }
+        .calibration-grid {
+          width: 100%;
+          height: 100%;
+          position: relative;
+          background: white;
+          border: 1px solid black;
+        }
+        .grid-lines {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-image: 
+            linear-gradient(to right, #ddd 1px, transparent 1px),
+            linear-gradient(to bottom, #ddd 1px, transparent 1px);
+          background-size: 5mm 5mm;
+        }
+        .corner-marks {
+          position: absolute;
+        }
+        .corner-marks::before {
+          content: '';
+          position: absolute;
+          top: 2mm;
+          left: 2mm;
+          width: 5mm;
+          height: 1px;
+          background: black;
+        }
+        .corner-marks::after {
+          content: '';
+          position: absolute;
+          top: 2mm;
+          left: 2mm;
+          width: 1px;
+          height: 5mm;
+          background: black;
+        }
+        .dimensions {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          font-size: 8px;
+          font-weight: bold;
+          text-align: center;
+          background: white;
+          padding: 2mm;
+          border: 1px solid black;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="calibration-grid">
+        <div class="grid-lines"></div>
+        <div class="corner-marks"></div>
+        <div class="dimensions">
+          ${width_mm}mm × ${height_mm}mm<br>
+          DPI: ${options.dpi || 300}<br>
+          Margin: ${margin_mm}mm<br>
+          5mm Grid
+        </div>
+      </div>
+    </body>
+    </html>`;
+  }
+
   // Default template
   return `
   <!DOCTYPE html>
@@ -254,44 +340,17 @@ serve(async (req) => {
     // Generate HTML
     const html = generateLabelHTML(template_id, data, options);
 
-    // Convert HTML to PDF using Puppeteer
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    // Return HTML and metadata for client-side PDF generation
+    return new Response(JSON.stringify({
+      html: html,
+      width_mm: options.width_mm,
+      height_mm: options.height_mm,
+      margin_mm: options.margin_mm,
+      dpi: options.dpi,
+      pdf_base64: null // Will be generated client-side
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-
-    try {
-      const page = await browser.newPage();
-      
-      // Set the content
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      
-      // Generate PDF with exact dimensions
-      const pdfBuffer = await page.pdf({
-        width: `${options.width_mm}mm`,
-        height: `${options.height_mm}mm`,
-        margin: {
-          top: `${options.margin_mm}mm`,
-          right: `${options.margin_mm}mm`,
-          bottom: `${options.margin_mm}mm`,
-          left: `${options.margin_mm}mm`
-        },
-        printBackground: true,
-        preferCSSPageSize: true
-      });
-
-      // Convert PDF buffer to base64
-      const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfBuffer)));
-
-      return new Response(JSON.stringify({
-        pdf_base64: pdfBase64
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-
-    } finally {
-      await browser.close();
-    }
 
   } catch (error) {
     console.error('Error generating label:', error);

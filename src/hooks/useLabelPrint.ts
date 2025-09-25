@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { htmlToPdfBase64 } from '@/lib/htmlToPdf';
 
 interface Product {
   id: string;
@@ -111,6 +112,21 @@ export function useLabelPrint(stationId?: string) {
 
       if (labelError) throw labelError;
 
+      // Generate PDF from HTML if not provided
+      let pdfBase64 = labelData.pdf_base64;
+      if (!pdfBase64 && labelData.html) {
+        pdfBase64 = await htmlToPdfBase64(labelData.html, {
+          width_mm: labelData.width_mm,
+          height_mm: labelData.height_mm,
+          margin_mm: labelData.margin_mm,
+          dpi: labelData.dpi
+        });
+      }
+
+      if (!pdfBase64) {
+        throw new Error('Failed to generate PDF for printing');
+      }
+
       // Determine printer ID
       const targetPrinterId = printerId || 
         localStorage.getItem('last-printer-id') || 
@@ -125,7 +141,7 @@ export function useLabelPrint(stationId?: string) {
         body: {
           printer_id: targetPrinterId,
           title: `Label: ${product.name}`,
-          base64: labelData.pdf_base64,
+          base64: pdfBase64,
           source: 'label-print'
         }
       });
