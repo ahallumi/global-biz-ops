@@ -37,9 +37,23 @@ interface ConfigUpdate {
 }
 
 export function useLabelConfig(stationId?: string) {
+  // Ensure legacy profiles always include required fields before sending to server
+  const withDefaults = (p: any): LabelProfile => ({
+    ...p,
+    unit: p?.unit ?? 'mm',
+    orientation: p?.orientation ?? 'portrait',
+  });
+
+  const sanitizeUpdates = (updates: ConfigUpdate): ConfigUpdate => {
+    const sanitized: any = { ...updates };
+    if (sanitized.profiles) {
+      sanitized.profiles = sanitized.profiles.map(withDefaults);
+    }
+    return sanitized;
+  };
+
   const queryClient = useQueryClient();
   const { toast } = useToast();
-
   // Get configuration
   const { data: config, isLoading, error } = useQuery({
     queryKey: ['label-config', stationId],
@@ -68,6 +82,7 @@ export function useLabelConfig(stationId?: string) {
         throw new Error('No active session: Please log in as an admin');
       }
       
+      const normalizedUpdates = sanitizeUpdates(updates);
       // Check if session is expired
       const now = Math.floor(Date.now() / 1000);
       if (session.expires_at && session.expires_at < now) {
@@ -79,7 +94,7 @@ export function useLabelConfig(stationId?: string) {
         
         // Use refreshed session
         const { data, error } = await supabase.functions.invoke('update-label-print-config', {
-          body: updates,
+          body: normalizedUpdates,
           headers: {
             Authorization: `Bearer ${refreshData.session.access_token}`,
           },
@@ -96,7 +111,7 @@ export function useLabelConfig(stationId?: string) {
       
       // Use current session
       const { data, error } = await supabase.functions.invoke('update-label-print-config', {
-        body: updates,
+        body: normalizedUpdates,
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
@@ -104,7 +119,7 @@ export function useLabelConfig(stationId?: string) {
       
       if (error) {
         console.error('Update config error:', error);
-        console.error('Request body:', updates);
+        console.error('Request body:', normalizedUpdates);
         
         if (error.message?.includes('Admin access required') || error.message?.includes('403')) {
           throw new Error('Admin access required: Please log in as an administrator');
