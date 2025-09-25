@@ -17,26 +17,18 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from '@/hooks/use-toast';
 import { convertUnit, formatDimension } from '@/lib/unitConversion';
+import { ALLOWED_DPI_VALUES, LabelProfile } from '@/hooks/useLabelConfig';
 
 // Import the LabelProfile type from the hook
-interface LabelProfile {
-  id: string;
-  label_name: string;
-  template_id: string;
-  width_mm: number;
-  height_mm: number;
-  dpi: number;
-  margin_mm: number;
-  unit: 'mm' | 'inches';
-  orientation: 'portrait' | 'landscape';
-}
 
 const profileSchema = z.object({
   label_name: z.string().min(1, 'Profile name is required'),
   width_mm: z.number().min(0.1, 'Width must be greater than 0'),
   height_mm: z.number().min(0.1, 'Height must be greater than 0'),
   margin_mm: z.number().min(0, 'Margin must be 0 or greater'),
-  dpi: z.number().min(72, 'DPI must be at least 72'),
+  dpi: z.number().refine((val) => ALLOWED_DPI_VALUES.includes(val as any), {
+    message: `DPI must be one of: ${ALLOWED_DPI_VALUES.join(', ')}`
+  }),
   unit: z.enum(['mm', 'inches']),
   orientation: z.enum(['portrait', 'landscape']),
 });
@@ -69,18 +61,30 @@ export default function PrintingSettingsPage() {
     },
   });
 
+  // Generate template_id based on dimensions and type
+  const generateTemplateId = (profile: ProfileFormData): string => {
+    const width = Math.round(profile.width_mm);
+    const height = Math.round(profile.height_mm);
+    const orientation = profile.orientation || 'portrait';
+    
+    // Create a template ID based on dimensions
+    return `custom-${width}x${height}-${orientation}`;
+  };
+
   const handleCreateProfile = (data: ProfileFormData) => {
     const newProfile: LabelProfile = {
       id: Date.now().toString(),
-      template_id: 'standard',
+      template_id: generateTemplateId(data),
       label_name: data.label_name,
       width_mm: data.width_mm,
       height_mm: data.height_mm,
       margin_mm: data.margin_mm,
-      dpi: data.dpi,
+      dpi: data.dpi as typeof ALLOWED_DPI_VALUES[number],
       unit: data.unit,
       orientation: data.orientation,
     };
+
+    console.log('Creating profile:', newProfile);
 
     const updatedConfig = {
       ...config,
@@ -99,14 +103,17 @@ export default function PrintingSettingsPage() {
       p.id === editingProfile.id ? { 
         ...p, 
         label_name: data.label_name,
+        template_id: generateTemplateId(data),
         width_mm: data.width_mm,
         height_mm: data.height_mm,
         margin_mm: data.margin_mm,
-        dpi: data.dpi,
+        dpi: data.dpi as typeof ALLOWED_DPI_VALUES[number],
         unit: data.unit,
         orientation: data.orientation,
       } : p
     ) || [];
+
+    console.log('Updating profile:', updatedProfiles.find(p => p.id === editingProfile.id));
 
     const updatedConfig = {
       ...config,
@@ -558,13 +565,14 @@ export default function PrintingSettingsPage() {
                       <FormItem>
                         <FormLabel>DPI</FormLabel>
                         <FormControl>
-                          <Select onValueChange={(value) => field.onChange(parseInt(value))} value={field.value?.toString()}>
+                          <Select onValueChange={(value) => field.onChange(Number(value))} value={field.value?.toString()}>
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="150">150 DPI</SelectItem>
                               <SelectItem value="200">200 DPI</SelectItem>
+                              <SelectItem value="203">203 DPI</SelectItem>
                               <SelectItem value="300">300 DPI (Recommended)</SelectItem>
                               <SelectItem value="600">600 DPI</SelectItem>
                             </SelectContent>

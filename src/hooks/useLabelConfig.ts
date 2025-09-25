@@ -3,13 +3,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { htmlToPdfBase64, downloadPdf } from '@/lib/htmlToPdf';
 
-interface LabelProfile {
+// Allowed DPI values that match backend validation
+export const ALLOWED_DPI_VALUES = [150, 200, 203, 300, 600] as const;
+
+export interface LabelProfile {
   id: string;
   label_name: string;
   template_id: string;
   width_mm: number;
   height_mm: number;
-  dpi: number;
+  dpi: typeof ALLOWED_DPI_VALUES[number];
   margin_mm: number;
   unit: 'mm' | 'inches';
   orientation: 'portrait' | 'landscape';
@@ -100,11 +103,17 @@ export function useLabelConfig(stationId?: string) {
       });
       
       if (error) {
+        console.error('Update config error:', error);
+        console.error('Request body:', updates);
+        
         if (error.message?.includes('Admin access required') || error.message?.includes('403')) {
           throw new Error('Admin access required: Please log in as an administrator');
         }
         if (error.message?.includes('Invalid token') || error.message?.includes('401')) {
           throw new Error('Authentication failed: Please log in again');
+        }
+        if (error.message?.includes('validation') || error.message?.includes('400')) {
+          throw new Error(`Configuration validation failed: ${error.message}`);
         }
         throw error;
       }
@@ -197,37 +206,32 @@ export function useLabelConfig(stationId?: string) {
     return config.profiles.find(p => p.id === config.active_profile_id) || null;
   };
 
-  const validateProfile = (profile: Partial<LabelProfile>): string[] => {
+  // Validate a profile object
+  const validateProfile = (profile: Partial<LabelProfile>) => {
     const errors: string[] = [];
     
-    if (!profile.id?.trim()) errors.push('Profile ID is required');
-    if (!profile.label_name?.trim()) errors.push('Label name is required');
-    if (!profile.template_id?.trim()) errors.push('Template ID is required');
-    
-    if (typeof profile.width_mm === 'number') {
-      if (profile.width_mm < 10 || profile.width_mm > 200) {
-        errors.push('Width must be between 10 and 200 mm');
-      }
-    } else {
-      errors.push('Width is required');
+    if (!profile.label_name?.trim()) {
+      errors.push('Profile name is required');
     }
     
-    if (typeof profile.height_mm === 'number') {
-      if (profile.height_mm < 10 || profile.height_mm > 200) {
-        errors.push('Height must be between 10 and 200 mm');
-      }
-    } else {
-      errors.push('Height is required');
+    if (!profile.width_mm || profile.width_mm <= 0) {
+      errors.push('Width must be greater than 0');
     }
     
-    if (profile.dpi && ![203, 300, 600].includes(profile.dpi)) {
-      errors.push('DPI must be 203, 300, or 600');
+    if (!profile.height_mm || profile.height_mm <= 0) {
+      errors.push('Height must be greater than 0');
     }
     
-    if (typeof profile.margin_mm === 'number') {
-      if (profile.margin_mm < 0 || profile.margin_mm > 10) {
-        errors.push('Margin must be between 0 and 10 mm');
-      }
+    if (profile.margin_mm === undefined || profile.margin_mm < 0) {
+      errors.push('Margin must be 0 or greater');
+    }
+    
+    if (!profile.dpi || !ALLOWED_DPI_VALUES.includes(profile.dpi as any)) {
+      errors.push(`DPI must be one of: ${ALLOWED_DPI_VALUES.join(', ')}`);
+    }
+    
+    if (!profile.template_id?.trim()) {
+      errors.push('Template ID is required');
     }
     
     return errors;
