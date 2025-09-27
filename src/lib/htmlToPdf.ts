@@ -12,6 +12,23 @@ interface PDFOptions {
 export async function htmlToPdfBase64(html: string, options: PDFOptions): Promise<string> {
   const { width_mm, height_mm, margin_mm, scale = 4 } = options;
   
+  // Validate input parameters
+  if (!width_mm || width_mm <= 0 || !height_mm || height_mm <= 0) {
+    throw new Error(`Invalid label dimensions: ${width_mm}mm x ${height_mm}mm`);
+  }
+  
+  if (margin_mm < 0) {
+    throw new Error(`Invalid margin: ${margin_mm}mm`);
+  }
+  
+  // Ensure margins don't exceed half the dimensions to prevent negative content size
+  const maxMargin = Math.min(width_mm, height_mm) / 2;
+  const safeMargin = Math.min(margin_mm, maxMargin);
+  
+  if (safeMargin !== margin_mm) {
+    console.warn(`Margin reduced from ${margin_mm}mm to ${safeMargin}mm to fit label dimensions`);
+  }
+  
   // Create a hidden container for rendering
   const container = document.createElement('div');
   container.style.position = 'absolute';
@@ -45,20 +62,29 @@ export async function htmlToPdfBase64(html: string, options: PDFOptions): Promis
       orientation: width_mm > height_mm ? 'landscape' : 'portrait'
     });
     
-    // Calculate content dimensions (excluding margins)
-    const contentWidth = width_mm - (2 * margin_mm);
-    const contentHeight = height_mm - (2 * margin_mm);
+    // Calculate content dimensions using safe margins
+    const contentWidth = width_mm - (2 * safeMargin);
+    const contentHeight = height_mm - (2 * safeMargin);
     
-    // Add the canvas image to the PDF
-    const imgData = canvas.toDataURL('image/jpeg', 1.0);
-    pdf.addImage(
-      imgData, 
-      'JPEG', 
-      margin_mm, 
-      margin_mm, 
-      contentWidth, 
-      contentHeight
-    );
+    // Ensure content dimensions are positive
+    if (contentWidth <= 0 || contentHeight <= 0) {
+      throw new Error(`Content dimensions too small: ${contentWidth}mm x ${contentHeight}mm. Label: ${width_mm}mm x ${height_mm}mm, Margin: ${safeMargin}mm`);
+    }
+    
+    try {
+      // Add the canvas image to the PDF
+      const imgData = canvas.toDataURL('image/jpeg', 1.0);
+      pdf.addImage(
+        imgData, 
+        'JPEG', 
+        safeMargin, 
+        safeMargin, 
+        contentWidth, 
+        contentHeight
+      );
+    } catch (error) {
+      throw new Error(`Failed to add image to PDF: ${error.message}. Dimensions: ${contentWidth}mm x ${contentHeight}mm at position ${safeMargin}mm, ${safeMargin}mm`);
+    }
     
     // Return base64 PDF (without data URI prefix)
     const pdfBase64 = pdf.output('datauristring').split(',')[1];
