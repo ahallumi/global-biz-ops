@@ -20,7 +20,7 @@ import { toast } from '@/hooks/use-toast';
 import { convertUnit, formatDimension } from '@/lib/unitConversion';
 import { ALLOWED_DPI_VALUES, LabelProfile } from '@/hooks/useLabelConfig';
 import { BROTHER_DK_PRESETS, validateBrotherProfile } from "@/lib/paperMatching";
-import { PrinterCapabilitiesDisplay } from "@/components/printing/PrinterCapabilitiesDisplay";
+// import { PrinterCapabilitiesDisplay } from "@/components/printing/PrinterCapabilitiesDisplay";
 
 // Import the LabelProfile type from the hook
 
@@ -52,6 +52,10 @@ export default function PrintingSettingsPage() {
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<any>(null);
   const [selectedPrinterId, setSelectedPrinterId] = useState<string>('');
+
+  console.log('PrintingSettingsPage - printers data:', printers);
+  console.log('PrintingSettingsPage - config:', config);
+  console.log('PrintingSettingsPage - activeProfile:', activeProfile);
 
   const form = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
@@ -273,12 +277,45 @@ export default function PrintingSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Printer Compatibility */}
-        <PrinterCapabilitiesDisplay
-          printer={printers?.printers?.find(p => p.id === selectedPrinterId) || null}
-          profileWidth={activeProfile?.width_mm || 62}
-          profileHeight={activeProfile?.height_mm || 29}
-        />
+        {/* Printer Compatibility - Simple inline version */}
+        {selectedPrinterId && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Printer className="h-5 w-5" />
+                Selected Printer Capabilities
+              </CardTitle>
+              <CardDescription>
+                Showing capabilities for selected printer
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const selectedPrinter = printers?.printers?.find(p => p.id === selectedPrinterId);
+                if (!selectedPrinter) return <div>Printer not found</div>;
+                
+                return (
+                  <div className="space-y-3">
+                    <div>
+                      <span className="font-medium">Printer:</span> {selectedPrinter.name}
+                    </div>
+                    <div>
+                      <span className="font-medium">Status:</span> {selectedPrinter.status}
+                    </div>
+                    {selectedPrinter.capabilities?.papers && (
+                      <div>
+                        <span className="font-medium">Available Papers:</span>
+                        <div className="text-sm text-muted-foreground">
+                          {Object.keys(selectedPrinter.capabilities.papers).length} paper sizes available
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Quick Setup with Brother Presets */}
         <Card>
@@ -463,6 +500,11 @@ export default function PrintingSettingsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                
+                {/* Debug: Show printer count */}
+                <div className="text-xs text-muted-foreground mt-1">
+                  {printers?.printers?.length || 0} printers found
+                </div>
               </div>
               <div className="flex items-end">
                 <Button
