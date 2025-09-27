@@ -33,29 +33,47 @@ export function useLabelTemplates(profileId?: string) {
       if (!profileId) return [];
       
       const { data, error } = await supabase.functions.invoke('label-templates', {
-        method: 'GET',
-        body: null,
+        body: {
+          action: 'list',
+          profile_id: profileId
+        },
         headers: {
           'Content-Type': 'application/json',
         }
       });
 
       if (error) throw error;
-      return data.templates as LabelTemplate[];
+      return data?.templates || [];
     },
     enabled: !!profileId,
   });
 
   const upsertTemplate = useMutation({
     mutationFn: async (templateData: UpsertTemplateData) => {
+      console.log('Saving template:', templateData);
+      
       const { data, error } = await supabase.functions.invoke('label-templates', {
         body: {
           action: 'upsert',
-          template: templateData
+          template: {
+            ...templateData,
+            profile_id: profileId // Ensure profile_id is always included
+          }
+        },
+        headers: {
+          'Content-Type': 'application/json',
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Template save error:', error);
+        throw error;
+      }
+      
+      if (!data?.template) {
+        throw new Error('No template returned from server');
+      }
+      
       return data.template;
     },
     onSuccess: () => {
@@ -64,7 +82,8 @@ export function useLabelTemplates(profileId?: string) {
     },
     onError: (error: any) => {
       console.error('Error saving template:', error);
-      toast.error('Failed to save template');
+      const message = error?.message || error?.details || 'Failed to save template';
+      toast.error(`Failed to save template: ${message}`);
     }
   });
 

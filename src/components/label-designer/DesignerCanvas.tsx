@@ -314,14 +314,17 @@ export function DesignerCanvas({ layout, sampleProduct, onElementUpdate, onEleme
     if (element.type === 'text') {
       Object.assign(elementStyle, {
         fontFamily: element.style?.font_family || 'Inter',
-        fontSize: `${displayFontSize * finalScale / 4}px`, // Approximate pt to px conversion
+        fontSize: `${displayFontSize * finalScale * 0.75}px`, // Convert pt to px with scale
         fontWeight: element.style?.font_weight || 400,
         textAlign: element.style?.align || 'left',
         display: 'flex',
         alignItems: 'center',
+        justifyContent: element.style?.align === 'center' ? 'center' : 
+                       element.style?.align === 'right' ? 'flex-end' : 'flex-start',
         padding: '2px',
         lineHeight: '1.2',
-        wordWrap: 'break-word'
+        wordWrap: 'break-word',
+        color: element.style?.color || '#000000'
       });
     }
 
