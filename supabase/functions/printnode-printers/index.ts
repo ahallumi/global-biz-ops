@@ -38,7 +38,7 @@ serve(async (req) => {
 
     console.log('Fetching printers from PrintNode...');
 
-    const response = await fetch('https://api.printnode.com/printers?capabilities=true', {
+    const response = await fetch('https://api.printnode.com/printers', {
       method: 'GET',
       headers: {
         'Authorization': `Basic ${btoa(printNodeApiKey + ':')}`,
