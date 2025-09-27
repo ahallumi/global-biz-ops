@@ -339,6 +339,48 @@ export type Database = {
         }
         Relationships: []
       }
+      label_templates: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_active: boolean
+          layout: Json
+          name: string
+          preview_png: string | null
+          profile_id: string
+          updated_at: string | null
+          updated_by: string | null
+          version: number
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          layout: Json
+          name: string
+          preview_png?: string | null
+          profile_id: string
+          updated_at?: string | null
+          updated_by?: string | null
+          version?: number
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          layout?: Json
+          name?: string
+          preview_png?: string | null
+          profile_id?: string
+          updated_at?: string | null
+          updated_by?: string | null
+          version?: number
+        }
+        Relationships: []
+      }
       password_reset_tokens: {
         Row: {
           created_at: string

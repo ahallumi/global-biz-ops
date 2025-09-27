@@ -1,9 +1,145 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+}
+
+// Simple barcode generator for Code128 using HTML/CSS
+function generateBarcode(value: string, width: number, height: number): string {
+  // This is a simplified barcode representation
+  // In production, you'd want to use a proper barcode library
+  const barcodeValue = value || '123456789012';
+  const bars = [];
+  
+  // Generate simple pattern for demonstration
+  for (let i = 0; i < barcodeValue.length; i++) {
+    const digit = parseInt(barcodeValue[i]) || 0;
+    bars.push(`<div style="width: ${(digit % 3) + 1}px; height: ${height}px; background: black; display: inline-block; margin-right: 1px;"></div>`);
+  }
+  
+  return `
+    <div style="width: ${width}mm; text-align: center;">
+      <div style="display: flex; justify-content: center; align-items: flex-end; height: ${height}mm;">
+        ${bars.join('')}
+      </div>
+      <div style="font-size: 8px; margin-top: 2px;">${barcodeValue}</div>
+    </div>
+  `;
+}
+
+// Template JSON renderer
+function renderJsonTemplate(template: any, product: any): string {
+  const { meta, elements } = template;
+  
+  // Helper function to evaluate bindings
+  function evaluateBinding(bind: string, product: any): string {
+    if (!bind) return '';
+    
+    // Handle simple property access like "product.name"
+    if (bind.startsWith('product.')) {
+      const prop = bind.substring(8);
+      let value = product[prop] || '';
+      
+      // Handle filters
+      if (bind.includes('| currency(')) {
+        const match = bind.match(/\| currency\('(.+?)'\)/);
+        if (match) {
+          const symbol = match[1];
+          return `${symbol}${parseFloat(value).toFixed(2)}`;
+        }
+      }
+      
+      if (bind.includes('| uppercase')) {
+        return String(value).toUpperCase();
+      }
+      
+      return String(value);
+    }
+    
+    return bind;
+  }
+  
+  // Generate elements HTML
+  const elementsHtml = elements.map((element: any) => {
+    const { id, type, x_mm, y_mm, w_mm, h_mm, style = {}, bind, visibility = {} } = element;
+    
+    // Get the value from binding
+    let value = evaluateBinding(bind, product);
+    
+    // Handle visibility rules
+    if (visibility.hide_if_empty && !value) {
+      return '';
+    }
+    
+    // Common positioning styles
+    const positionStyle = `
+      position: absolute;
+      left: ${x_mm}mm;
+      top: ${y_mm}mm;
+      width: ${w_mm}mm;
+      height: ${h_mm}mm;
+    `;
+    
+    // Font styles
+    const fontStyle = `
+      font-family: ${style.font_family || 'Inter'}, sans-serif;
+      font-size: ${style.font_size_pt || 10}pt;
+      font-weight: ${style.font_weight || 400};
+      text-align: ${style.align || 'left'};
+      line-height: ${style.line_height || 1.2};
+      opacity: ${style.opacity || 1};
+    `;
+    
+    if (type === 'text') {
+      return `
+        <div style="${positionStyle} ${fontStyle}">
+          ${value}
+        </div>
+      `;
+    } else if (type === 'barcode') {
+      return `
+        <div style="${positionStyle}">
+          ${generateBarcode(value, w_mm, h_mm)}
+        </div>
+      `;
+    }
+    
+    return '';
+  }).join('');
+  
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        @page { 
+          size: ${meta.width_mm}mm ${meta.height_mm}mm; 
+          margin: 0; 
+        }
+        body { 
+          width: ${meta.width_mm}mm; 
+          height: ${meta.height_mm}mm; 
+          margin: 0; 
+          padding: 0; 
+          background: ${meta.bg || '#FFFFFF'};
+          position: relative;
+          font-family: Inter, sans-serif;
+        }
+        * { 
+          box-sizing: border-box; 
+          -webkit-print-color-adjust: exact; 
+          print-color-adjust: exact; 
+        }
+      </style>
+    </head>
+    <body>
+      ${elementsHtml}
+    </body>
+    </html>
+  `;
+}
 
 interface LabelData {
   id: string;
@@ -58,13 +194,13 @@ function generateBarcodeSVG(code: string, width: number = 200, height: number = 
   </svg>`;
 }
 
-function generateLabelHTML(templateId: string, data: LabelData, options: LabelOptions): string {
+function generateLabelHTML(template_id: string, data: LabelData, options: LabelOptions): string {
   const { width_mm, height_mm, margin_mm } = options;
   const barcodeCode = data.barcode || data.sku || data.id.slice(-8);
   const price = data.price ? `$${data.price.toFixed(2)}` : 'Price N/A';
   const barcodeSVG = generateBarcodeSVG(barcodeCode, 150, 30);
 
-  if (templateId === 'brother-29x90-product') {
+  if (template_id === 'brother-29x90-product') {
     return `
     <!DOCTYPE html>
     <html>
@@ -137,7 +273,7 @@ function generateLabelHTML(templateId: string, data: LabelData, options: LabelOp
     </html>`;
   }
 
-  if (templateId === 'brother-62x100-shelf') {
+  if (template_id === 'brother-62x100-shelf') {
     return `
     <!DOCTYPE html>
     <html>
@@ -209,7 +345,7 @@ function generateLabelHTML(templateId: string, data: LabelData, options: LabelOp
     </html>`;
   }
 
-  if (templateId === 'calibration-grid') {
+  if (template_id === 'calibration-grid') {
     return `
     <!DOCTYPE html>
     <html>
@@ -333,32 +469,96 @@ serve(async (req) => {
   }
 
   try {
-    const { template_id, data, options }: GenerateLabelRequest = await req.json();
+    const { template_id, product, profile_id, use_json_template } = await req.json();
+    console.log('Generating label:', { template_id, product: product?.name || 'Unknown', use_json_template });
 
-    console.log('Generating label:', { template_id, product: data.name });
+    let html = '';
+    
+    // Check if we should use JSON template
+    if (use_json_template || profile_id) {
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        {
+          global: {
+            headers: { Authorization: req.headers.get('Authorization')! },
+          },
+        }
+      );
 
-    // Generate HTML
-    const html = generateLabelHTML(template_id, data, options);
+      // Get the active template for the profile
+      const { data: template, error } = await supabaseClient
+        .from('label_templates')
+        .select('layout')
+        .eq('profile_id', profile_id || template_id)
+        .eq('is_active', true)
+        .single();
 
-    // Return HTML and metadata for client-side PDF generation
-    return new Response(JSON.stringify({
-      html: html,
-      width_mm: options.width_mm,
-      height_mm: options.height_mm,
-      margin_mm: options.margin_mm,
-      dpi: options.dpi,
-      pdf_base64: null // Will be generated client-side
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+      if (template && !error) {
+        console.log('Using JSON template for rendering');
+        html = renderJsonTemplate(template.layout, product);
+      } else {
+        console.log('No JSON template found, falling back to legacy templates');
+        // Fall back to legacy templates
+        const data = {
+          id: product.id || 'unknown',
+          name: product.name || 'Unknown Product',
+          sku: product.sku || null,
+          barcode: product.barcode || null,
+          price: product.price || null,
+          size: product.size || null,
+          unit: product.unit || 'ea'
+        };
+        const options = { width_mm: 62, height_mm: 29, dpi: 300, margin_mm: 2 };
+        
+      if (template_id === 'custom-62x29-landscape') {
+        html = generateLabelHTML('brother-29x90-product', data, options);
+      } else if (template_id === 'custom-29x62-portrait') {
+        html = generateLabelHTML('brother-62x100-shelf', data, options);
+      } else if (template_id === 'calibration-grid') {
+        html = generateLabelHTML('calibration-grid', data, options);
+      } else {
+        throw new Error(`Unknown template: ${template_id}`);
+      }
+      }
+    } else {
+      // Legacy template generation - convert product to expected format
+      const data = {
+        id: product.id || 'unknown',
+        name: product.name || 'Unknown Product',
+        sku: product.sku || null,
+        barcode: product.barcode || null,
+        price: product.price || null,
+        size: product.size || null,
+        unit: product.unit || 'ea'
+      };
+      const options = { width_mm: 62, height_mm: 29, dpi: 300, margin_mm: 2 };
+      
+      if (template_id === 'custom-62x29-landscape') {
+        html = generateLabelHTML('brother-29x90-product', data, options);
+      } else if (template_id === 'custom-29x62-portrait') {
+        html = generateLabelHTML('brother-62x100-shelf', data, options);
+      } else if (template_id === 'calibration-grid') {
+        html = generateLabelHTML('calibration-grid', data, options);
+      } else {
+        throw new Error(`Unknown template: ${template_id}`);
+      }
+    }
 
+    return new Response(
+      JSON.stringify({ html }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
   } catch (error) {
     console.error('Error generating label:', error);
-    return new Response(JSON.stringify({ 
-      error: (error as any)?.message || 'Failed to generate label' 
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
   }
 });
