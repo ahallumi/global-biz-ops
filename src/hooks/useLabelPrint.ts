@@ -241,7 +241,7 @@ export function useLabelPrint(stationId?: string) {
     selectedProduct,
     lastPrintedProduct,
     config,
-    printers,
+    printers: printers?.printers || [],
     
     // Loading states
     configLoading,
