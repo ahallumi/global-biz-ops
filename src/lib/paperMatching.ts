@@ -56,6 +56,7 @@ export function findPaperMatch(
 export const BROTHER_DK_PRESETS = [
   { name: 'DK-1201', width_mm: 29, height_mm: 90, description: 'Standard Address Labels' },
   { name: 'DK-1202', width_mm: 62, height_mm: 100, description: 'Shipping/Name Badge Labels' },
+  { name: 'DK-1209', width_mm: 28.9, height_mm: 62, description: 'Small Address Labels (28.9×62mm)' },
   { name: 'DK-11209', width_mm: 29, height_mm: 62, description: 'Small Address Labels' },
   { name: 'DK-11208', width_mm: 38, height_mm: 90, description: 'Large Address Labels' },
   { name: 'DK-1219', width_mm: 12, height_mm: 0, description: '12mm Continuous Tape' },
