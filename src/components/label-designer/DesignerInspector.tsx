@@ -6,8 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { TemplateElement } from './LabelDesigner';
-import { mmToDots, DOT_MM, minimumBarcodeHeightMm } from '@/lib/dotGrid';
 import { validateElementConstraints } from '@/lib/layoutEngine';
+import { snapMm, snapSizeMm, mmToDots, DOT_MM, minimumBarcodeHeightMm, moduleMmFromDesired, quietZoneMmFromDesired } from '@/lib/dotGrid';
 
 interface DesignerInspectorProps {
   element?: TemplateElement;
@@ -33,6 +33,39 @@ export function DesignerInspector({ element, onElementUpdate, canvasSize }: Desi
 
   // Validate element constraints
   const warnings = canvasSize ? validateElementConstraints(element, canvasSize) : [];
+  
+  // Add precision warnings for dot-grid alignment
+  const precisionWarnings: string[] = [];
+  
+  if (element.type === 'barcode') {
+    const minHeight = minimumBarcodeHeightMm(element.symbology || 'code128');
+    if (element.h_mm < minHeight) {
+      precisionWarnings.push(`Barcode height (${element.h_mm.toFixed(2)}mm) is below minimum for reliable scanning (${minHeight.toFixed(2)}mm)`);
+    }
+    
+    const moduleWidth = element.barcode?.module_width_mm || 0.33;
+    const optimalModule = moduleMmFromDesired(moduleWidth);
+    if (Math.abs(moduleWidth - optimalModule) > 0.001) {
+      precisionWarnings.push(`Module width should be ${optimalModule.toFixed(3)}mm for precise dot alignment`);
+    }
+  }
+  
+  // Show snapped dimensions
+  const snappedX = snapMm(element.x_mm);
+  const snappedY = snapMm(element.y_mm);
+  const snappedW = snapSizeMm(element.w_mm);
+  const snappedH = snapSizeMm(element.h_mm);
+  
+  const isSnapped = Math.abs(element.x_mm - snappedX) < 0.001 && 
+                    Math.abs(element.y_mm - snappedY) < 0.001 &&
+                    Math.abs(element.w_mm - snappedW) < 0.001 &&
+                    Math.abs(element.h_mm - snappedH) < 0.001;
+  
+  if (!isSnapped) {
+    precisionWarnings.push('Element is not aligned to dot grid for precise printing');
+  }
+
+  const allWarnings = [...warnings, ...precisionWarnings];
 
   const handlePositionChange = (key: string, value: string) => {
     const numValue = parseFloat(value) || 0;
@@ -62,36 +95,60 @@ export function DesignerInspector({ element, onElementUpdate, canvasSize }: Desi
         <CardTitle className="text-sm">Properties - {element.type}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Validation Warnings */}
-        {warnings.length > 0 && (
-          <div className="space-y-2">
-            <Label className="text-destructive text-xs">⚠ Validation Issues</Label>
-            {warnings.map((warning, idx) => (
-              <div key={idx} className="text-xs text-destructive bg-destructive/10 p-2 rounded">
+        {/* Validation warnings */}
+        {allWarnings.length > 0 && (
+          <div className="space-y-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+            <h4 className="text-sm font-medium text-destructive">⚠️ Validation Issues</h4>
+            {allWarnings.map((warning, index) => (
+              <p key={index} className="text-xs text-destructive/80">
                 {warning}
-              </div>
+              </p>
             ))}
           </div>
         )}
 
-        {/* Resolved Values Display */}
-        <div className="space-y-2">
-          <Label className="text-xs">Resolved Values (Dot Grid)</Label>
-          <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-muted/50 p-2 rounded">
+        {/* Precision Information */}
+        <div className="space-y-2 p-3 bg-muted/50 rounded-md">
+          <h4 className="text-sm font-medium">Precision Dimensions</h4>
+          <div className="grid grid-cols-4 gap-2 text-xs font-mono">
             <div>
-              <span className="text-muted-foreground">Position:</span>
-              <div>{element.x_mm.toFixed(3)}mm ({mmToDots(element.x_mm)}d)</div>
-              <div>{element.y_mm.toFixed(3)}mm ({mmToDots(element.y_mm)}d)</div>
+              <label className="text-muted-foreground">X (mm)</label>
+              <div>{element.x_mm.toFixed(3)}</div>
             </div>
             <div>
-              <span className="text-muted-foreground">Size:</span>
-              <div>{element.w_mm.toFixed(3)}mm ({mmToDots(element.w_mm)}d)</div>
-              <div>{element.h_mm.toFixed(3)}mm ({mmToDots(element.h_mm)}d)</div>
+              <label className="text-muted-foreground">Y (mm)</label>
+              <div>{element.y_mm.toFixed(3)}</div>
+            </div>
+            <div>
+              <label className="text-muted-foreground">W (mm)</label>
+              <div>{element.w_mm.toFixed(3)}</div>
+            </div>
+            <div>
+              <label className="text-muted-foreground">H (mm)</label>
+              <div>{element.h_mm.toFixed(3)}</div>
             </div>
           </div>
-          {element.type === 'text' && element.style?.font_size_pt && (
-            <div className="text-xs text-muted-foreground">
-              Font: {element.style.font_size_pt}pt (~{Math.round(element.style.font_size_pt * 1.33)} dots x-height)
+          <div className="grid grid-cols-4 gap-2 text-xs font-mono text-muted-foreground">
+            <div>
+              <label>Dots</label>
+              <div>{mmToDots(element.x_mm)}</div>
+            </div>
+            <div>
+              <label>Dots</label>
+              <div>{mmToDots(element.y_mm)}</div>
+            </div>
+            <div>
+              <label>Dots</label>
+              <div>{mmToDots(element.w_mm)}</div>
+            </div>
+            <div>
+              <label>Dots</label>
+              <div>{mmToDots(element.h_mm)}</div>
+            </div>
+          </div>
+          {!isSnapped && (
+            <div className="text-xs text-amber-600 mt-2">
+              💡 Tip: Enable snap-to-grid for precise dot alignment
             </div>
           )}
         </div>

@@ -491,6 +491,11 @@ export function DesignerCanvas({ layout, sampleProduct, onElementUpdate, onEleme
               style={{
                 width: mmToPxCanvas(labelWidth),
                 height: mmToPxCanvas(labelHeight),
+                // Dot grid overlay when enabled
+                backgroundImage: gridEnabled ? `
+                  radial-gradient(circle at 1px 1px, rgba(0,0,0,0.2) 1px, transparent 0)
+                ` : 'none',
+                backgroundSize: gridEnabled ? `${mmToPxCanvas(DOT_MM)}px ${mmToPxCanvas(DOT_MM)}px` : 'auto',
                 minWidth: mmToPxCanvas(labelWidth),
                 minHeight: mmToPxCanvas(labelHeight)
               }}
