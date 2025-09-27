@@ -21,7 +21,10 @@ export function DesignerCanvas({
   const canvasRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
+  
+  const DRAG_THRESHOLD = 3; // pixels
 
   // Calculate canvas scale to fit in container
   const containerWidth = 600; // Fixed container width
@@ -62,8 +65,11 @@ export function DesignerCanvas({
     e.preventDefault();
     e.stopPropagation();
     
+    // Always select the element on mouse down
     onElementSelect(element.id);
-    setIsDragging(true);
+    
+    // Store initial position for drag threshold detection
+    setDragStart({ x: e.clientX, y: e.clientY });
     
     const rect = canvasRef.current?.getBoundingClientRect();
     if (rect) {
@@ -75,26 +81,40 @@ export function DesignerCanvas({
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !selectedElement) return;
+    if (!selectedElement) return;
     
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (rect) {
-      const newX = (e.clientX - rect.left - dragOffset.x) / finalScale;
-      const newY = (e.clientY - rect.top - dragOffset.y) / finalScale;
+    // Check if we should start dragging (mouse moved beyond threshold)
+    if (!isDragging && dragStart.x !== 0 && dragStart.y !== 0) {
+      const deltaX = Math.abs(e.clientX - dragStart.x);
+      const deltaY = Math.abs(e.clientY - dragStart.y);
       
-      // Constrain to canvas bounds
-      const constrainedX = Math.max(0, Math.min(newX, labelWidth - 10));
-      const constrainedY = Math.max(0, Math.min(newY, labelHeight - 5));
-      
-      onElementUpdate(selectedElement, {
-        x_mm: constrainedX,
-        y_mm: constrainedY
-      });
+      if (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD) {
+        setIsDragging(true);
+      }
+    }
+    
+    // Only update position if actively dragging
+    if (isDragging) {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const newX = (e.clientX - rect.left - dragOffset.x) / finalScale;
+        const newY = (e.clientY - rect.top - dragOffset.y) / finalScale;
+        
+        // Constrain to canvas bounds
+        const constrainedX = Math.max(0, Math.min(newX, labelWidth - 10));
+        const constrainedY = Math.max(0, Math.min(newY, labelHeight - 5));
+        
+        onElementUpdate(selectedElement, {
+          x_mm: constrainedX,
+          y_mm: constrainedY
+        });
+      }
     }
   };
 
   const handleMouseUp = () => {
     setIsDragging(false);
+    setDragStart({ x: 0, y: 0 });
   };
 
   const handleCanvasClick = (e: React.MouseEvent) => {
@@ -148,22 +168,36 @@ export function DesignerCanvas({
           <div
             style={{
               position: 'absolute',
-              top: -8,
-              right: -8,
-              width: 16,
-              height: 16,
+              top: -10,
+              right: -10,
+              width: 20,
+              height: 20,
               backgroundColor: '#ef4444',
               color: 'white',
               borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '10px',
-              cursor: 'pointer'
+              fontSize: '12px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              zIndex: 1000,
+              border: '2px solid white',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+              transition: 'all 0.2s ease'
             }}
             onClick={(e) => {
               e.stopPropagation();
+              e.preventDefault();
               onElementDelete(element.id);
+            }}
+            onMouseEnter={(e) => {
+              (e.target as HTMLElement).style.backgroundColor = '#dc2626';
+              (e.target as HTMLElement).style.transform = 'scale(1.1)';
+            }}
+            onMouseLeave={(e) => {
+              (e.target as HTMLElement).style.backgroundColor = '#ef4444';
+              (e.target as HTMLElement).style.transform = 'scale(1)';
             }}
           >
             ×
