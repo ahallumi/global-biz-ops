@@ -6,6 +6,57 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Dot Grid Precision Constants
+const DPI = 300;
+const MM_PER_IN = 25.4;
+const DOT_MM = MM_PER_IN / DPI; // ≈ 0.084666... mm per dot
+
+// Precision snapping functions
+function snapMm(mm: number, dots: number = 1): number {
+  const dotsFloat = mm / DOT_MM;
+  const snappedDots = Math.round(dotsFloat / dots) * dots;
+  return snappedDots * DOT_MM;
+}
+
+function snapSizeMm(mm: number): number {
+  const dots = Math.max(1, Math.round(mm / DOT_MM));
+  return dots * DOT_MM;
+}
+
+function moduleMmFromDesired(desiredMm: number): number {
+  const dots = Math.max(2, Math.round(desiredMm / DOT_MM));
+  return dots * DOT_MM;
+}
+
+// Precision barcode generator with integer-dot modules
+function generatePrecisionBarcode(value: string, width_mm: number, height_mm: number, module_width_mm: number): string {
+  if (!value || value.trim() === '') {
+    return `<div style="width: ${width_mm}mm; height: ${height_mm}mm; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 8px; color: #999;">No barcode</div>`;
+  }
+
+  // Simple Code128-style pattern generation with precision module width
+  const bars = value.split('').map((char) => {
+    const charCode = char.charCodeAt(0);
+    return (charCode % 4) + 1; // Simple pattern generation
+  });
+
+  const actualModuleWidth = moduleMmFromDesired(module_width_mm);
+  const barWidth = actualModuleWidth;
+  let x = 0;
+  let barsHTML = '';
+
+  for (const barHeight of bars) {
+    barsHTML += `<rect x="${x}" y="0" width="${barWidth}" height="${height_mm * 0.8}" fill="black"/>`;
+    x += barWidth * 3;
+  }
+
+  return `<svg width="${width_mm}mm" height="${height_mm}mm" viewBox="0 0 ${width_mm} ${height_mm}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+    <rect width="100%" height="100%" fill="white"/>
+    ${barsHTML}
+    <text x="50%" y="${height_mm * 0.95}" text-anchor="middle" font-family="Arial, sans-serif" font-size="2mm" fill="black">${value}</text>
+  </svg>`;
+}
+
 // Simple barcode generator for Code128 using HTML/CSS
 function generateBarcode(value: string, width: number, height: number): string {
   // This is a simplified barcode representation
@@ -30,8 +81,12 @@ function generateBarcode(value: string, width: number, height: number): string {
 }
 
 // Template JSON renderer
-function renderJsonTemplate(template: any, product: any): string {
+function renderJsonTemplate(template: any, product: any, options: { width_mm: number, height_mm: number }): string {
   const { meta, elements } = template;
+  
+  // Apply dot-grid snapping to meta dimensions
+  const snappedWidth = snapSizeMm(meta.width_mm || options.width_mm);
+  const snappedHeight = snapSizeMm(meta.height_mm || options.height_mm);
   
   // Helper function to evaluate bindings
   function evaluateBinding(bind: string, product: any): string {
@@ -61,9 +116,15 @@ function renderJsonTemplate(template: any, product: any): string {
     return bind;
   }
   
-  // Generate elements HTML
+  // Generate elements HTML with precision snapping
   const elementsHtml = elements.map((element: any) => {
     const { id, type, x_mm, y_mm, w_mm, h_mm, style = {}, bind, visibility = {} } = element;
+    
+    // Snap element dimensions to dot grid
+    const snappedX = snapMm(x_mm);
+    const snappedY = snapMm(y_mm);
+    const snappedW = snapSizeMm(w_mm);
+    const snappedH = snapSizeMm(h_mm);
     
     // Get the value from binding
     let value = evaluateBinding(bind, product);
@@ -76,13 +137,13 @@ function renderJsonTemplate(template: any, product: any): string {
     // Common positioning styles
     const positionStyle = `
       position: absolute;
-      left: ${x_mm}mm;
-      top: ${y_mm}mm;
-      width: ${w_mm}mm;
-      height: ${h_mm}mm;
+      left: ${snappedX}mm;
+      top: ${snappedY}mm;
+      width: ${snappedW}mm;
+      height: ${snappedH}mm;
     `;
     
-    // Font styles
+    // Font styles with precision
     const fontStyle = `
       font-family: ${style.font_family || 'Inter'}, sans-serif;
       font-size: ${style.font_size_pt || 10}pt;
@@ -90,6 +151,8 @@ function renderJsonTemplate(template: any, product: any): string {
       text-align: ${style.align || 'left'};
       line-height: ${style.line_height || 1.2};
       opacity: ${style.opacity || 1};
+      font-kerning: normal;
+      letter-spacing: 0;
     `;
     
     if (type === 'text') {
@@ -99,9 +162,11 @@ function renderJsonTemplate(template: any, product: any): string {
         </div>
       `;
     } else if (type === 'barcode') {
+      // Generate precision barcode with proper module width
+      const moduleWidth = moduleMmFromDesired(element.barcode?.module_width_mm || 0.33);
       return `
         <div style="${positionStyle}">
-          ${generateBarcode(value, w_mm, h_mm)}
+          ${generatePrecisionBarcode(value, snappedW, snappedH, moduleWidth)}
         </div>
       `;
     }
@@ -115,12 +180,12 @@ function renderJsonTemplate(template: any, product: any): string {
     <head>
       <style>
         @page { 
-          size: ${meta.width_mm}mm ${meta.height_mm}mm; 
+          size: ${snappedWidth}mm ${snappedHeight}mm; 
           margin: 0; 
         }
         body { 
-          width: ${meta.width_mm}mm; 
-          height: ${meta.height_mm}mm; 
+          width: ${snappedWidth}mm; 
+          height: ${snappedHeight}mm; 
           margin: 0; 
           padding: 0; 
           background: ${meta.bg || '#FFFFFF'};
@@ -130,7 +195,9 @@ function renderJsonTemplate(template: any, product: any): string {
         * { 
           box-sizing: border-box; 
           -webkit-print-color-adjust: exact; 
-          print-color-adjust: exact; 
+          print-color-adjust: exact;
+          font-kerning: normal;
+          letter-spacing: 0;
         }
       </style>
     </head>
@@ -496,7 +563,7 @@ serve(async (req) => {
 
       if (template && !error) {
         console.log('Using JSON template for rendering');
-        html = renderJsonTemplate(template.layout, product);
+        html = renderJsonTemplate(template.layout, product, { width_mm: 62, height_mm: 29 });
       } else {
         console.log('No JSON template found, falling back to legacy templates');
         // Fall back to legacy templates

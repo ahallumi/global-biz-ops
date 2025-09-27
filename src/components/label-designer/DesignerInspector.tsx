@@ -4,14 +4,18 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
+import { Badge } from '@/components/ui/badge';
 import { TemplateElement } from './LabelDesigner';
+import { mmToDots, DOT_MM, minimumBarcodeHeightMm } from '@/lib/dotGrid';
+import { validateElementConstraints } from '@/lib/layoutEngine';
 
 interface DesignerInspectorProps {
   element?: TemplateElement;
   onElementUpdate: (updates: Partial<TemplateElement>) => void;
+  canvasSize?: { width_mm: number; height_mm: number };
 }
 
-export function DesignerInspector({ element, onElementUpdate }: DesignerInspectorProps) {
+export function DesignerInspector({ element, onElementUpdate, canvasSize }: DesignerInspectorProps) {
   if (!element) {
     return (
       <Card>
@@ -26,6 +30,9 @@ export function DesignerInspector({ element, onElementUpdate }: DesignerInspecto
       </Card>
     );
   }
+
+  // Validate element constraints
+  const warnings = canvasSize ? validateElementConstraints(element, canvasSize) : [];
 
   const handlePositionChange = (key: string, value: string) => {
     const numValue = parseFloat(value) || 0;
@@ -55,6 +62,40 @@ export function DesignerInspector({ element, onElementUpdate }: DesignerInspecto
         <CardTitle className="text-sm">Properties - {element.type}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Validation Warnings */}
+        {warnings.length > 0 && (
+          <div className="space-y-2">
+            <Label className="text-destructive text-xs">⚠ Validation Issues</Label>
+            {warnings.map((warning, idx) => (
+              <div key={idx} className="text-xs text-destructive bg-destructive/10 p-2 rounded">
+                {warning}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Resolved Values Display */}
+        <div className="space-y-2">
+          <Label className="text-xs">Resolved Values (Dot Grid)</Label>
+          <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-muted/50 p-2 rounded">
+            <div>
+              <span className="text-muted-foreground">Position:</span>
+              <div>{element.x_mm.toFixed(3)}mm ({mmToDots(element.x_mm)}d)</div>
+              <div>{element.y_mm.toFixed(3)}mm ({mmToDots(element.y_mm)}d)</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Size:</span>
+              <div>{element.w_mm.toFixed(3)}mm ({mmToDots(element.w_mm)}d)</div>
+              <div>{element.h_mm.toFixed(3)}mm ({mmToDots(element.h_mm)}d)</div>
+            </div>
+          </div>
+          {element.type === 'text' && element.style?.font_size_pt && (
+            <div className="text-xs text-muted-foreground">
+              Font: {element.style.font_size_pt}pt (~{Math.round(element.style.font_size_pt * 1.33)} dots x-height)
+            </div>
+          )}
+        </div>
+
         {/* Data Binding */}
         <div className="space-y-2">
           <Label>Data Binding</Label>
@@ -282,20 +323,23 @@ export function DesignerInspector({ element, onElementUpdate }: DesignerInspecto
               <Label>Module Width (mm)</Label>
               <Input
                 type="number"
-                value={element.barcode?.module_width_mm || 0.25}
+                value={element.barcode?.module_width_mm || 0.33}
                 onChange={(e) => onElementUpdate({ 
                   barcode: { 
                     ...element.barcode,
-                    module_width_mm: parseFloat(e.target.value) || 0.25 
+                    module_width_mm: parseFloat(e.target.value) || 0.33 
                   } 
                 })}
-                step="0.05"
+                step="0.01"
                 min="0.1"
                 max="1"
               />
-              {(element.barcode?.module_width_mm || 0.25) < 0.25 && (
-                <p className="text-xs text-destructive">⚠ Module width too small for reliable scanning</p>
-              )}
+              <div className="text-xs text-muted-foreground">
+                {mmToDots(element.barcode?.module_width_mm || 0.33)} dots
+                {(element.barcode?.module_width_mm || 0.33) < 0.169 && (
+                  <Badge variant="destructive" className="ml-2 text-xs">⚠ Too small</Badge>
+                )}
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -313,9 +357,23 @@ export function DesignerInspector({ element, onElementUpdate }: DesignerInspecto
                 min="0.5"
                 max="5"
               />
-              {(element.barcode?.quiet_zone_mm || 1) < 1 && (
-                <p className="text-xs text-destructive">⚠ Quiet zone too small for reliable scanning</p>
-              )}
+              <div className="text-xs text-muted-foreground">
+                {mmToDots(element.barcode?.quiet_zone_mm || 1)} dots
+                {(element.barcode?.quiet_zone_mm || 1) < 1 && (
+                  <Badge variant="destructive" className="ml-2 text-xs">⚠ Too small</Badge>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Height Validation</Label>
+              <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                Current: {element.h_mm.toFixed(1)}mm ({mmToDots(element.h_mm)} dots)<br/>
+                Minimum: {minimumBarcodeHeightMm(element.symbology || 'code128').toFixed(1)}mm for reliable scanning
+                {element.h_mm < minimumBarcodeHeightMm(element.symbology || 'code128') && (
+                  <Badge variant="destructive" className="ml-2">⚠ Too short</Badge>
+                )}
+              </div>
             </div>
           </>
         )}
