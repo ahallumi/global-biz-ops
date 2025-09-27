@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { htmlToPdfBase64 } from '@/lib/htmlToPdf';
+import { generatePrintOptions, validateBrotherProfile } from "@/lib/paperMatching";
 
 interface Product {
   id: string;
@@ -38,13 +39,17 @@ interface Printer {
   make_and_model: string;
   default: boolean;
   status: string;
+  capabilities?: {
+    papers?: Record<string, [number | null, number | null]>;
+    dpis?: string[];
+    supports_custom_paper_size?: boolean;
+  };
 }
 
 export function useLabelPrint(stationId?: string) {
   const [query, setQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [lastPrintedProduct, setLastPrintedProduct] = useState<Product | null>(null);
-  const { toast } = useToast();
 
   // Get label printing configuration
   const { data: config, isLoading: configLoading } = useQuery({
@@ -78,7 +83,7 @@ export function useLabelPrint(stationId?: string) {
       const { data, error } = await supabase.functions.invoke('printnode-printers');
       
       if (error) throw error;
-      return data.printers as Printer[];
+      return data;
     }
   });
 
@@ -136,13 +141,35 @@ export function useLabelPrint(stationId?: string) {
         throw new Error('No printer selected. Please select a printer first.');
       }
 
+      // Get selected printer capabilities
+      const selectedPrinter = printers?.printers?.find(p => p.id === targetPrinterId);
+      
+      // Validate Brother profile and generate print options
+      const validation = validateBrotherProfile(activeProfile.width_mm, activeProfile.height_mm);
+      if (!validation.isValid && validation.warning) {
+        console.warn('Brother profile validation:', validation.warning);
+      }
+
+      const { options: printOptions, warnings } = generatePrintOptions(
+        selectedPrinter?.capabilities,
+        activeProfile.width_mm,
+        activeProfile.height_mm,
+        activeProfile.dpi
+      );
+
+      // Show warnings to user
+      warnings.forEach(warning => {
+        toast.warning(warning, { duration: 5000 });
+      });
+
       // Print label
       const { data: printData, error: printError } = await supabase.functions.invoke('printnode-print', {
         body: {
           printer_id: targetPrinterId,
           title: `Label: ${product.name}`,
           base64: pdfBase64,
-          source: 'label-print'
+          source: 'label-print',
+          options: printOptions
         }
       });
 
@@ -154,12 +181,9 @@ export function useLabelPrint(stationId?: string) {
       return { ...printData, printer_id: targetPrinterId };
     },
     onSuccess: (data, variables) => {
-      const printerName = printers?.find(p => p.id === data.printer_id)?.name || 'Unknown Printer';
+      const printerName = printers?.printers?.find(p => p.id === data.printer_id)?.name || 'Unknown Printer';
       
-      toast({
-        title: 'Label Printed Successfully',
-        description: `Printed "${variables.product.name}" on ${printerName} (Job #${data.job_id})`,
-      });
+      toast.success(`Printed "${variables.product.name}" on ${printerName} (Job #${data.job_id})`);
 
       // Beep if enabled
       if (config?.beep_on_success) {
@@ -188,11 +212,7 @@ export function useLabelPrint(stationId?: string) {
       setQuery('');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Print Failed',
-        description: error.message || 'Failed to print label',
-        variant: 'destructive',
-      });
+      toast.error(error.message || 'Failed to print label');
     }
   });
 

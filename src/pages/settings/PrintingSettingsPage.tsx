@@ -11,13 +11,16 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { useLabelConfig } from '@/hooks/useLabelConfig';
-import { Printer, Settings, TestTube, Plus, Edit, Trash2, Monitor, Check, RotateCw } from 'lucide-react';
+import { useLabelPrint } from '@/hooks/useLabelPrint';
+import { Printer, Settings, TestTube, Plus, Edit, Trash2, Monitor, Check, RotateCw, Download, CheckCircle, AlertTriangle, Zap } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from '@/hooks/use-toast';
 import { convertUnit, formatDimension } from '@/lib/unitConversion';
 import { ALLOWED_DPI_VALUES, LabelProfile } from '@/hooks/useLabelConfig';
+import { BROTHER_DK_PRESETS, validateBrotherProfile } from "@/lib/paperMatching";
+import { PrinterCapabilitiesDisplay } from "@/components/printing/PrinterCapabilitiesDisplay";
 
 // Import the LabelProfile type from the hook
 
@@ -45,8 +48,10 @@ const LABEL_PRESETS = [
 
 export default function PrintingSettingsPage() {
   const { config, activeProfile, updateConfig, generateCalibration, calibrationLoading } = useLabelConfig();
+  const { printers } = useLabelPrint();
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<any>(null);
+  const [selectedPrinterId, setSelectedPrinterId] = useState<string>('');
 
   const form = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
@@ -268,6 +273,68 @@ export default function PrintingSettingsPage() {
           </CardContent>
         </Card>
 
+        {/* Printer Compatibility */}
+        <PrinterCapabilitiesDisplay
+          printer={printers?.printers?.find(p => p.id === selectedPrinterId) || null}
+          profileWidth={activeProfile?.width_mm || 62}
+          profileHeight={activeProfile?.height_mm || 29}
+        />
+
+        {/* Quick Setup with Brother Presets */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5" />
+              Brother DK Quick Setup
+            </CardTitle>
+            <CardDescription>
+              Create profiles for standard Brother DK label rolls
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {BROTHER_DK_PRESETS.map((preset) => (
+                <Card key={preset.name} className="cursor-pointer hover:bg-muted/50" onClick={() => {
+                  const newProfile: LabelProfile = {
+                    id: Date.now().toString(),
+                    label_name: preset.name,
+                    width_mm: preset.width_mm,
+                    height_mm: preset.height_mm,
+                    margin_mm: 2,
+                    dpi: 300,
+                    unit: 'mm' as const,
+                    orientation: preset.width_mm > preset.height_mm ? 'landscape' as const : 'portrait' as const,
+                    template_id: `custom-${Math.round(preset.width_mm)}x${Math.round(preset.height_mm)}-${preset.width_mm > preset.height_mm ? 'landscape' : 'portrait'}`
+                  };
+                  form.reset({
+                    label_name: newProfile.label_name,
+                    width_mm: newProfile.width_mm,
+                    height_mm: newProfile.height_mm,
+                    margin_mm: newProfile.margin_mm,
+                    dpi: newProfile.dpi,
+                    unit: newProfile.unit,
+                    orientation: newProfile.orientation,
+                  });
+                  setEditingProfile(newProfile);
+                  setIsProfileDialogOpen(true);
+                }}>
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-medium">{preset.name}</h4>
+                        <p className="text-sm text-muted-foreground">{preset.description}</p>
+                      </div>
+                      <Badge variant="outline">
+                        {preset.width_mm}×{preset.height_mm === 0 ? '∞' : preset.height_mm}mm
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Label Profiles Management */}
         <Card>
           <CardHeader>
@@ -294,13 +361,27 @@ export default function PrintingSettingsPage() {
                   <div className="flex items-center gap-3">
                     <div>
                       <div className="flex items-center gap-2">
-                        <h4 className="font-medium">{profile.label_name}</h4>
-                        {activeProfile?.id === profile.id && (
-                          <Badge variant="default" className="flex items-center gap-1">
-                            <Check className="h-3 w-3" />
-                            Active
-                          </Badge>
+                        <span className="font-medium">{profile.label_name}</span>
+                        <Badge variant="outline">
+                          {formatDimension(profile.width_mm, 'mm')} × {formatDimension(profile.height_mm, 'mm')}
+                        </Badge>
+                        {config?.active_profile_id === profile.id && (
+                          <Badge variant="default">Active</Badge>
                         )}
+                        {(() => {
+                          const validation = validateBrotherProfile(profile.width_mm, profile.height_mm);
+                          return validation.isValid ? (
+                            <Badge variant="default" className="bg-green-100 text-green-800">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              {validation.matchedPreset?.name}
+                            </Badge>
+                          ) : (
+                            <Badge variant="destructive" className="bg-amber-100 text-amber-800">
+                              <AlertTriangle className="h-3 w-3 mr-1" />
+                              Custom
+                            </Badge>
+                          );
+                        })()}
                       </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <span>
@@ -358,21 +439,47 @@ export default function PrintingSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Station Overrides */}
+        {/* Printer Selection for Testing */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Monitor className="h-5 w-5" />
-              Station Overrides
-            </CardTitle>
+            <CardTitle>Testing & Calibration</CardTitle>
             <CardDescription>
-              Configure station-specific printing settings (coming soon)
+              Select a printer to test compatibility and print calibration grids
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">
-              Station-specific printer and profile overrides will be available in the next update.
-            </p>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">Select Printer</label>
+                <Select value={selectedPrinterId} onValueChange={setSelectedPrinterId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a printer..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {printers?.printers?.map(printer => (
+                      <SelectItem key={printer.id} value={printer.id}>
+                        {printer.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (activeProfile) {
+                      generateCalibration(activeProfile.id);
+                    }
+                  }}
+                  disabled={calibrationLoading || !activeProfile}
+                  className="w-full"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  {calibrationLoading ? 'Generating...' : 'Download Calibration Grid'}
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -397,14 +504,33 @@ export default function PrintingSettingsPage() {
                     <FormItem>
                       <FormLabel>Profile Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g. 4x6 Standard Labels" {...field} />
+                        <Input placeholder="e.g., Standard 4x6 Label" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
-                {/* Unit and Orientation Controls */}
+                {/* Quick Presets */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Quick Presets</Label>
+                  <div className="flex flex-wrap gap-1">
+                    {LABEL_PRESETS.map((preset) => (
+                      <Button
+                        key={preset.name}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => applyPreset(preset)}
+                      >
+                        {preset.name}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Units and Orientation Controls */}
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
@@ -412,17 +538,20 @@ export default function PrintingSettingsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Units</FormLabel>
-                        <FormControl>
-                          <Select value={field.value} onValueChange={handleUnitChange}>
+                        <Select 
+                          value={field.value} 
+                          onValueChange={(value) => handleUnitChange(value as 'mm' | 'inches')}
+                        >
+                          <FormControl>
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="mm">Millimeters (mm)</SelectItem>
-                              <SelectItem value="inches">Inches (")</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </FormControl>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="mm">Millimeters (mm)</SelectItem>
+                            <SelectItem value="inches">Inches (")</SelectItem>
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -434,46 +563,33 @@ export default function PrintingSettingsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Orientation</FormLabel>
-                        <FormControl>
-                          <div className="flex items-center space-x-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={handleOrientationToggle}
-                              className="flex items-center gap-2"
-                            >
-                              <RotateCw className="h-4 w-4" />
-                              {field.value === 'portrait' ? '↕ Portrait' : '↔ Landscape'}
-                            </Button>
-                          </div>
-                        </FormControl>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            type="button"
+                            variant={field.value === 'portrait' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => field.value === 'landscape' && handleOrientationToggle()}
+                            className="flex items-center gap-1"
+                          >
+                            ↕ Portrait
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={field.value === 'landscape' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => field.value === 'portrait' && handleOrientationToggle()}
+                            className="flex items-center gap-1"
+                          >
+                            ↔ Landscape
+                          </Button>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 </div>
 
-                <div className="space-y-3">
-                  <Label>Quick Presets</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {LABEL_PRESETS.map((preset) => (
-                      <Button
-                        key={preset.name}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => applyPreset(preset)}
-                        className="text-xs"
-                      >
-                        {preset.name}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-
-                <Separator />
-
+                {/* Dimensions */}
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
@@ -481,22 +597,16 @@ export default function PrintingSettingsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>
-                          Width ({form.watch('unit') === 'mm' ? 'mm' : 'inches'})
+                          Width ({form.watch('unit')})
                         </FormLabel>
                         <FormControl>
-                          <Input 
-                            type="number" 
-                            step={form.watch('unit') === 'mm' ? '0.1' : '0.01'}
+                          <Input
+                            type="number"
+                            step="0.1"
                             {...field}
-                            onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                           />
                         </FormControl>
-                        <FormDescription>
-                          {form.watch('unit') === 'mm' 
-                            ? `${convertUnit(field.value || 0, 'mm', 'inches').toFixed(2)}"`
-                            : `${convertUnit(field.value || 0, 'inches', 'mm').toFixed(1)}mm`
-                          }
-                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -508,22 +618,16 @@ export default function PrintingSettingsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>
-                          Height ({form.watch('unit') === 'mm' ? 'mm' : 'inches'})
+                          Height ({form.watch('unit')})
                         </FormLabel>
                         <FormControl>
-                          <Input 
-                            type="number" 
-                            step={form.watch('unit') === 'mm' ? '0.1' : '0.01'}
+                          <Input
+                            type="number"
+                            step="0.1"
                             {...field}
-                            onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                           />
                         </FormControl>
-                        <FormDescription>
-                          {form.watch('unit') === 'mm' 
-                            ? `${convertUnit(field.value || 0, 'mm', 'inches').toFixed(2)}"`
-                            : `${convertUnit(field.value || 0, 'inches', 'mm').toFixed(1)}mm`
-                          }
-                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -537,21 +641,18 @@ export default function PrintingSettingsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>
-                          Margin ({form.watch('unit') === 'mm' ? 'mm' : 'inches'})
+                          Margin ({form.watch('unit')})
                         </FormLabel>
                         <FormControl>
-                          <Input 
-                            type="number" 
-                            step={form.watch('unit') === 'mm' ? '0.1' : '0.01'}
+                          <Input
+                            type="number"
+                            step="0.1"
                             {...field}
-                            onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                           />
                         </FormControl>
                         <FormDescription>
-                          Space around label content • {form.watch('unit') === 'mm' 
-                            ? `${convertUnit(field.value || 0, 'mm', 'inches').toFixed(3)}"`
-                            : `${convertUnit(field.value || 0, 'inches', 'mm').toFixed(1)}mm`
-                          }
+                          Space between content and label edge
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -563,24 +664,24 @@ export default function PrintingSettingsPage() {
                     name="dpi"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>DPI</FormLabel>
-                        <FormControl>
-                          <Select onValueChange={(value) => field.onChange(Number(value))} value={field.value?.toString()}>
+                        <FormLabel>Print Quality (DPI)</FormLabel>
+                        <Select 
+                          value={field.value?.toString()} 
+                          onValueChange={(value) => field.onChange(parseInt(value))}
+                        >
+                          <FormControl>
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="150">150 DPI</SelectItem>
-                              <SelectItem value="200">200 DPI</SelectItem>
-                              <SelectItem value="203">203 DPI</SelectItem>
-                              <SelectItem value="300">300 DPI (Recommended)</SelectItem>
-                              <SelectItem value="600">600 DPI</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </FormControl>
-                        <FormDescription>
-                          Higher DPI = better quality, larger files
-                        </FormDescription>
+                          </FormControl>
+                          <SelectContent>
+                            {ALLOWED_DPI_VALUES.map((dpi) => (
+                              <SelectItem key={dpi} value={dpi.toString()}>
+                                {dpi} DPI
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -588,7 +689,11 @@ export default function PrintingSettingsPage() {
                 </div>
 
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setIsProfileDialogOpen(false)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsProfileDialogOpen(false)}
+                  >
                     Cancel
                   </Button>
                   <Button type="submit">

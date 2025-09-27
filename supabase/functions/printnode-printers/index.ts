@@ -11,6 +11,11 @@ interface PrintNodePrinter {
   make_and_model: string;
   default: boolean;
   status: string;
+  capabilities?: {
+    papers?: Record<string, [number | null, number | null]>;
+    dpis?: string[];
+    supports_custom_paper_size?: boolean;
+  };
 }
 
 serve(async (req) => {
@@ -33,7 +38,7 @@ serve(async (req) => {
 
     console.log('Fetching printers from PrintNode...');
 
-    const response = await fetch('https://api.printnode.com/printers', {
+    const response = await fetch('https://api.printnode.com/printers?capabilities=true', {
       method: 'GET',
       headers: {
         'Authorization': `Basic ${btoa(printNodeApiKey + ':')}`,
@@ -61,7 +66,12 @@ serve(async (req) => {
       name: printer.name || 'Unknown Printer',
       make_and_model: `${printer.description || 'Unknown'} (${printer.status || 'Unknown'})`,
       default: printer.default === true,
-      status: printer.state || 'unknown'
+      status: printer.state || 'unknown',
+      capabilities: printer.capabilities ? {
+        papers: printer.capabilities.papers || {},
+        dpis: printer.capabilities.dpis || [],
+        supports_custom_paper_size: printer.capabilities.supports_custom_paper_size || false,
+      } : undefined
     }));
 
     return new Response(JSON.stringify({ 
