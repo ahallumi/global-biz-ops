@@ -115,3 +115,6 @@ verify_jwt = true
 
 [functions.update-label-print-config]
 verify_jwt = true
+
+[functions.label-templates]
+verify_jwt = true

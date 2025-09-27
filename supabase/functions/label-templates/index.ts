@@ -30,37 +30,51 @@ serve(async (req) => {
       }
     )
 
-    const url = new URL(req.url)
-    const method = req.method
-
-    if (method === 'GET') {
-      // Get templates for a profile
-      const profileId = url.searchParams.get('profile_id')
-      
-      if (!profileId) {
+    if (req.method === 'POST') {
+      let body
+      try {
+        const bodyText = await req.text()
+        if (!bodyText || bodyText.trim() === '') {
+          return new Response(
+            JSON.stringify({ error: 'Request body is required' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+        body = JSON.parse(bodyText)
+      } catch (parseError) {
+        console.error('JSON parsing error:', parseError)
         return new Response(
-          JSON.stringify({ error: 'profile_id parameter is required' }),
+          JSON.stringify({ error: 'Invalid JSON in request body' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
 
-      const { data: templates, error } = await supabaseClient
-        .from('label_templates')
-        .select('*')
-        .eq('profile_id', profileId)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-
-      return new Response(
-        JSON.stringify({ templates }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    if (method === 'POST') {
-      const body = await req.json()
       const action = body.action
+
+      if (action === 'list') {
+        // List templates for a profile
+        const profileId = body.profile_id
+        
+        if (!profileId) {
+          return new Response(
+            JSON.stringify({ error: 'profile_id is required' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const { data: templates, error } = await supabaseClient
+          .from('label_templates')
+          .select('*')
+          .eq('profile_id', profileId)
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+
+        return new Response(
+          JSON.stringify({ templates }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
 
       if (action === 'upsert') {
         const template: LabelTemplate = body.template
