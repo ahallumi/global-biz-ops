@@ -52,8 +52,9 @@ export function measureText(
   element.style.width = `${boxWidthPx}px`;
   
   const rect = element.getBoundingClientRect();
-  const lineHeight = fontSizePt * 1.2; // Convert pt to px (approximate)
-  const actualLines = Math.ceil(rect.height / lineHeight);
+  // Proper pt to px conversion: pt * (96/72) = pt * 1.333...
+  const lineHeightPx = fontSizePt * (96 / 72) * 1.2;
+  const actualLines = Math.ceil(rect.height / lineHeightPx);
   
   const fits = rect.width <= boxWidthPx && 
                rect.height <= boxHeightPx && 

@@ -312,15 +312,17 @@ export function DesignerCanvas({ layout, sampleProduct, onElementUpdate, onEleme
 
     // Type-specific styling
     if (element.type === 'text') {
+      // Fix pt to px conversion: pt * (96/72) * scale
+      const fontSizePx = displayFontSize * (96 / 72) * finalScale;
+      
       Object.assign(elementStyle, {
-        fontFamily: element.style?.font_family || 'Inter',
-        fontSize: `${displayFontSize * finalScale * 0.75}px`, // Convert pt to px with scale
+        fontFamily: `${element.style?.font_family || 'Inter'}, sans-serif`,
+        fontSize: `${fontSizePx}px`,
         fontWeight: element.style?.font_weight || 400,
         textAlign: element.style?.align || 'left',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: element.style?.align === 'center' ? 'center' : 
-                       element.style?.align === 'right' ? 'flex-end' : 'flex-start',
+        justifyContent: 'flex-start', // Always use flex-start for text positioning
         padding: '2px',
         lineHeight: '1.2',
         wordWrap: 'break-word',

@@ -33,16 +33,16 @@ export function useLabelTemplates(profileId?: string) {
       if (!profileId) return [];
       
       const { data, error } = await supabase.functions.invoke('label-templates', {
-        body: {
+        body: JSON.stringify({
           action: 'list',
           profile_id: profileId
-        },
-        headers: {
-          'Content-Type': 'application/json',
-        }
+        })
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching templates:', error);
+        throw new Error(error.message || 'Failed to fetch templates');
+      }
       return data?.templates || [];
     },
     enabled: !!profileId,
@@ -52,22 +52,24 @@ export function useLabelTemplates(profileId?: string) {
     mutationFn: async (templateData: UpsertTemplateData) => {
       console.log('Saving template:', templateData);
       
+      // Sanitize template data to remove undefined values and ensure it's serializable
+      const sanitizedTemplate = {
+        ...templateData,
+        profile_id: profileId, // Ensure profile_id is always included
+        id: templateData.id || undefined, // Clean up undefined id
+        layout: templateData.layout ? JSON.parse(JSON.stringify(templateData.layout)) : {}
+      };
+      
       const { data, error } = await supabase.functions.invoke('label-templates', {
-        body: {
+        body: JSON.stringify({
           action: 'upsert',
-          template: {
-            ...templateData,
-            profile_id: profileId // Ensure profile_id is always included
-          }
-        },
-        headers: {
-          'Content-Type': 'application/json',
-        }
+          template: sanitizedTemplate
+        })
       });
 
       if (error) {
         console.error('Template save error:', error);
-        throw error;
+        throw new Error(error.message || error.error || 'Failed to save template');
       }
       
       if (!data?.template) {
@@ -82,7 +84,7 @@ export function useLabelTemplates(profileId?: string) {
     },
     onError: (error: any) => {
       console.error('Error saving template:', error);
-      const message = error?.message || error?.details || 'Failed to save template';
+      const message = error?.message || error?.error || 'Failed to save template';
       toast.error(`Failed to save template: ${message}`);
     }
   });
@@ -90,14 +92,16 @@ export function useLabelTemplates(profileId?: string) {
   const activateTemplate = useMutation({
     mutationFn: async ({ templateId, profileId }: { templateId: string; profileId: string }) => {
       const { data, error } = await supabase.functions.invoke('label-templates', {
-        body: {
+        body: JSON.stringify({
           action: 'activate',
           template_id: templateId,
           profile_id: profileId
-        }
+        })
       });
 
-      if (error) throw error;
+      if (error) {
+        throw new Error(error.message || error.error || 'Failed to activate template');
+      }
       return data.template;
     },
     onSuccess: () => {
@@ -106,20 +110,23 @@ export function useLabelTemplates(profileId?: string) {
     },
     onError: (error: any) => {
       console.error('Error activating template:', error);
-      toast.error('Failed to activate template');
+      const message = error?.message || error?.error || 'Failed to activate template';
+      toast.error(message);
     }
   });
 
   const deleteTemplate = useMutation({
     mutationFn: async (templateId: string) => {
       const { data, error } = await supabase.functions.invoke('label-templates', {
-        body: {
+        body: JSON.stringify({
           action: 'delete',
           template_id: templateId
-        }
+        })
       });
 
-      if (error) throw error;
+      if (error) {
+        throw new Error(error.message || error.error || 'Failed to delete template');
+      }
       return data;
     },
     onSuccess: () => {
@@ -128,7 +135,8 @@ export function useLabelTemplates(profileId?: string) {
     },
     onError: (error: any) => {
       console.error('Error deleting template:', error);
-      toast.error('Failed to delete template');
+      const message = error?.message || error?.error || 'Failed to delete template';
+      toast.error(message);
     }
   });
 

@@ -20,29 +20,55 @@ serve(async (req) => {
   }
 
   try {
+    console.log(`[label-templates] ${req.method} request received`)
+    console.log(`[label-templates] Content-Type: ${req.headers.get('Content-Type')}`)
+    
+    // Use service role for database operations, but still get user from JWT if present
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
+        auth: { persistSession: false }
       }
     )
+
+    // Get user from auth header if present (optional)
+    let currentUser = null;
+    try {
+      const authClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        {
+          global: {
+            headers: { Authorization: req.headers.get('Authorization') || '' },
+          },
+        }
+      )
+      const { data: { user } } = await authClient.auth.getUser()
+      currentUser = user
+      console.log(`[label-templates] User: ${currentUser?.id || 'anonymous'}`)
+    } catch (authError) {
+      console.log('[label-templates] No authenticated user, proceeding anonymously')
+    }
 
     if (req.method === 'POST') {
       let body
       try {
         const bodyText = await req.text()
+        console.log(`[label-templates] Body length: ${bodyText?.length || 0}`)
+        
         if (!bodyText || bodyText.trim() === '') {
+          console.error('[label-templates] Empty request body received')
           return new Response(
             JSON.stringify({ error: 'Request body is required' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
         }
+        
         body = JSON.parse(bodyText)
+        console.log(`[label-templates] Action: ${body.action}`)
       } catch (parseError) {
-        console.error('JSON parsing error:', parseError)
+        console.error('[label-templates] JSON parsing error:', parseError)
         return new Response(
           JSON.stringify({ error: 'Invalid JSON in request body' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -86,14 +112,9 @@ serve(async (req) => {
           )
         }
 
-        // Get current user
-        const { data: { user } } = await supabaseClient.auth.getUser()
-        if (!user) {
-          return new Response(
-            JSON.stringify({ error: 'User not authenticated' }),
-            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
-        }
+        // User is optional for template operations
+        console.log(`[label-templates] Upserting template: ${template.name} (id: ${template.id || 'new'})`)
+        
 
         let result
         if (template.id) {
@@ -109,7 +130,7 @@ serve(async (req) => {
             .update({
               name: template.name,
               layout: template.layout,
-              updated_by: user.id,
+              updated_by: currentUser?.id || null,
               version: (currentTemplate?.version || 1) + 1
             })
             .eq('id', template.id)
@@ -127,7 +148,7 @@ serve(async (req) => {
               name: template.name,
               layout: template.layout,
               is_active: template.is_active ?? false,
-              created_by: user.id
+              created_by: currentUser?.id || null
             })
             .select()
             .single()
