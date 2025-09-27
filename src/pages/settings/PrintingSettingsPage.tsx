@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { SettingsLayout } from '@/components/layout/SettingsLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { useLabelConfig } from '@/hooks/useLabelConfig';
 import { useLabelPrint } from '@/hooks/useLabelPrint';
-import { Printer, Settings, TestTube, Plus, Edit, Trash2, Monitor, Check, RotateCw, Download, CheckCircle, AlertTriangle, Zap } from 'lucide-react';
+import { Printer, Settings, TestTube, Plus, Edit, Trash2, Monitor, Check, RotateCw, Download, CheckCircle, AlertTriangle, Zap, Palette } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -47,6 +48,7 @@ const LABEL_PRESETS = [
 ];
 
 export default function PrintingSettingsPage() {
+  const navigate = useNavigate();
   const { config, activeProfile, updateConfig, generateCalibration, calibrationLoading } = useLabelConfig();
   const { printers } = useLabelPrint();
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
@@ -446,6 +448,14 @@ export default function PrintingSettingsPage() {
                         Set Active
                       </Button>
                     )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate(`/settings/printing/profiles/${profile.id}/design`)}
+                    >
+                      <Palette className="h-4 w-4" />
+                      Design
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"

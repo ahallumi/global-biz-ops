@@ -43,6 +43,7 @@ import UsersPage from "./pages/UsersPage";
 import PasswordResetPage from "./pages/PasswordResetPage";
 import PasswordResetTestPage from "./pages/PasswordResetTestPage";
 import LabelPrintPage from "./pages/LabelPrintPage";
+import { LabelDesignerPage } from "./pages/LabelDesignerPage";
 
 const queryClient = new QueryClient();
 
@@ -160,6 +161,11 @@ const App = () => (
             <Route path="/settings/printing" element={
               <ProtectedRoute requiredRoles={['admin']}>
                 <PrintingSettingsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/settings/printing/profiles/:profileId/design" element={
+              <ProtectedRoute requiredRoles={['admin']}>
+                <LabelDesignerPage />
               </ProtectedRoute>
             } />
             <Route path="/payroll" element={
