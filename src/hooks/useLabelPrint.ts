@@ -121,10 +121,10 @@ export function useLabelPrint(stationId?: string) {
       let pdfBase64 = labelData.pdf_base64;
       if (!pdfBase64 && labelData.html) {
         pdfBase64 = await htmlToPdfBase64(labelData.html, {
-          width_mm: labelData.width_mm,
-          height_mm: labelData.height_mm,
-          margin_mm: labelData.margin_mm,
-          dpi: labelData.dpi
+          width_mm: activeProfile.width_mm,
+          height_mm: activeProfile.height_mm,
+          margin_mm: activeProfile.margin_mm,
+          dpi: activeProfile.dpi
         });
       }
 
