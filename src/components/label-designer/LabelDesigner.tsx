@@ -1,12 +1,13 @@
 import React, { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Save, Eye, Printer, ArrowLeft } from 'lucide-react';
+import { Save, Eye, Printer, ArrowLeft, Grid, Ruler, Move, ZoomIn, ZoomOut } from 'lucide-react';
 import { DesignerCanvas } from './DesignerCanvas';
 import { DesignerToolbox } from './DesignerToolbox';
 import { DesignerInspector } from './DesignerInspector';
 import { ProductSamplePicker } from './ProductSamplePicker';
 import { useLabelTemplates } from '@/hooks/useLabelTemplates';
+import { useDesignerStore } from '@/stores/designerStore';
 import { toast } from 'sonner';
 
 interface LabelDesignerProps {
@@ -25,6 +26,15 @@ export interface TemplateElement {
   h_mm: number;
   bind?: string;
   style?: any;
+  overflow?: {
+    mode: 'shrink_to_fit' | 'wrap_lines' | 'ellipsis';
+    min_font_size_pt: number;
+    max_lines?: number;
+  };
+  barcode?: {
+    module_width_mm: number;
+    quiet_zone_mm: number;
+  };
   [key: string]: any;
 }
 
@@ -41,9 +51,21 @@ export interface TemplateLayout {
 
 export function LabelDesigner({ profileId, profileName, dimensions, onBack }: LabelDesignerProps) {
   const { templates, upsertTemplate } = useLabelTemplates(profileId);
-  const [selectedElement, setSelectedElement] = useState<string | null>(null);
+  const { 
+    selectedElementId, 
+    setSelected, 
+    gridEnabled, 
+    snapEnabled, 
+    showRulers, 
+    zoom, 
+    toggleGrid, 
+    toggleSnap, 
+    toggleRulers,
+    setZoom 
+  } = useDesignerStore();
+  
   const [sampleProduct, setSampleProduct] = useState({
-    name: 'Sample Product Name',
+    name: 'Sample Product Name That Could Be Very Long',
     price: 12.99,
     barcode: '123456789012',
     sku: 'SKU-001',
@@ -102,14 +124,23 @@ export function LabelDesigner({ profileId, profileName, dimensions, onBack }: La
         font_size_pt: 10,
         font_weight: 400,
         align: 'left'
-      } : {}
+      } : {},
+      overflow: elementType === 'text' ? {
+        mode: 'shrink_to_fit' as const,
+        min_font_size_pt: 6,
+        max_lines: 2
+      } : undefined,
+      barcode: elementType === 'barcode' ? {
+        module_width_mm: 0.25,
+        quiet_zone_mm: 1
+      } : undefined
     };
 
     setCurrentLayout(prev => ({
       ...prev,
       elements: [...prev.elements, newElement]
     }));
-    setSelectedElement(newElement.id);
+    setSelected(newElement.id);
   };
 
   const handleElementUpdate = (elementId: string, updates: Partial<TemplateElement>) => {
@@ -126,12 +157,12 @@ export function LabelDesigner({ profileId, profileName, dimensions, onBack }: La
       ...prev,
       elements: prev.elements.filter(el => el.id !== elementId)
     }));
-    if (selectedElement === elementId) {
-      setSelectedElement(null);
+    if (selectedElementId === elementId) {
+      setSelected(null);
     }
   };
 
-  const selectedElementData = currentLayout.elements.find(el => el.id === selectedElement);
+  const selectedElementData = currentLayout.elements.find(el => el.id === selectedElementId);
 
   return (
     <div className="min-h-screen bg-background">
@@ -151,6 +182,53 @@ export function LabelDesigner({ profileId, profileName, dimensions, onBack }: La
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* View Controls */}
+            <div className="flex items-center gap-1 mr-2">
+              <Button 
+                variant={gridEnabled ? "default" : "outline"} 
+                size="sm"
+                onClick={toggleGrid}
+              >
+                <Grid className="w-4 h-4" />
+              </Button>
+              <Button 
+                variant={showRulers ? "default" : "outline"} 
+                size="sm"
+                onClick={toggleRulers}
+              >
+                <Ruler className="w-4 h-4" />
+              </Button>
+              <Button 
+                variant={snapEnabled ? "default" : "outline"} 
+                size="sm"
+                onClick={toggleSnap}
+              >
+                <Move className="w-4 h-4" />
+              </Button>
+            </div>
+
+            {/* Zoom Controls */}
+            <div className="flex items-center gap-1 mr-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setZoom(Math.max(0.5, zoom - 0.25))}
+                disabled={zoom <= 0.5}
+              >
+                <ZoomOut className="w-4 h-4" />
+              </Button>
+              <span className="text-sm min-w-[60px] text-center">{Math.round(zoom * 100)}%</span>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setZoom(Math.min(3, zoom + 0.25))}
+                disabled={zoom >= 3}
+              >
+                <ZoomIn className="w-4 h-4" />
+              </Button>
+            </div>
+
+            {/* Action Buttons */}
             <Button variant="outline" size="sm">
               <Eye className="w-4 h-4 mr-2" />
               Preview
@@ -189,8 +267,6 @@ export function LabelDesigner({ profileId, profileName, dimensions, onBack }: La
               <DesignerCanvas
                 layout={currentLayout}
                 sampleProduct={sampleProduct}
-                selectedElement={selectedElement}
-                onElementSelect={setSelectedElement}
                 onElementUpdate={handleElementUpdate}
                 onElementDelete={handleElementDelete}
               />
@@ -203,8 +279,8 @@ export function LabelDesigner({ profileId, profileName, dimensions, onBack }: La
           <DesignerInspector
             element={selectedElementData}
             onElementUpdate={(updates) => {
-              if (selectedElement) {
-                handleElementUpdate(selectedElement, updates);
+              if (selectedElementId) {
+                handleElementUpdate(selectedElementId, updates);
               }
             }}
           />

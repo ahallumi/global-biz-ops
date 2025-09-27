@@ -41,10 +41,12 @@ export function DesignerInspector({ element, onElementUpdate }: DesignerInspecto
   const bindingOptions = [
     { value: 'product.name', label: 'Product Name' },
     { value: 'product.price | currency(\'$\')', label: 'Price ($)' },
+    { value: "product.price | currency('$') ~ ' ' ~ (product.unit | unit_suffix())", label: 'Price with Unit' },
     { value: 'product.barcode', label: 'Barcode' },
     { value: 'product.sku', label: 'SKU' },
     { value: 'product.size', label: 'Size' },
-    { value: 'product.unit', label: 'Unit' }
+    { value: 'product.unit', label: 'Unit' },
+    { value: 'product.unit | unit_suffix()', label: 'Unit Suffix' }
   ];
 
   return (
@@ -122,6 +124,68 @@ export function DesignerInspector({ element, onElementUpdate }: DesignerInspecto
         {/* Text-specific properties */}
         {element.type === 'text' && (
           <>
+            {/* Overflow Settings */}
+            <div className="space-y-2">
+              <Label>Text Overflow</Label>
+              <Select
+                value={element.overflow?.mode || 'shrink_to_fit'}
+                onValueChange={(value) => onElementUpdate({ 
+                  overflow: { 
+                    ...element.overflow,
+                    mode: value as any,
+                    min_font_size_pt: element.overflow?.min_font_size_pt || 6,
+                    max_lines: element.overflow?.max_lines || 2
+                  } 
+                })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="shrink_to_fit">Shrink to Fit</SelectItem>
+                  <SelectItem value="wrap_lines">Wrap Lines</SelectItem>
+                  <SelectItem value="ellipsis">Ellipsis</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {element.overflow?.mode === 'shrink_to_fit' && (
+              <div className="space-y-2">
+                <Label>Min Font Size (pt)</Label>
+                <Input
+                  type="number"
+                  value={element.overflow?.min_font_size_pt || 6}
+                  onChange={(e) => onElementUpdate({ 
+                    overflow: { 
+                      ...element.overflow,
+                      min_font_size_pt: parseFloat(e.target.value) || 6
+                    } 
+                  })}
+                  step="0.5"
+                  min="4"
+                  max="12"
+                />
+              </div>
+            )}
+
+            {(element.overflow?.mode === 'wrap_lines' || element.overflow?.mode === 'shrink_to_fit') && (
+              <div className="space-y-2">
+                <Label>Max Lines</Label>
+                <Input
+                  type="number"
+                  value={element.overflow?.max_lines || 2}
+                  onChange={(e) => onElementUpdate({ 
+                    overflow: { 
+                      ...element.overflow,
+                      max_lines: parseInt(e.target.value) || 2
+                    } 
+                  })}
+                  min="1"
+                  max="5"
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label>Font Family</Label>
               <Select
@@ -218,12 +282,40 @@ export function DesignerInspector({ element, onElementUpdate }: DesignerInspecto
               <Label>Module Width (mm)</Label>
               <Input
                 type="number"
-                value={element.module_width_mm || 0.25}
-                onChange={(e) => onElementUpdate({ module_width_mm: parseFloat(e.target.value) || 0.25 })}
+                value={element.barcode?.module_width_mm || 0.25}
+                onChange={(e) => onElementUpdate({ 
+                  barcode: { 
+                    ...element.barcode,
+                    module_width_mm: parseFloat(e.target.value) || 0.25 
+                  } 
+                })}
                 step="0.05"
                 min="0.1"
                 max="1"
               />
+              {(element.barcode?.module_width_mm || 0.25) < 0.25 && (
+                <p className="text-xs text-destructive">⚠ Module width too small for reliable scanning</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Quiet Zone (mm)</Label>
+              <Input
+                type="number"
+                value={element.barcode?.quiet_zone_mm || 1}
+                onChange={(e) => onElementUpdate({ 
+                  barcode: { 
+                    ...element.barcode,
+                    quiet_zone_mm: parseFloat(e.target.value) || 1 
+                  } 
+                })}
+                step="0.1"
+                min="0.5"
+                max="5"
+              />
+              {(element.barcode?.quiet_zone_mm || 1) < 1 && (
+                <p className="text-xs text-destructive">⚠ Quiet zone too small for reliable scanning</p>
+              )}
             </div>
           </>
         )}

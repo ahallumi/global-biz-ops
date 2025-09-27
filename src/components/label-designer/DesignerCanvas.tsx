@@ -1,72 +1,113 @@
-import React, { useRef, useState } from 'react';
-import { TemplateLayout, TemplateElement } from './LabelDesigner';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
+import { TemplateElement, TemplateLayout } from './LabelDesigner';
+import { ResizeHandle, ResizeHandlePosition } from './ResizeHandle';
+import { useDesignerStore } from '@/stores/designerStore';
+import { fitTextToBox, mmToPx, getUnitSuffix } from '@/lib/textAutofit';
+import { formatCurrency } from '@/lib/utils';
 
 interface DesignerCanvasProps {
   layout: TemplateLayout;
   sampleProduct: any;
-  selectedElement: string | null;
-  onElementSelect: (elementId: string | null) => void;
   onElementUpdate: (elementId: string, updates: Partial<TemplateElement>) => void;
   onElementDelete: (elementId: string) => void;
 }
 
-export function DesignerCanvas({
-  layout,
-  sampleProduct,
-  selectedElement,
-  onElementSelect,
-  onElementUpdate,
-  onElementDelete
-}: DesignerCanvasProps) {
+export function DesignerCanvas({ layout, sampleProduct, onElementUpdate, onElementDelete }: DesignerCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
+  const { 
+    selectedElementId, 
+    setSelected, 
+    gridEnabled, 
+    snapEnabled, 
+    showRulers,
+    zoom 
+  } = useDesignerStore();
+  
   const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
+  const [resizeHandle, setResizeHandle] = useState<ResizeHandlePosition | null>(null);
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, w: 0, h: 0 });
   
   const DRAG_THRESHOLD = 3; // pixels
+  const SNAP_GRID = 1; // mm
+  
+  const selectedElement = layout.elements.find(el => el.id === selectedElementId);
 
   // Calculate canvas scale to fit in container
-  const containerWidth = 600; // Fixed container width
-  const containerHeight = 400; // Fixed container height
+  const containerWidth = 600;
+  const containerHeight = 400;
   const labelWidth = layout.meta.width_mm;
   const labelHeight = layout.meta.height_mm;
-  
   const scaleX = containerWidth / labelWidth;
   const scaleY = containerHeight / labelHeight;
-  const baseScale = Math.min(scaleX, scaleY, 3) * 0.8; // Max 3x, with padding
+  const baseScale = Math.min(scaleX, scaleY) * 0.8;
   const finalScale = baseScale * zoom;
 
   // Convert mm to pixels
-  const mmToPx = (mm: number) => mm * finalScale;
+  const mmToPxCanvas = useCallback((mm: number): number => {
+    return mm * finalScale;
+  }, [finalScale]);
 
-  const evaluateBinding = (bind: string, product: any): string => {
+  // Convert pixels to mm with snapping
+  const pxToMm = useCallback((px: number): number => {
+    const mm = px / finalScale;
+    return snapEnabled ? Math.round(mm / SNAP_GRID) * SNAP_GRID : mm;
+  }, [finalScale, snapEnabled]);
+
+  // Snap to grid helper
+  const snapToGrid = useCallback((value: number): number => {
+    return snapEnabled ? Math.round(value / SNAP_GRID) * SNAP_GRID : value;
+  }, [snapEnabled]);
+
+  // Enhanced binding evaluation with unit suffix support
+  const evaluateBinding = useCallback((bind: string, product: any): string => {
     if (!bind) return '';
     
-    if (bind.startsWith('product.')) {
-      const prop = bind.substring(8);
-      let value = product[prop] || '';
-      
-      if (bind.includes('| currency(')) {
-        const match = bind.match(/\| currency\('(.+?)'\)/);
-        if (match) {
-          const symbol = match[1];
-          return `${symbol}${parseFloat(value).toFixed(2)}`;
+    try {
+      // Handle unit suffix binding
+      if (bind.includes('unit_suffix')) {
+        const unitMatch = bind.match(/product\.unit\s*\|\s*unit_suffix\(\)/);
+        if (unitMatch) {
+          return getUnitSuffix(product.unit);
         }
       }
       
-      return String(value);
+      // Handle price with unit suffix
+      if (bind.includes("product.price | currency('$') ~ ' ' ~ (product.unit | unit_suffix())")) {
+        return `${formatCurrency(product.price)} ${getUnitSuffix(product.unit)}`;
+      }
+      
+      // Handle currency formatting
+      if (bind.includes("currency('$')")) {
+        const priceMatch = bind.match(/product\.price/);
+        if (priceMatch && typeof product.price === 'number') {
+          return formatCurrency(product.price);
+        }
+      }
+      
+      // Simple property access
+      const propMatch = bind.match(/^product\.(\w+)$/);
+      if (propMatch) {
+        const prop = propMatch[1];
+        return String(product[prop] || '');
+      }
+      
+      return bind;
+    } catch (error) {
+      console.error('Error evaluating binding:', error);
+      return bind;
     }
-    
-    return bind;
-  };
+  }, []);
 
-  const handleElementMouseDown = (e: React.MouseEvent, element: TemplateElement) => {
+  // Element interaction handlers
+  const handleElementMouseDown = useCallback((element: TemplateElement, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
     // Always select the element on mouse down
-    onElementSelect(element.id);
+    setSelected(element.id);
     
     // Store initial position for drag threshold detection
     setDragStart({ x: e.clientX, y: e.clientY });
@@ -74,235 +115,382 @@ export function DesignerCanvas({
     const rect = canvasRef.current?.getBoundingClientRect();
     if (rect) {
       setDragOffset({
-        x: e.clientX - rect.left - mmToPx(element.x_mm),
-        y: e.clientY - rect.top - mmToPx(element.y_mm)
+        x: e.clientX - rect.left - mmToPxCanvas(element.x_mm),
+        y: e.clientY - rect.top - mmToPxCanvas(element.y_mm)
       });
     }
-  };
+  }, [setSelected, mmToPxCanvas]);
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  // Resize handle mouse down
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent, handle: ResizeHandlePosition) => {
     if (!selectedElement) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setIsResizing(true);
+    setResizeHandle(handle);
+    setResizeStart({
+      x: selectedElement.x_mm,
+      y: selectedElement.y_mm,
+      w: selectedElement.w_mm,
+      h: selectedElement.h_mm
+    });
+    
+    setDragStart({ x: e.clientX, y: e.clientY });
+  }, [selectedElement]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!selectedElement) return;
+    
+    const deltaX = e.clientX - dragStart.x;
+    const deltaY = e.clientY - dragStart.y;
+    
+    // Handle resize operations
+    if (isResizing && resizeHandle) {
+      const deltaXMm = pxToMm(deltaX);
+      const deltaYMm = pxToMm(deltaY);
+      
+      let newX = resizeStart.x;
+      let newY = resizeStart.y;
+      let newW = resizeStart.w;
+      let newH = resizeStart.h;
+      
+      // Apply resize based on handle position
+      switch (resizeHandle) {
+        case 'n':
+          newY = snapToGrid(resizeStart.y + deltaYMm);
+          newH = snapToGrid(resizeStart.h - deltaYMm);
+          break;
+        case 'ne':
+          newY = snapToGrid(resizeStart.y + deltaYMm);
+          newW = snapToGrid(resizeStart.w + deltaXMm);
+          newH = snapToGrid(resizeStart.h - deltaYMm);
+          break;
+        case 'e':
+          newW = snapToGrid(resizeStart.w + deltaXMm);
+          break;
+        case 'se':
+          newW = snapToGrid(resizeStart.w + deltaXMm);
+          newH = snapToGrid(resizeStart.h + deltaYMm);
+          break;
+        case 's':
+          newH = snapToGrid(resizeStart.h + deltaYMm);
+          break;
+        case 'sw':
+          newX = snapToGrid(resizeStart.x + deltaXMm);
+          newW = snapToGrid(resizeStart.w - deltaXMm);
+          newH = snapToGrid(resizeStart.h + deltaYMm);
+          break;
+        case 'w':
+          newX = snapToGrid(resizeStart.x + deltaXMm);
+          newW = snapToGrid(resizeStart.w - deltaXMm);
+          break;
+        case 'nw':
+          newX = snapToGrid(resizeStart.x + deltaXMm);
+          newY = snapToGrid(resizeStart.y + deltaYMm);
+          newW = snapToGrid(resizeStart.w - deltaXMm);
+          newH = snapToGrid(resizeStart.h - deltaYMm);
+          break;
+      }
+      
+      // Enforce minimum sizes
+      const minSize = selectedElement.type === 'barcode' ? 5 : 2;
+      newW = Math.max(minSize, newW);
+      newH = Math.max(minSize, newH);
+      
+      // Constrain to canvas bounds
+      newX = Math.max(0, Math.min(newX, labelWidth - newW));
+      newY = Math.max(0, Math.min(newY, labelHeight - newH));
+      
+      onElementUpdate(selectedElement.id, {
+        x_mm: newX,
+        y_mm: newY,
+        w_mm: newW,
+        h_mm: newH
+      });
+      return;
+    }
     
     // Check if we should start dragging (mouse moved beyond threshold)
     if (!isDragging && dragStart.x !== 0 && dragStart.y !== 0) {
-      const deltaX = Math.abs(e.clientX - dragStart.x);
-      const deltaY = Math.abs(e.clientY - dragStart.y);
-      
-      if (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD) {
+      if (Math.abs(deltaX) > DRAG_THRESHOLD || Math.abs(deltaY) > DRAG_THRESHOLD) {
         setIsDragging(true);
       }
     }
     
-    // Only update position if actively dragging
+    // Handle dragging
     if (isDragging) {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (rect) {
-        const newX = (e.clientX - rect.left - dragOffset.x) / finalScale;
-        const newY = (e.clientY - rect.top - dragOffset.y) / finalScale;
+        const newX = pxToMm(e.clientX - rect.left - dragOffset.x);
+        const newY = pxToMm(e.clientY - rect.top - dragOffset.y);
         
         // Constrain to canvas bounds
-        const constrainedX = Math.max(0, Math.min(newX, labelWidth - 10));
-        const constrainedY = Math.max(0, Math.min(newY, labelHeight - 5));
+        const constrainedX = Math.max(0, Math.min(snapToGrid(newX), labelWidth - selectedElement.w_mm));
+        const constrainedY = Math.max(0, Math.min(snapToGrid(newY), labelHeight - selectedElement.h_mm));
         
-        onElementUpdate(selectedElement, {
+        onElementUpdate(selectedElement.id, {
           x_mm: constrainedX,
           y_mm: constrainedY
         });
       }
     }
-  };
+  }, [selectedElement, isResizing, isDragging, resizeHandle, resizeStart, dragStart, dragOffset, pxToMm, snapToGrid, labelWidth, labelHeight, onElementUpdate]);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     setIsDragging(false);
+    setIsResizing(false);
+    setResizeHandle(null);
     setDragStart({ x: 0, y: 0 });
-  };
+  }, []);
 
-  const handleCanvasClick = (e: React.MouseEvent) => {
-    if (isDragging) return;
-    onElementSelect(null);
-  };
+  const handleCanvasClick = useCallback((e: React.MouseEvent) => {
+    // Only deselect if clicking on empty canvas
+    if (e.target === e.currentTarget) {
+      setSelected(null);
+    }
+  }, [setSelected]);
 
-  const renderElement = (element: TemplateElement) => {
-    const value = evaluateBinding(element.bind || '', sampleProduct);
-    const isSelected = element.id === selectedElement;
+  // Auto-fit text effect
+  useEffect(() => {
+    const autoFitElements = layout.elements.filter(el => 
+      el.type === 'text' && el.overflow?.mode === 'shrink_to_fit'
+    );
+    
+    autoFitElements.forEach(async (element) => {
+      if (!element.bind || !element.style) return;
+      
+      const text = evaluateBinding(element.bind, sampleProduct);
+      if (!text) return;
+      
+      const boxPx = {
+        width: mmToPx(element.w_mm, layout.meta.dpi),
+        height: mmToPx(element.h_mm, layout.meta.dpi)
+      };
+      
+      try {
+        const result = await fitTextToBox(text, boxPx, element.style, element.overflow);
+        
+        if (Math.abs(result.fontSize - element.style.font_size_pt) > 0.1) {
+          onElementUpdate(element.id, {
+            style: {
+              ...element.style,
+              font_size_pt: result.fontSize
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error auto-fitting text:', error);
+      }
+    });
+  }, [layout.elements, sampleProduct, evaluateBinding, onElementUpdate]);
+
+  // Render individual element
+  const renderElement = useCallback((element: TemplateElement) => {
+    const isSelected = selectedElementId === element.id;
+    const content = element.bind ? evaluateBinding(element.bind, sampleProduct) : '';
+    
+    // Calculate computed font size for display
+    const displayFontSize = element.type === 'text' && element.overflow?.mode === 'shrink_to_fit' 
+      ? element.style?.font_size_pt || 10 
+      : element.style?.font_size_pt || 10;
     
     const elementStyle: React.CSSProperties = {
       position: 'absolute',
-      left: mmToPx(element.x_mm),
-      top: mmToPx(element.y_mm),
-      width: mmToPx(element.w_mm),
-      height: mmToPx(element.h_mm),
-      border: isSelected ? '2px solid #3b82f6' : '1px solid rgba(0,0,0,0.2)',
-      cursor: 'move',
-      backgroundColor: element.type === 'box' ? element.style?.fill || '#f0f0f0' : 'transparent',
-      fontSize: element.style?.font_size_pt ? `${element.style.font_size_pt * finalScale}px` : '12px',
-      fontFamily: element.style?.font_family || 'Inter',
-      fontWeight: element.style?.font_weight || 400,
-      textAlign: element.style?.align || 'left',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: element.style?.align === 'center' ? 'center' : element.style?.align === 'right' ? 'flex-end' : 'flex-start',
-      padding: '2px',
+      left: mmToPxCanvas(element.x_mm),
+      top: mmToPxCanvas(element.y_mm),
+      width: mmToPxCanvas(element.w_mm),
+      height: mmToPxCanvas(element.h_mm),
+      border: isSelected ? '2px solid hsl(var(--primary))' : '1px solid hsl(var(--border))',
+      backgroundColor: element.type === 'box' ? 'hsl(var(--muted))' : 'transparent',
+      cursor: 'pointer',
+      userSelect: 'none',
       boxSizing: 'border-box',
       overflow: 'hidden'
     };
 
-    let content = '';
+    // Type-specific styling
     if (element.type === 'text') {
-      content = value || 'Text';
-    } else if (element.type === 'barcode') {
-      content = `[BARCODE: ${value || '123456789012'}]`;
-    } else if (element.type === 'image') {
-      content = '[IMAGE]';
+      Object.assign(elementStyle, {
+        fontFamily: element.style?.font_family || 'Inter',
+        fontSize: `${displayFontSize * finalScale / 4}px`, // Approximate pt to px conversion
+        fontWeight: element.style?.font_weight || 400,
+        textAlign: element.style?.align || 'left',
+        display: 'flex',
+        alignItems: 'center',
+        padding: '2px',
+        lineHeight: '1.2',
+        wordWrap: 'break-word'
+      });
+    }
+
+    if (element.type === 'barcode') {
+      Object.assign(elementStyle, {
+        backgroundColor: 'hsl(var(--muted))',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '10px',
+        color: 'hsl(var(--muted-foreground))'
+      });
     }
 
     return (
-      <div
-        key={element.id}
-        style={elementStyle}
-        onMouseDown={(e) => handleElementMouseDown(e, element)}
-        title={`${element.type}: ${element.bind || element.id}`}
-      >
-        {content}
+      <div key={element.id}>
+        <div
+          style={elementStyle}
+          onMouseDown={(e) => handleElementMouseDown(element, e)}
+        >
+          {element.type === 'text' && content}
+          {element.type === 'barcode' && `[${content}]`}
+          {element.type === 'image' && '[IMAGE]'}
+          {element.type === 'box' && ''}
+          
+          {/* Delete button */}
+          {isSelected && (
+            <div
+              style={{
+                position: 'absolute',
+                top: -10,
+                right: -10,
+                width: 20,
+                height: 20,
+                backgroundColor: '#ef4444',
+                color: 'white',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '12px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                zIndex: 1000,
+                border: '2px solid white',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                transition: 'all 0.2s ease'
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onElementDelete(element.id);
+              }}
+              onMouseEnter={(e) => {
+                (e.target as HTMLElement).style.backgroundColor = '#dc2626';
+                (e.target as HTMLElement).style.transform = 'scale(1.1)';
+              }}
+              onMouseLeave={(e) => {
+                (e.target as HTMLElement).style.backgroundColor = '#ef4444';
+                (e.target as HTMLElement).style.transform = 'scale(1)';
+              }}
+            >
+              ×
+            </div>
+          )}
+        </div>
+        
+        {/* Resize handles */}
         {isSelected && (
-          <div
-            style={{
-              position: 'absolute',
-              top: -10,
-              right: -10,
-              width: 20,
-              height: 20,
-              backgroundColor: '#ef4444',
-              color: 'white',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              zIndex: 1000,
-              border: '2px solid white',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-              transition: 'all 0.2s ease'
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              onElementDelete(element.id);
-            }}
-            onMouseEnter={(e) => {
-              (e.target as HTMLElement).style.backgroundColor = '#dc2626';
-              (e.target as HTMLElement).style.transform = 'scale(1.1)';
-            }}
-            onMouseLeave={(e) => {
-              (e.target as HTMLElement).style.backgroundColor = '#ef4444';
-              (e.target as HTMLElement).style.transform = 'scale(1)';
-            }}
-          >
-            ×
+          <div style={{ position: 'absolute', left: mmToPxCanvas(element.x_mm), top: mmToPxCanvas(element.y_mm), width: mmToPxCanvas(element.w_mm), height: mmToPxCanvas(element.h_mm) }}>
+            <ResizeHandle position="n" onMouseDown={handleResizeMouseDown} />
+            <ResizeHandle position="ne" onMouseDown={handleResizeMouseDown} />
+            <ResizeHandle position="e" onMouseDown={handleResizeMouseDown} />
+            <ResizeHandle position="se" onMouseDown={handleResizeMouseDown} />
+            <ResizeHandle position="s" onMouseDown={handleResizeMouseDown} />
+            <ResizeHandle position="sw" onMouseDown={handleResizeMouseDown} />
+            <ResizeHandle position="w" onMouseDown={handleResizeMouseDown} />
+            <ResizeHandle position="nw" onMouseDown={handleResizeMouseDown} />
           </div>
         )}
       </div>
     );
-  };
+  }, [selectedElementId, evaluateBinding, sampleProduct, mmToPxCanvas, finalScale, handleElementMouseDown, handleResizeMouseDown, onElementDelete]);
 
   return (
     <div className="h-full flex flex-col">
-      {/* Zoom Controls */}
-      <div className="flex items-center gap-2 mb-4">
-        <button
-          className="px-2 py-1 border rounded text-sm"
-          onClick={() => setZoom(Math.max(0.25, zoom - 0.25))}
-        >
-          -
-        </button>
-        <span className="text-sm min-w-16 text-center">{Math.round(zoom * 100)}%</span>
-        <button
-          className="px-2 py-1 border rounded text-sm"
-          onClick={() => setZoom(Math.min(4, zoom + 0.25))}
-        >
-          +
-        </button>
-        <button
-          className="px-2 py-1 border rounded text-sm ml-2"
-          onClick={() => setZoom(1)}
-        >
-          Reset
-        </button>
-      </div>
-
-      {/* Canvas */}
-      <div 
-        className="flex-1 overflow-auto bg-gray-50 p-8 relative"
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-      >
-        <div className="flex items-center justify-center min-h-full">
-          <div
-            ref={canvasRef}
-            className="relative bg-white shadow-lg"
-            style={{
-              width: mmToPx(labelWidth),
-              height: mmToPx(labelHeight),
-              backgroundColor: layout.meta.bg || '#FFFFFF'
-            }}
-            onClick={handleCanvasClick}
-          >
-            {/* Grid overlay */}
-            <div
-              className="absolute inset-0 pointer-events-none"
-              style={{
-                backgroundImage: `
-                  linear-gradient(to right, rgba(0,0,0,0.1) 1px, transparent 1px),
-                  linear-gradient(to bottom, rgba(0,0,0,0.1) 1px, transparent 1px)
-                `,
-                backgroundSize: `${mmToPx(5)} ${mmToPx(5)}`
-              }}
-            />
-            
-            {/* Render elements */}
-            {layout.elements.map(renderElement)}
-            
-            {/* Rulers */}
-            <div
-              className="absolute -top-6 left-0 right-0 h-6 bg-gray-100 border-b flex"
-              style={{ fontSize: '10px' }}
-            >
-              {Array.from({ length: Math.ceil(labelWidth / 5) + 1 }, (_, i) => (
+      {/* Canvas container */}
+      <div className="flex-1 relative overflow-hidden">
+        {/* Rulers */}
+        {showRulers && (
+          <>
+            {/* Top ruler */}
+            <div className="absolute top-0 left-8 right-0 h-6 bg-muted border-b flex items-end text-xs">
+              {Array.from({ length: Math.ceil(labelWidth) }, (_, i) => (
                 <div
                   key={i}
-                  className="relative"
-                  style={{ width: mmToPx(5) }}
+                  className="relative flex-shrink-0 border-l border-muted-foreground/20"
+                  style={{ width: mmToPxCanvas(1) }}
                 >
-                  <div className="absolute bottom-0 left-0 w-px h-2 bg-gray-400" />
-                  <div className="absolute bottom-2 left-1 text-xs text-gray-600">
-                    {i * 5}
-                  </div>
+                  {i % 5 === 0 && (
+                    <span className="absolute bottom-0 left-1 text-muted-foreground">
+                      {i}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
             
-            <div
-              className="absolute -left-6 top-0 bottom-0 w-6 bg-gray-100 border-r flex flex-col"
-              style={{ fontSize: '10px' }}
-            >
-              {Array.from({ length: Math.ceil(labelHeight / 5) + 1 }, (_, i) => (
+            {/* Left ruler */}
+            <div className="absolute top-6 left-0 bottom-0 w-8 bg-muted border-r flex flex-col text-xs">
+              {Array.from({ length: Math.ceil(labelHeight) }, (_, i) => (
                 <div
                   key={i}
-                  className="relative"
-                  style={{ height: mmToPx(5) }}
+                  className="relative flex-shrink-0 border-t border-muted-foreground/20"
+                  style={{ height: mmToPxCanvas(1) }}
                 >
-                  <div className="absolute right-0 top-0 h-px w-2 bg-gray-400" />
-                  <div 
-                    className="absolute right-2 top-1 text-xs text-gray-600"
-                    style={{ transform: 'rotate(-90deg)', transformOrigin: 'center' }}
-                  >
-                    {i * 5}
-                  </div>
+                  {i % 5 === 0 && (
+                    <span className="absolute top-1 left-1 text-muted-foreground transform -rotate-90 origin-left text-[10px]">
+                      {i}
+                    </span>
+                  )}
                 </div>
               ))}
+            </div>
+          </>
+        )}
+
+        {/* Main canvas */}
+        <div 
+          className="absolute bg-background"
+          style={{
+            top: showRulers ? 24 : 0,
+            left: showRulers ? 32 : 0,
+            right: 0,
+            bottom: 0,
+            overflow: 'auto'
+          }}
+        >
+          <div className="flex items-center justify-center h-full p-8">
+            <div
+              ref={canvasRef}
+              className="relative bg-white border-2 border-muted"
+              style={{
+                width: mmToPxCanvas(labelWidth),
+                height: mmToPxCanvas(labelHeight),
+                minWidth: mmToPxCanvas(labelWidth),
+                minHeight: mmToPxCanvas(labelHeight)
+              }}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onClick={handleCanvasClick}
+            >
+              {/* Grid overlay */}
+              {gridEnabled && (
+                <div 
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    backgroundImage: `
+                      linear-gradient(to right, hsl(var(--muted-foreground) / 0.1) 1px, transparent 1px),
+                      linear-gradient(to bottom, hsl(var(--muted-foreground) / 0.1) 1px, transparent 1px)
+                    `,
+                    backgroundSize: `${mmToPxCanvas(SNAP_GRID)}px ${mmToPxCanvas(SNAP_GRID)}px`
+                  }}
+                />
+              )}
+              
+              {/* Elements */}
+              {layout.elements.map(renderElement)}
             </div>
           </div>
         </div>
