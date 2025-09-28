@@ -10,7 +10,6 @@ interface PrintRequest {
   title: string;
   base64: string;
   source: string;
-  content_type?: 'pdf_base64' | 'raw_base64';
   options?: {
     paper?: string;
     dpi?: string;
@@ -37,7 +36,7 @@ serve(async (req) => {
       });
     }
 
-    const { printer_id, title, base64, source, content_type, options }: PrintRequest = await req.json();
+    const { printer_id, title, base64, source, options }: PrintRequest = await req.json();
 
     if (!printer_id || !title || !base64) {
       return new Response(JSON.stringify({ 
@@ -48,18 +47,18 @@ serve(async (req) => {
       });
     }
 
-    console.log('Submitting print job:', { printer_id, title, source, content_type, options });
+    console.log('Submitting print job:', { printer_id, title, source, options });
 
     const printJob: any = {
       printerId: parseInt(printer_id),
       title: title,
-      contentType: content_type || 'pdf_base64',
+      contentType: 'pdf_base64',
       content: base64,
       source: source || 'label-print'
     };
 
-    // Add print options if provided (not used for RAW mode)
-    if (options && content_type !== 'raw_base64') {
+    // Add print options if provided
+    if (options) {
       printJob.options = {
         fit_to_page: false, // Always disable fit_to_page for exact sizing
         ...options

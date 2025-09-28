@@ -80,9 +80,6 @@ verify_jwt = true
 [functions.backfill-pos-links]
 verify_jwt = true
 
-[functions.brother-raster-encoder]
-verify_jwt = false
-
 [functions.cleanup-product-data]
 verify_jwt = true
 

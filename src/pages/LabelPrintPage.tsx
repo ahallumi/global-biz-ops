@@ -7,11 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Switch } from '@/components/ui/switch';
 import { useLabelPrint } from '@/hooks/useLabelPrint';
 import { Printer, Search, Zap, Package, Tag, Barcode, ArrowLeft } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { isBrotherQLPrinter } from '@/lib/brotherPrinterDetection';
 
 interface Product {
   id: string;
@@ -44,21 +42,13 @@ export default function LabelPrintPage() {
     handleQuickPrint,
     getLastPrinterId,
     setLastPrinterId,
-    printRawTest,
-    forcePdfFallback,
-    setForcePdfFallback,
   } = useLabelPrint();
-  const [forcePdf, setForcePdf] = useState<boolean>(false);
-  const selectedPrinterObj = printers?.find(p => p.id === selectedPrinterId);
-
-  useEffect(() => {
-    setForcePdf(forcePdfFallback);
-  }, [forcePdfFallback]);
 
   // Auto-focus search input on mount
   useEffect(() => {
     searchInputRef.current?.focus();
   }, []);
+
   // Load last printer from localStorage
   useEffect(() => {
     const lastPrinterId = getLastPrinterId();
@@ -182,9 +172,6 @@ export default function LabelPrintPage() {
               <p className="text-xs text-muted-foreground">
                 {printers?.length || 0} printers available
               </p>
-              {forcePdf && (
-                <Badge variant="secondary" className="mt-2">PDF fallback active</Badge>
-              )}
             </CardContent>
           </Card>
 
@@ -345,16 +332,7 @@ export default function LabelPrintPage() {
                         {config?.preview_before_print ? 'Enabled' : 'Disabled'}
                       </Badge>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span>Force PDF fallback:</span>
-                      <Switch checked={forcePdf} onCheckedChange={(v) => { setForcePdf(v); setForcePdfFallback(v); }} />
-                    </div>
                   </div>
-                  {selectedPrinterObj && isBrotherQLPrinter(selectedPrinterObj as any) && (
-                    <Button variant="outline" className="w-full mt-3" onClick={() => printRawTest(selectedPrinterId)} disabled={printLoading}>
-                      Print RAW Test (Brother)
-                    </Button>
-                  )}
                 </div>
               </CardContent>
             </Card>
