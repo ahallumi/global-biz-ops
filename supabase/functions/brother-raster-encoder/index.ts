@@ -16,6 +16,7 @@ interface RasterRequest {
     offset_x_mm?: number;
     offset_y_mm?: number;
   };
+  test?: boolean; // when true, generate a RAW self-test pattern
 }
 
 // Brother QL media size definitions
@@ -53,7 +54,7 @@ function generateBrotherRasterCommands(
   const commands: number[] = [];
   
   // 1. Initialize printer
-  commands.push(0x00); // Initialize
+  commands.push(0x1B, 0x40); // ESC @ - Initialize/Reset
   
   // 2. Switch to raster mode
   commands.push(0x1B, 0x69, 0x61, 0x01); // ESC i a - raster mode
@@ -105,7 +106,8 @@ async function htmlToBitmap(
   html: string, 
   width_mm: number, 
   height_mm: number,
-  calibration?: RasterRequest['calibration']
+  calibration?: RasterRequest['calibration'],
+  test?: boolean
 ): Promise<{ data: Uint8Array; width: number; height: number }> {
   
   // Apply calibration to dimensions
@@ -152,6 +154,13 @@ async function htmlToBitmap(
         }
       }
       
+      // Ruler ticks when in test mode: minor ticks every ~2.5mm (at 300 DPI: ~30 dots)
+      if (test) {
+        const tickSpacing = 30; // ~2.54mm per 30 dots at 300DPI
+        if (y < 6 && (x % tickSpacing === 0)) pixel = 1;      // top ticks
+        if (x < 6 && (y % tickSpacing === 0)) pixel = 1;      // left ticks
+      }
+      
       if (pixel) {
         bitmap[byteIndex] |= (1 << bitIndex);
       }
@@ -171,13 +180,14 @@ serve(async (req) => {
   }
 
   try {
-    const { html, width_mm, height_mm, media_type, calibration }: RasterRequest = await req.json();
+    const { html, width_mm, height_mm, media_type, calibration, test }: RasterRequest = await req.json();
     
     console.log('Generating Brother raster data:', { 
       width_mm, 
       height_mm, 
       media_type,
-      calibration 
+      calibration,
+      test
     });
 
     if (!html || !width_mm || !height_mm || !media_type) {
@@ -200,7 +210,7 @@ serve(async (req) => {
     }
 
     // Convert HTML to bitmap
-    const bitmap = await htmlToBitmap(html, width_mm, height_mm, calibration);
+    const bitmap = await htmlToBitmap(html, width_mm, height_mm, calibration, test);
     
     // Generate Brother raster commands
     const rasterCommands = generateBrotherRasterCommands(
