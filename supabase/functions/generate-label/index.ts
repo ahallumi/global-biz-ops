@@ -6,6 +6,31 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Helper function to format barcode data for Code 39
+function toCode39Text(raw: string | null | undefined): string {
+  // Code 39 allowed: 0-9 A-Z space - . $ / + %
+  const allowed = /[0-9A-Z \-.\$\/\+%]/;
+  const cleaned = (raw ?? "")
+    .toUpperCase()
+    .split("")
+    .filter(ch => allowed.test(ch))
+    .join("");
+
+  // Never return empty; scanners expect start/stop asterisks
+  const payload = cleaned || "0";
+  return `*${payload}*`;
+}
+
+// Helper function to escape HTML
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // Simple barcode generator for Code128 using HTML/CSS
 function generateBarcode(value: string, width: number, height: number): string {
   // This is a simplified barcode representation
@@ -33,20 +58,23 @@ function generateBarcode(value: string, width: number, height: number): string {
 function renderHtmlTemplate(template: string, product: any): string {
   if (!template) return '';
 
+  const barcodeValue = product.barcode || product.sku || product.id?.slice(-8) || '';
+  
   const substitutions = {
-    '{{product.name}}': product.name || '',
-    '{{product.sku}}': product.sku || '',
-    '{{product.id}}': product.id || '',
-    '{{price_formatted}}': product.price ? `$${parseFloat(product.price).toFixed(2)}` : '',
-    '{{unit_suffix}}': product.unit ? `/${product.unit}` : '',
-    '{{barcode_svg}}': product.barcode || product.sku || product.id ? 
-      generateBarcodeSVG(product.barcode || product.sku || product.id.slice(-8), 150, 30) : '',
-    '{{printed_at}}': new Date().toLocaleDateString('en-US', { 
+    '{{product.name}}': escapeHtml(product.name || ''),
+    '{{product.sku}}': escapeHtml(product.sku || ''),
+    '{{product.id}}': escapeHtml(product.id || ''),
+    '{{price_formatted}}': escapeHtml(product.price ? `$${parseFloat(product.price).toFixed(2)}` : ''),
+    '{{unit_suffix}}': escapeHtml(product.unit ? `/${product.unit}` : ''),
+    '{{barcode_svg}}': barcodeValue ? 
+      generateBarcodeSVG(barcodeValue, 150, 30) : '',
+    '{{barcode_text_code39}}': escapeHtml(toCode39Text(barcodeValue)),
+    '{{printed_at}}': escapeHtml(new Date().toLocaleDateString('en-US', { 
       month: '2-digit', 
       day: '2-digit', 
       hour: '2-digit', 
       minute: '2-digit' 
-    }),
+    })),
   };
 
   let rendered = template;
@@ -54,6 +82,15 @@ function renderHtmlTemplate(template: string, product: any): string {
     const regex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
     rendered = rendered.replace(regex, value);
   });
+
+  // Debug logging
+  console.log("LABEL_HTML_SNIP", rendered.slice(0, 500));
+  console.log("HAS_CODE39_TOKEN", rendered.includes("{{barcode_text_code39}}") ? "MISSING" : "OK");
+
+  // Safety check for missing substitutions
+  if (template.includes("{{barcode_text_code39}}") && rendered.includes("{{barcode_text_code39}}")) {
+    throw new Error("Template expects {{barcode_text_code39}} but server did not provide it.");
+  }
 
   return rendered;
 }
