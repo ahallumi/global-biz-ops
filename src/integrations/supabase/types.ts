@@ -317,7 +317,11 @@ export type Database = {
           created_at: string | null
           default_printer_id: string | null
           id: string
+          offset_x_mm: number | null
+          offset_y_mm: number | null
           profile_id: string
+          scale_x: number | null
+          scale_y: number | null
           station_id: string | null
           updated_at: string | null
         }
@@ -325,7 +329,11 @@ export type Database = {
           created_at?: string | null
           default_printer_id?: string | null
           id?: string
+          offset_x_mm?: number | null
+          offset_y_mm?: number | null
           profile_id: string
+          scale_x?: number | null
+          scale_y?: number | null
           station_id?: string | null
           updated_at?: string | null
         }
@@ -333,7 +341,11 @@ export type Database = {
           created_at?: string | null
           default_printer_id?: string | null
           id?: string
+          offset_x_mm?: number | null
+          offset_y_mm?: number | null
           profile_id?: string
+          scale_x?: number | null
+          scale_y?: number | null
           station_id?: string | null
           updated_at?: string | null
         }
@@ -343,12 +355,14 @@ export type Database = {
         Row: {
           created_at: string | null
           created_by: string | null
+          html_template: string | null
           id: string
           is_active: boolean
           layout: Json
           name: string
           preview_png: string | null
           profile_id: string
+          template_type: Database["public"]["Enums"]["template_type"]
           updated_at: string | null
           updated_by: string | null
           version: number
@@ -356,12 +370,14 @@ export type Database = {
         Insert: {
           created_at?: string | null
           created_by?: string | null
+          html_template?: string | null
           id?: string
           is_active?: boolean
           layout: Json
           name: string
           preview_png?: string | null
           profile_id: string
+          template_type?: Database["public"]["Enums"]["template_type"]
           updated_at?: string | null
           updated_by?: string | null
           version?: number
@@ -369,12 +385,14 @@ export type Database = {
         Update: {
           created_at?: string | null
           created_by?: string | null
+          html_template?: string | null
           id?: string
           is_active?: boolean
           layout?: Json
           name?: string
           preview_png?: string | null
           profile_id?: string
+          template_type?: Database["public"]["Enums"]["template_type"]
           updated_at?: string | null
           updated_by?: string | null
           version?: number
@@ -1538,6 +1556,7 @@ export type Database = {
         | "rejected"
         | "needs_correction"
       pos_source: "SQUARE"
+      template_type: "visual" | "html"
       unit_of_sale: "EACH" | "WEIGHT"
     }
     CompositeTypes: {
@@ -1684,6 +1703,7 @@ export const Constants = {
         "needs_correction",
       ],
       pos_source: ["SQUARE"],
+      template_type: ["visual", "html"],
       unit_of_sale: ["EACH", "WEIGHT"],
     },
   },

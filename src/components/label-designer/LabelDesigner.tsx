@@ -6,6 +6,8 @@ import { DesignerCanvas } from './DesignerCanvas';
 import { DesignerToolbox } from './DesignerToolbox';
 import { DesignerInspector } from './DesignerInspector';
 import { ProductSamplePicker } from './ProductSamplePicker';
+import { HtmlTemplateEditor } from './HtmlTemplateEditor';
+import { TemplateTypeSwitcher } from './TemplateTypeSwitcher';
 import { useLabelTemplates } from '@/hooks/useLabelTemplates';
 import { useDesignerStore } from '@/stores/designerStore';
 import { toast } from 'sonner';
@@ -73,11 +75,15 @@ export function LabelDesigner({ profileId, profileName, dimensions, onBack }: La
     unit: 'lb'
   });
 
+  const [templateType, setTemplateType] = useState<'visual' | 'html'>('visual');
+  const [htmlTemplate, setHtmlTemplate] = useState('');
+
   // Get active template or create default
   const activeTemplate = templates.find(t => t.is_active) || {
     id: '',
     profile_id: profileId,
     name: 'New Template',
+    template_type: 'visual' as const,
     layout: {
       meta: {
         width_mm: dimensions.width_mm,
@@ -88,6 +94,7 @@ export function LabelDesigner({ profileId, profileName, dimensions, onBack }: La
       },
       elements: []
     } as TemplateLayout,
+    html_template: '',
     is_active: true,
     version: 1,
     created_at: '',
@@ -95,16 +102,34 @@ export function LabelDesigner({ profileId, profileName, dimensions, onBack }: La
   };
 
   const [currentLayout, setCurrentLayout] = useState<TemplateLayout>(activeTemplate.layout);
+  
+  // Initialize template type and HTML from active template
+  React.useEffect(() => {
+    if (activeTemplate) {
+      setTemplateType(activeTemplate.template_type || 'visual');
+      setHtmlTemplate(activeTemplate.html_template || '');
+    }
+  }, [activeTemplate]);
 
   const handleSave = async () => {
     try {
-      await upsertTemplate.mutateAsync({
+      const templateData: any = {
         id: activeTemplate.id || undefined,
         profile_id: profileId,
         name: activeTemplate.name,
-        layout: currentLayout,
+        template_type: templateType,
         is_active: true
-      });
+      };
+
+      if (templateType === 'visual') {
+        templateData.layout = currentLayout;
+        templateData.html_template = null;
+      } else {
+        templateData.layout = null;
+        templateData.html_template = htmlTemplate;
+      }
+
+      await upsertTemplate.mutateAsync(templateData);
     } catch (error) {
       console.error('Error saving template:', error);
     }
@@ -180,6 +205,12 @@ export function LabelDesigner({ profileId, profileName, dimensions, onBack }: La
                 {profileName} ({dimensions.width_mm}×{dimensions.height_mm}mm)
               </p>
             </div>
+            <TemplateTypeSwitcher
+              currentType={templateType}
+              onTypeChange={setTemplateType}
+              hasVisualContent={currentLayout.elements.length > 0}
+              hasHtmlContent={htmlTemplate.trim().length > 0}
+            />
           </div>
           <div className="flex items-center gap-2">
             {/* View Controls */}
@@ -246,45 +277,65 @@ export function LabelDesigner({ profileId, profileName, dimensions, onBack }: La
       </div>
 
       <div className="flex h-[calc(100vh-80px)]">
-        {/* Left Toolbox */}
-        <div className="w-64 border-r bg-card p-4">
-          <DesignerToolbox onElementAdd={handleElementAdd} />
-          <div className="mt-6">
-            <ProductSamplePicker 
-              value={sampleProduct}
-              onChange={setSampleProduct}
+        {templateType === 'visual' ? (
+          <>
+            {/* Left Toolbox */}
+            <div className="w-64 border-r bg-card p-4">
+              <DesignerToolbox onElementAdd={handleElementAdd} />
+              <div className="mt-6">
+                <ProductSamplePicker 
+                  value={sampleProduct}
+                  onChange={setSampleProduct}
+                />
+              </div>
+            </div>
+
+            {/* Main Canvas */}
+            <div className="flex-1 p-6">
+              <Card className="h-full">
+                <CardHeader>
+                  <CardTitle>Canvas</CardTitle>
+                </CardHeader>
+                <CardContent className="h-[calc(100%-80px)]">
+                  <DesignerCanvas
+                    layout={currentLayout}
+                    sampleProduct={sampleProduct}
+                    onElementUpdate={handleElementUpdate}
+                    onElementDelete={handleElementDelete}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Right Inspector */}
+            <div className="w-80 border-l bg-card p-4">
+              <DesignerInspector
+                element={selectedElementData}
+                onElementUpdate={(updates) => {
+                  if (selectedElementId) {
+                    handleElementUpdate(selectedElementId, updates);
+                  }
+                }}
+              />
+            </div>
+          </>
+        ) : (
+          /* HTML Template Editor */
+          <div className="flex-1 p-6">
+            <HtmlTemplateEditor
+              value={htmlTemplate}
+              onChange={setHtmlTemplate}
+              dimensions={dimensions}
+              sampleProduct={sampleProduct}
+              onSave={handleSave}
+              isSaving={upsertTemplate.isPending}
+              onTestPrint={() => {
+                // TODO: Implement test print for HTML templates
+                toast.info('Test print functionality coming soon!');
+              }}
             />
           </div>
-        </div>
-
-        {/* Main Canvas */}
-        <div className="flex-1 p-6">
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle>Canvas</CardTitle>
-            </CardHeader>
-            <CardContent className="h-[calc(100%-80px)]">
-              <DesignerCanvas
-                layout={currentLayout}
-                sampleProduct={sampleProduct}
-                onElementUpdate={handleElementUpdate}
-                onElementDelete={handleElementDelete}
-              />
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Inspector */}
-        <div className="w-80 border-l bg-card p-4">
-          <DesignerInspector
-            element={selectedElementData}
-            onElementUpdate={(updates) => {
-              if (selectedElementId) {
-                handleElementUpdate(selectedElementId, updates);
-              }
-            }}
-          />
-        </div>
+        )}
       </div>
     </div>
   );

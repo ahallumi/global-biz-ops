@@ -8,7 +8,9 @@ export interface LabelTemplate {
   name: string;
   version: number;
   is_active: boolean;
-  layout: any;
+  template_type?: 'visual' | 'html';
+  layout?: any;
+  html_template?: string;
   preview_png?: string;
   created_by?: string;
   created_at: string;
@@ -20,7 +22,9 @@ interface UpsertTemplateData {
   id?: string;
   profile_id: string;
   name: string;
-  layout: any;
+  template_type?: 'visual' | 'html';
+  layout?: any;
+  html_template?: string;
   is_active?: boolean;
 }
 
@@ -57,7 +61,9 @@ export function useLabelTemplates(profileId?: string) {
         ...templateData,
         profile_id: profileId, // Ensure profile_id is always included
         id: templateData.id || undefined, // Clean up undefined id
-        layout: templateData.layout ? JSON.parse(JSON.stringify(templateData.layout)) : {}
+        template_type: templateData.template_type || 'visual',
+        layout: templateData.layout ? JSON.parse(JSON.stringify(templateData.layout)) : null,
+        html_template: templateData.html_template || null
       };
       
       const { data, error } = await supabase.functions.invoke('label-templates', {

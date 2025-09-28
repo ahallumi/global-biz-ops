@@ -10,7 +10,9 @@ interface LabelTemplate {
   id?: string
   profile_id: string
   name: string
-  layout: any
+  template_type?: 'visual' | 'html'
+  layout?: any
+  html_template?: string
   is_active?: boolean
 }
 
@@ -105,16 +107,29 @@ serve(async (req) => {
       if (action === 'upsert') {
         const template: LabelTemplate = body.template
 
-        if (!template.profile_id || !template.name || !template.layout) {
+        if (!template.profile_id || !template.name) {
           return new Response(
-            JSON.stringify({ error: 'Missing required template fields' }),
+            JSON.stringify({ error: 'Missing required template fields (profile_id, name)' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
         }
 
-        // User is optional for template operations
-        console.log(`[label-templates] Upserting template: ${template.name} (id: ${template.id || 'new'})`)
-        
+        // Validate template content based on type
+        const templateType = template.template_type || 'visual';
+        if (templateType === 'visual' && !template.layout) {
+          return new Response(
+            JSON.stringify({ error: 'Visual templates must have layout data' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+        if (templateType === 'html' && !template.html_template) {
+          return new Response(
+            JSON.stringify({ error: 'HTML templates must have html_template data' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        console.log(`[label-templates] Upserting ${templateType} template: ${template.name} (id: ${template.id || 'new'})`)
 
         let result
         if (template.id) {
@@ -125,14 +140,24 @@ serve(async (req) => {
             .eq('id', template.id)
             .single()
 
+          const updateData: any = {
+            name: template.name,
+            template_type: templateType,
+            updated_by: currentUser?.id || null,
+            version: (currentTemplate?.version || 1) + 1
+          };
+
+          if (templateType === 'visual') {
+            updateData.layout = template.layout;
+            updateData.html_template = null;
+          } else {
+            updateData.html_template = template.html_template;
+            updateData.layout = null;
+          }
+
           const { data, error } = await supabaseClient
             .from('label_templates')
-            .update({
-              name: template.name,
-              layout: template.layout,
-              updated_by: currentUser?.id || null,
-              version: (currentTemplate?.version || 1) + 1
-            })
+            .update(updateData)
             .eq('id', template.id)
             .select()
             .single()
@@ -141,15 +166,23 @@ serve(async (req) => {
           result = data
         } else {
           // Create new template
+          const insertData: any = {
+            profile_id: template.profile_id,
+            name: template.name,
+            template_type: templateType,
+            is_active: template.is_active ?? false,
+            created_by: currentUser?.id || null
+          };
+
+          if (templateType === 'visual') {
+            insertData.layout = template.layout;
+          } else {
+            insertData.html_template = template.html_template;
+          }
+
           const { data, error } = await supabaseClient
             .from('label_templates')
-            .insert({
-              profile_id: template.profile_id,
-              name: template.name,
-              layout: template.layout,
-              is_active: template.is_active ?? false,
-              created_by: currentUser?.id || null
-            })
+            .insert(insertData)
             .select()
             .single()
 

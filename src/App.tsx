@@ -168,6 +168,11 @@ const App = () => (
                 <LabelDesignerPage />
               </ProtectedRoute>
             } />
+            <Route path="/label-designer/:profileId" element={
+              <ProtectedRoute requiredRoles={['admin']}>
+                <LabelDesignerPage />
+              </ProtectedRoute>
+            } />
             <Route path="/payroll" element={
               <ProtectedRoute requiredRoles={['admin']}>
                 <PayrollPage />

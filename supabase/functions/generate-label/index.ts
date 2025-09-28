@@ -29,7 +29,34 @@ function generateBarcode(value: string, width: number, height: number): string {
   `;
 }
 
-// Template JSON renderer
+// HTML template renderer with variable substitution
+function renderHtmlTemplate(template: string, product: any): string {
+  if (!template) return '';
+
+  const substitutions = {
+    '{{product.name}}': product.name || '',
+    '{{product.sku}}': product.sku || '',
+    '{{product.id}}': product.id || '',
+    '{{price_formatted}}': product.price ? `$${parseFloat(product.price).toFixed(2)}` : '',
+    '{{unit_suffix}}': product.unit ? `/${product.unit}` : '',
+    '{{barcode_svg}}': product.barcode || product.sku || product.id ? 
+      generateBarcodeSVG(product.barcode || product.sku || product.id.slice(-8), 150, 30) : '',
+    '{{printed_at}}': new Date().toLocaleDateString('en-US', { 
+      month: '2-digit', 
+      day: '2-digit', 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    }),
+  };
+
+  let rendered = template;
+  Object.entries(substitutions).forEach(([key, value]) => {
+    const regex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    rendered = rendered.replace(regex, value);
+  });
+
+  return rendered;
+}
 function renderJsonTemplate(template: any, product: any): string {
   const { meta, elements } = template;
   
@@ -489,14 +516,21 @@ serve(async (req) => {
       // Get the active template for the profile
       const { data: template, error } = await supabaseClient
         .from('label_templates')
-        .select('layout')
+        .select('layout, template_type, html_template')
         .eq('profile_id', profile_id || template_id)
         .eq('is_active', true)
         .single();
 
       if (template && !error) {
-        console.log('Using JSON template for rendering');
-        html = renderJsonTemplate(template.layout, product);
+        if (template.template_type === 'html' && template.html_template) {
+          console.log('Using HTML template for rendering');
+          html = renderHtmlTemplate(template.html_template, product);
+        } else if (template.layout) {
+          console.log('Using JSON template for rendering');
+          html = renderJsonTemplate(template.layout, product);
+        } else {
+          throw new Error('Template has no valid content');
+        }
       } else {
         console.log('No JSON template found, falling back to legacy templates');
         // Fall back to legacy templates

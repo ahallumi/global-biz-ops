@@ -451,7 +451,7 @@ export default function PrintingSettingsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => navigate(`/settings/printing/profiles/${profile.id}/design`)}
+                      onClick={() => navigate(`/label-designer/${profile.id}`)}
                     >
                       <Palette className="h-4 w-4" />
                       Design
