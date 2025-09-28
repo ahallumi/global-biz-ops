@@ -78,22 +78,25 @@ export function LabelDesigner({ profileId, profileName, dimensions, onBack }: La
   const [templateType, setTemplateType] = useState<'visual' | 'html'>('visual');
   const [htmlTemplate, setHtmlTemplate] = useState('');
 
+  // Create default layout structure
+  const defaultLayout: TemplateLayout = {
+    meta: {
+      width_mm: dimensions.width_mm,
+      height_mm: dimensions.height_mm,
+      dpi: dimensions.dpi,
+      margin_mm: 2,
+      bg: '#FFFFFF'
+    },
+    elements: []
+  };
+
   // Get active template or create default
   const activeTemplate = templates.find(t => t.is_active) || {
     id: '',
     profile_id: profileId,
     name: 'New Template',
     template_type: 'visual' as const,
-    layout: {
-      meta: {
-        width_mm: dimensions.width_mm,
-        height_mm: dimensions.height_mm,
-        dpi: dimensions.dpi,
-        margin_mm: 2,
-        bg: '#FFFFFF'
-      },
-      elements: []
-    } as TemplateLayout,
+    layout: defaultLayout,
     html_template: '',
     is_active: true,
     version: 1,
@@ -101,7 +104,9 @@ export function LabelDesigner({ profileId, profileName, dimensions, onBack }: La
     updated_at: ''
   };
 
-  const [currentLayout, setCurrentLayout] = useState<TemplateLayout>(activeTemplate.layout);
+  const [currentLayout, setCurrentLayout] = useState<TemplateLayout>(
+    activeTemplate.layout || defaultLayout
+  );
   
   // Initialize template type and HTML from active template
   React.useEffect(() => {
