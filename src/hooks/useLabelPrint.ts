@@ -137,23 +137,54 @@ export function useLabelPrint(stationId?: string) {
         placeholder_matches: labelData.html?.match(/\{\{[^}]+\}\}/g) || []
       });
 
-      // Generate PDF from HTML using browser-side rendering with forced zero margins
+      // Generate PDF using server-side optimized rendering for preview=print parity
       let pdfBase64 = labelData.pdf_base64;
       if (!pdfBase64 && labelData.html) {
-        console.log('LABEL_DEBUG: Generating PDF browser-side with profile:', {
+        console.log('LABEL_DEBUG: Generating PDF server-side optimized with profile:', {
           width_mm: activeProfile.width_mm,
           height_mm: activeProfile.height_mm,
           dpi: activeProfile.dpi,
-          margin_mm: 0, // Force zero margins for exact size
+          margin_mm: 0,
           html_length: labelData.html.length
         });
 
-        pdfBase64 = await htmlToPdfBase64(labelData.html, {
-          width_mm: activeProfile.width_mm,
-          height_mm: activeProfile.height_mm,
-          margin_mm: 0, // Force zero margins to eliminate Brother driver issues
-          dpi: activeProfile.dpi
-        });
+        // Try server-side PDF rendering first (with Puppeteer-like optimizations)
+        try {
+          const { data: renderData, error: renderError } = await supabase.functions.invoke('render-label-pdf', {
+            body: {
+              html: labelData.html,
+              width_mm: activeProfile.width_mm,
+              height_mm: activeProfile.height_mm,
+              dpi: activeProfile.dpi,
+              margin_mm: 0
+            }
+          });
+
+          if (!renderError && renderData?.pdf_base64) {
+            pdfBase64 = renderData.pdf_base64;
+            console.log('LABEL_DEBUG: Used server-side PDF generation');
+          } else if (!renderError && renderData?.html) {
+            // Server returned optimized HTML, use client-side generation with server HTML
+            console.log('LABEL_DEBUG: Using server-optimized HTML for client PDF generation');
+            pdfBase64 = await htmlToPdfBase64(renderData.html, {
+              width_mm: activeProfile.width_mm,
+              height_mm: activeProfile.height_mm,
+              margin_mm: 0,
+              dpi: activeProfile.dpi
+            });
+          } else {
+            throw new Error('Server PDF generation failed');
+          }
+        } catch (serverError) {
+          // Fallback to client-side generation
+          console.warn('Server PDF failed, falling back to client-side:', serverError);
+          pdfBase64 = await htmlToPdfBase64(labelData.html, {
+            width_mm: activeProfile.width_mm,
+            height_mm: activeProfile.height_mm,
+            margin_mm: 0,
+            dpi: activeProfile.dpi
+          });
+        }
       }
 
       if (!pdfBase64) {
@@ -193,9 +224,9 @@ export function useLabelPrint(stationId?: string) {
         console.warn('Brother profile validation:', validation.warning);
       }
 
-      // ROLLBACK: Force known-good PrintNode options temporarily
+      // Force correct PrintNode options for 62x28.9mm DK-1209 labels
       const forcedOptions = {
-        paper: "29 x 90 mm", // Known-good paper name for DK-1201
+        paper: "2.4\" x 1.1\"", // Correct paper name for DK-1209 (62x28.9mm)
         dpi: "300x300",
         fit_to_page: false,
         rotate: 0

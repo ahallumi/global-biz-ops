@@ -276,13 +276,14 @@ function generateBarcodeSVG(code: string, width: number = 200, height: number = 
     }
   }
 
-  // Calculate dimensions with proper quiet zones
-  const moduleWidthMm = 0.33; // ~4 dots at 300 DPI
-  const quietZoneMm = Math.max(2.0, width * 0.1); // At least 2mm or 10% of width
+  // Calculate dimensions with proper dot-grid precision (300 DPI = ~0.08467mm per dot)
+  const DOT_MM = 25.4 / 300; // 0.08467mm per dot at 300 DPI
+  const moduleWidthMm = Math.max(DOT_MM * 4, 0.33); // At least 4 dots wide for reliability
+  const quietZoneMm = Math.max(DOT_MM * 12, 1.0); // At least 12 dots (1mm) quiet zone
   const patternWidthMm = pattern.reduce((sum, w) => sum + w, 0) * moduleWidthMm;
   const totalWidthMm = patternWidthMm + (2 * quietZoneMm);
   
-  // Generate bars with integer-dot precision
+  // Generate bars with integer-dot precision for crisp printing
   let x = quietZoneMm;
   const bars: string[] = [];
   
@@ -290,7 +291,7 @@ function generateBarcodeSVG(code: string, width: number = 200, height: number = 
     const barWidthMm = pattern[i] * moduleWidthMm;
     
     if (i % 2 === 0) { // Even indices are bars (black)
-      bars.push(`<rect x="${x}" y="0" width="${barWidthMm}" height="${height * 0.8}" fill="black"/>`);
+      bars.push(`<rect x="${x.toFixed(3)}" y="0" width="${barWidthMm.toFixed(3)}" height="${(height * 0.8).toFixed(3)}" fill="black"/>`);
     }
     
     x += barWidthMm;
