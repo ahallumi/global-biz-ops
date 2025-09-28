@@ -23,6 +23,8 @@ const MEDIA_TYPES = {
   'DK-1201': { width_mm: 29, height_mm: 90, code: [0x0C] }, // 29x90 die-cut
   'DK-1202': { width_mm: 62, height_mm: 100, code: [0x17] }, // 62x100 die-cut
   'DK-1209': { width_mm: 29, height_mm: 90, code: [0x0C] }, // 29x90 address labels
+  'DK-22205': { width_mm: 62, height_mm: 0, code: [0x3E] }, // 62mm continuous white paper
+  'DK-22210': { width_mm: 29, height_mm: 0, code: [0x04] }, // 29mm continuous white paper
 };
 
 // Convert mm to dots at 300 DPI
