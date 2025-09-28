@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { htmlToPdfBase64 } from '@/lib/htmlToPdf';
-import { generatePrintOptions, validateBrotherProfile } from "@/lib/paperMatching";
+import { generatePrintOptions, validateBrotherProfile, generateCalibrationGrid } from "@/lib/paperMatching";
 
 interface Product {
   id: string;
@@ -174,11 +174,12 @@ export function useLabelPrint(stationId?: string) {
       
       // Validate Brother profile and generate print options
       const validation = validateBrotherProfile(activeProfile.width_mm, activeProfile.height_mm);
-      const { options: printOptions, warnings } = generatePrintOptions(
+      const { options: printOptions, warnings, brotherInfo } = generatePrintOptions(
         selectedPrinter?.capabilities,
         activeProfile.width_mm,
         activeProfile.height_mm,
-        activeProfile.dpi
+        activeProfile.dpi,
+        selectedPrinter?.make_and_model
       );
 
       // Show Brother validation info if relevant
@@ -216,7 +217,8 @@ export function useLabelPrint(stationId?: string) {
         ...printData, 
         printer_id: targetPrinterId,
         paper_used: paperUsed,
-        rotation: printOptions.rotate || 0
+        rotation: printOptions.rotate || 0,
+        brother_info: brotherInfo
       };
     },
     onSuccess: (data, variables) => {
@@ -281,6 +283,57 @@ export function useLabelPrint(stationId?: string) {
     }
   }, [config, printLabel]);
 
+  // Print calibration grid for Brother printers
+  const printCalibrationGrid = useMutation({
+    mutationFn: async (printerId: string) => {
+      if (!config) throw new Error('Configuration not loaded');
+      
+      const activeProfile = config.profiles.find(p => p.id === config.active_profile_id);
+      if (!activeProfile) throw new Error('Active profile not found');
+
+      // Generate calibration grid HTML
+      const gridHtml = generateCalibrationGrid(activeProfile.width_mm, activeProfile.height_mm);
+      
+      // Convert to PDF
+      const pdfBase64 = await htmlToPdfBase64(gridHtml, {
+        width_mm: activeProfile.width_mm,
+        height_mm: activeProfile.height_mm,
+        dpi: activeProfile.dpi,
+        margin_mm: 0
+      });
+
+      // Get printer capabilities for options
+      const selectedPrinter = printers?.printers?.find(p => p.id === printerId);
+      const { options: printOptions } = generatePrintOptions(
+        selectedPrinter?.capabilities,
+        activeProfile.width_mm,
+        activeProfile.height_mm,
+        activeProfile.dpi,
+        selectedPrinter?.make_and_model
+      );
+
+      // Print the grid
+      const { data: printData, error: printError } = await supabase.functions.invoke('printnode-print', {
+        body: {
+          printer_id: printerId,
+          title: `Calibration Grid ${activeProfile.width_mm}×${activeProfile.height_mm}mm`,
+          base64: pdfBase64,
+          source: 'calibration-test',
+          options: printOptions
+        }
+      });
+
+      if (printError) throw printError;
+      return printData;
+    },
+    onSuccess: () => {
+      toast.success('Calibration grid printed. Measure 10mm squares to verify scale accuracy.');
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to print calibration grid: ${error.message}`);
+    }
+  });
+
   return {
     // State
     query,
@@ -302,7 +355,11 @@ export function useLabelPrint(stationId?: string) {
     handleSearch,
     handleQuickPrint,
     printLabel: printLabel.mutate,
+    printCalibrationGrid: printCalibrationGrid.mutate,
     setSelectedProduct,
+    
+    // Loading states
+    calibrationLoading: printCalibrationGrid.isPending,
     
     // Utils
     getLastPrinterId: () => localStorage.getItem('last-printer-id'),

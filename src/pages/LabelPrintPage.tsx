@@ -8,8 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useLabelPrint } from '@/hooks/useLabelPrint';
-import { findPaperMatch } from '@/lib/paperMatching';
-import { Printer, Search, Zap, Package, Tag, Barcode, ArrowLeft } from 'lucide-react';
+import { findPaperMatch, validateBrotherProfile, generatePrintOptions } from '@/lib/paperMatching';
+import { BrotherSetupGuide } from '@/components/printing/BrotherSetupGuide';
+import { Printer, Search, Zap, Package, Tag, Barcode, ArrowLeft, Settings, AlertTriangle, CheckCircle, TestTube } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface Product {
@@ -27,22 +28,25 @@ export default function LabelPrintPage() {
   const navigate = useNavigate();
   const [selectedPrinterId, setSelectedPrinterId] = useState<string>('');
   const [showResults, setShowResults] = useState(false);
+  const [showBrotherGuide, setShowBrotherGuide] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   
   const {
     query,
+    selectedProduct,
+    lastPrintedProduct,
     config,
     printers,
-    searchResults,
-    lastPrintedProduct,
     configLoading,
     printersLoading,
     searchLoading,
     printLoading,
+    calibrationLoading,
+    searchResults,
     handleSearch,
     handleQuickPrint,
-    getLastPrinterId,
-    setLastPrinterId,
+    printCalibrationGrid,
+    setSelectedProduct
   } = useLabelPrint();
 
   // Auto-focus search input on mount
@@ -50,9 +54,36 @@ export default function LabelPrintPage() {
     searchInputRef.current?.focus();
   }, []);
 
+  // Get printer status and compatibility info
+  const selectedPrinter = printers.find(p => p.id === selectedPrinterId);
+  const activeProfile = config?.profiles?.find(p => p.id === config.active_profile_id);
+  
+  let printerStatus = null;
+  if (activeProfile && selectedPrinter) {
+    const validation = validateBrotherProfile(activeProfile.width_mm, activeProfile.height_mm);
+    const { brotherInfo } = generatePrintOptions(
+      selectedPrinter.capabilities,
+      activeProfile.width_mm,
+      activeProfile.height_mm,
+      activeProfile.dpi,
+      selectedPrinter.make_and_model
+    );
+    
+    const isBrother = selectedPrinter.make_and_model?.toLowerCase().includes('brother') || 
+                     selectedPrinter.make_and_model?.toLowerCase().includes('ql-');
+    
+    printerStatus = {
+      validation,
+      brotherInfo,
+      isBrother,
+      paperMatch: selectedPrinter.capabilities?.papers ? 
+        findPaperMatch(selectedPrinter.capabilities.papers, activeProfile.width_mm, activeProfile.height_mm) : null
+    };
+  }
+
   // Load last printer from localStorage
   useEffect(() => {
-    const lastPrinterId = getLastPrinterId();
+    const lastPrinterId = localStorage.getItem('last-printer-id');
     if (lastPrinterId && printers?.some(p => p.id === lastPrinterId)) {
       setSelectedPrinterId(lastPrinterId);
     } else if (printers?.length) {
@@ -60,12 +91,12 @@ export default function LabelPrintPage() {
       const defaultPrinter = printers.find(p => p.default) || printers[0];
       setSelectedPrinterId(defaultPrinter.id);
     }
-  }, [printers, getLastPrinterId]);
+  }, [printers]);
 
   // Handle printer selection
   const handlePrinterChange = (printerId: string) => {
     setSelectedPrinterId(printerId);
-    setLastPrinterId(printerId);
+    localStorage.setItem('last-printer-id', printerId);
   };
 
   // Handle search input changes
@@ -116,17 +147,17 @@ export default function LabelPrintPage() {
             </p>
           </div>
           
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <Skeleton className="h-32" />
             <Skeleton className="h-32" />
             <Skeleton className="h-32" />
             <Skeleton className="h-32" />
           </div>
+          <Skeleton className="h-48" />
         </div>
       </Layout>
     );
   }
-
-  const activeProfile = config?.profiles.find(p => p.id === config.active_profile_id);
 
   return (
     <Layout>
@@ -145,63 +176,215 @@ export default function LabelPrintPage() {
         </div>
 
         {/* Status Cards */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Active Profile Card */}
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Profile</CardTitle>
-              <Tag className="h-4 w-4 text-muted-foreground" />
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Tag className="h-5 w-5" />
+                Active Profile
+              </CardTitle>
+              <CardDescription>Current label configuration</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {activeProfile?.label_name || 'Not configured'}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {activeProfile ? `${activeProfile.width_mm}×${activeProfile.height_mm}mm` : 'Configure in settings'}
-              </p>
+              {activeProfile ? (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium">Name:</span>
+                    <span className="text-sm">{activeProfile.label_name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium">Size:</span>
+                    <span className="text-sm">{activeProfile.width_mm}×{activeProfile.height_mm}mm</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium">DPI:</span>
+                    <span className="text-sm">{activeProfile.dpi}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium">Template:</span>
+                    <span className="text-sm">{activeProfile.template_id}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No active profile</p>
+              )}
             </CardContent>
           </Card>
 
+          {/* Printer Selection Card */}
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Selected Printer</CardTitle>
-              <Printer className="h-4 w-4 text-muted-foreground" />
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Printer className="h-5 w-5" />
+                Selected Printer
+              </CardTitle>
+              <CardDescription>Choose target printer</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {printers?.find(p => p.id === selectedPrinterId)?.name || 'None'}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {(() => {
-                  const printer = printers?.find(p => p.id === selectedPrinterId);
-                  if (!printer || !activeProfile) return `${printers?.length || 0} printers available`;
-                  
-                  const capabilities = printer.capabilities;
-                  if (capabilities?.papers) {
-                    const match = findPaperMatch(capabilities.papers, activeProfile.width_mm, activeProfile.height_mm);
-                    if (match) {
-                      return match.rotate > 0 ? `${match.name} (rotated ${match.rotate}°)` : match.name;
-                    }
-                  }
-                  
-                  return `${activeProfile.width_mm}×${activeProfile.height_mm}mm (custom)`;
-                })()}
-              </p>
+              <Select value={selectedPrinterId} onValueChange={setSelectedPrinterId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a printer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {printers.map((printer) => (
+                    <SelectItem key={printer.id} value={printer.id}>
+                      <div className="flex items-center gap-2">
+                        <span>{printer.name}</span>
+                        {printer.default && (
+                          <Badge variant="outline" className="text-xs">Default</Badge>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              {selectedPrinterId && (
+                <div className="mt-3 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="font-medium">Model:</span>
+                    <span>{printers.find(p => p.id === selectedPrinterId)?.make_and_model}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium">Status:</span>
+                    <Badge variant={
+                      printers.find(p => p.id === selectedPrinterId)?.status === 'online' 
+                        ? 'default' 
+                        : 'secondary'
+                    }>
+                      {printers.find(p => p.id === selectedPrinterId)?.status || 'unknown'}
+                    </Badge>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
+          {/* Printer Status & Compatibility */}
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Last Printed</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {printerStatus?.paperMatch ? (
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                ) : printerStatus?.isBrother ? (
+                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+                ) : (
+                  <Settings className="h-5 w-5" />
+                )}
+                Printer Status
+              </CardTitle>
+              <CardDescription>Compatibility & setup</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {!selectedPrinterId ? (
+                <p className="text-sm text-muted-foreground">Select a printer first</p>
+              ) : !activeProfile ? (
+                <p className="text-sm text-muted-foreground">No active profile</p>
+              ) : printerStatus ? (
+                <>
+                  {/* Paper Compatibility */}
+                  <div className="flex items-start gap-2">
+                    {printerStatus.paperMatch ? (
+                      <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5" />
+                    )}
+                    <div className="text-sm">
+                      {printerStatus.paperMatch ? (
+                        <div>
+                          <span className="font-medium">Compatible: {printerStatus.paperMatch.name}</span>
+                          {printerStatus.paperMatch.rotate > 0 && (
+                            <div className="text-xs text-muted-foreground">
+                              Rotated {printerStatus.paperMatch.rotate}°
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="font-medium">Setup required</span>
+                          <div className="text-xs text-muted-foreground">
+                            {activeProfile.width_mm}×{activeProfile.height_mm}mm not detected
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Brother-specific info */}
+                  {printerStatus.isBrother && (
+                    <div className="space-y-2">
+                      {printerStatus.validation.matchedPreset && (
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            {printerStatus.validation.matchedPreset.name}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {printerStatus.validation.isContinuous ? 'Continuous' : 'Die-cut'}
+                          </span>
+                        </div>
+                      )}
+                      
+                      <div className="space-y-1">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => setShowBrotherGuide(true)}
+                          className="w-full text-xs"
+                        >
+                          <Settings className="h-3 w-3 mr-1" />
+                          Brother Setup Guide
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => printCalibrationGrid(selectedPrinterId)}
+                          disabled={calibrationLoading}
+                          className="w-full text-xs"
+                        >
+                          <TestTube className="h-3 w-3 mr-1" />
+                          Print Test Grid
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">Checking compatibility...</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Last Printed Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Last Printed
+              </CardTitle>
+              <CardDescription>Recently printed label</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {lastPrintedProduct?.name.substring(0, 20) || 'None'}
-                {lastPrintedProduct?.name && lastPrintedProduct.name.length > 20 && '...'}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {lastPrintedProduct ? formatPrice(lastPrintedProduct.price) : 'No recent prints'}
-              </p>
+              {lastPrintedProduct ? (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium">Product:</span>
+                    <span className="text-sm truncate ml-2" title={lastPrintedProduct.name}>
+                      {lastPrintedProduct.name}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium">SKU:</span>
+                    <span className="text-sm">{lastPrintedProduct.sku || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium">Price:</span>
+                    <span className="text-sm">{formatPrice(lastPrintedProduct.price)}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No recent prints</p>
+              )}
             </CardContent>
           </Card>
         </div>
