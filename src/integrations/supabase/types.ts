@@ -358,7 +358,7 @@ export type Database = {
           html_template: string | null
           id: string
           is_active: boolean
-          layout: Json
+          layout: Json | null
           name: string
           preview_png: string | null
           profile_id: string
@@ -373,7 +373,7 @@ export type Database = {
           html_template?: string | null
           id?: string
           is_active?: boolean
-          layout: Json
+          layout?: Json | null
           name: string
           preview_png?: string | null
           profile_id: string
@@ -388,7 +388,7 @@ export type Database = {
           html_template?: string | null
           id?: string
           is_active?: boolean
-          layout?: Json
+          layout?: Json | null
           name?: string
           preview_png?: string | null
           profile_id?: string
