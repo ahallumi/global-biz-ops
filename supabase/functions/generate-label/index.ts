@@ -21,6 +21,24 @@ function toCode39Text(raw: string | null | undefined): string {
   return `*${payload}*`;
 }
 
+// Helper function to resolve price from multiple possible fields
+function resolvePrice(product: any): number | null {
+  const candidates = [
+    product?.price,
+    product?.unit_price,
+    product?.retail_price_cents ? product.retail_price_cents / 100 : null,
+    product?.price_cents ? product.price_cents / 100 : null
+  ];
+  
+  const value = candidates.find(x => x != null && !Number.isNaN(+x));
+  return value == null ? null : +value;
+}
+
+// Helper function to format currency (returns empty string for null)
+function currencyUSD(price: number | null): string {
+  return price == null ? "" : `$${price.toFixed(2)}`;
+}
+
 // Helper function to escape HTML
 function escapeHtml(text: string): string {
   return text
@@ -59,12 +77,13 @@ function renderHtmlTemplate(template: string, product: any): string {
   if (!template) return '';
 
   const barcodeValue = product.barcode || product.sku || product.id?.slice(-8) || '';
+  const price = resolvePrice(product);
   
   const substitutions = {
     '{{product.name}}': escapeHtml(product.name || ''),
     '{{product.sku}}': escapeHtml(product.sku || ''),
     '{{product.id}}': escapeHtml(product.id || ''),
-    '{{price_formatted}}': escapeHtml(product.price ? `$${parseFloat(product.price).toFixed(2)}` : ''),
+    '{{price_formatted}}': escapeHtml(currencyUSD(price)),
     '{{unit_suffix}}': escapeHtml(product.unit ? `/${product.unit}` : ''),
     '{{barcode_svg}}': barcodeValue ? 
       generateBarcodeSVG(barcodeValue, 150, 30) : '',
@@ -86,6 +105,7 @@ function renderHtmlTemplate(template: string, product: any): string {
   // Debug logging
   console.log("LABEL_HTML_SNIP", rendered.slice(0, 500));
   console.log("HAS_CODE39_TOKEN", rendered.includes("{{barcode_text_code39}}") ? "MISSING" : "OK");
+  console.log("PRICE_RESOLVED", price, "->", currencyUSD(price));
 
   // Safety check for missing substitutions
   if (template.includes("{{barcode_text_code39}}") && rendered.includes("{{barcode_text_code39}}")) {
@@ -230,31 +250,56 @@ interface GenerateLabelRequest {
 
 function generateBarcodeSVG(code: string, width: number = 200, height: number = 50): string {
   if (!code || code.trim() === '') {
-    return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+    return `<svg width="${width}mm" height="${height}mm" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="shape-rendering:crispEdges;">
       <rect width="100%" height="100%" fill="white"/>
-      <text x="50%" y="50%" text-anchor="middle" dy="0.3em" font-family="Arial, sans-serif" font-size="12">No barcode</text>
+      <text x="50%" y="50%" text-anchor="middle" dy="0.3em" font-family="Arial, sans-serif" font-size="3mm" fill="black">No barcode</text>
     </svg>`;
   }
 
-  // Simple barcode generation (Code 128 style pattern)
-  const bars = code.split('').map((char) => {
-    const charCode = char.charCodeAt(0);
-    return (charCode % 4) + 1; // Simple pattern generation
-  });
-
-  const barWidth = width / (bars.length * 3);
-  let x = 0;
-  let barsHTML = '';
-
-  for (const barHeight of bars) {
-    barsHTML += `<rect x="${x}" y="0" width="${barWidth}" height="${height * 0.8}" fill="black"/>`;
-    x += barWidth * 3;
+  // Determine symbology and generate appropriate pattern
+  let symbology = 'CODE128';
+  let pattern: number[] = [];
+  
+  if (/^\d{12,13}$/.test(code)) {
+    symbology = 'EAN13';
+    // EAN-13 simplified pattern
+    pattern = [1,1,1,1,1,1,1,1,1,1,1,1,1]; // Placeholder - would need real EAN-13 implementation
+  } else if (/^\d{11,12}$/.test(code)) {
+    symbology = 'UPCA';
+    // UPC-A simplified pattern
+    pattern = [1,1,1,1,1,1,1,1,1,1,1,1]; // Placeholder - would need real UPC-A implementation
+  } else {
+    // Code128 pattern generation (simplified)
+    for (let i = 0; i < code.length; i++) {
+      const charCode = code.charCodeAt(i);
+      pattern.push((charCode % 3) + 1, (charCode % 2) + 1);
+    }
   }
 
-  return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+  // Calculate dimensions with proper quiet zones
+  const moduleWidthMm = 0.33; // ~4 dots at 300 DPI
+  const quietZoneMm = Math.max(2.0, width * 0.1); // At least 2mm or 10% of width
+  const patternWidthMm = pattern.reduce((sum, w) => sum + w, 0) * moduleWidthMm;
+  const totalWidthMm = patternWidthMm + (2 * quietZoneMm);
+  
+  // Generate bars with integer-dot precision
+  let x = quietZoneMm;
+  const bars: string[] = [];
+  
+  for (let i = 0; i < pattern.length; i++) {
+    const barWidthMm = pattern[i] * moduleWidthMm;
+    
+    if (i % 2 === 0) { // Even indices are bars (black)
+      bars.push(`<rect x="${x}" y="0" width="${barWidthMm}" height="${height * 0.8}" fill="black"/>`);
+    }
+    
+    x += barWidthMm;
+  }
+
+  return `<svg width="${width}mm" height="${height}mm" viewBox="0 0 ${totalWidthMm} ${height}" xmlns="http://www.w3.org/2000/svg" style="shape-rendering:crispEdges;" preserveAspectRatio="none">
     <rect width="100%" height="100%" fill="white"/>
-    ${barsHTML}
-    <text x="50%" y="${height * 0.95}" text-anchor="middle" font-family="Arial, sans-serif" font-size="8">${code}</text>
+    ${bars.join('\n    ')}
+    <text x="${totalWidthMm / 2}" y="${height * 0.95}" text-anchor="middle" font-family="Arial, sans-serif" font-size="2mm" fill="black">${code}</text>
   </svg>`;
 }
 
@@ -533,8 +578,8 @@ serve(async (req) => {
   }
 
   try {
-    const { template_id, product, profile_id, use_json_template } = await req.json();
-    console.log('Generating label:', { template_id, product: product?.name || 'Unknown', use_json_template });
+    const { template_id, product, profile_id, use_json_template, diagnostic } = await req.json();
+    console.log('Generating label:', { template_id, product: product?.name || 'Unknown', use_json_template, diagnostic });
 
     let html = '';
     
@@ -561,7 +606,35 @@ serve(async (req) => {
       if (template && !error) {
         if (template.template_type === 'html' && template.html_template) {
           console.log('Using HTML template for rendering');
-          html = renderHtmlTemplate(template.html_template, product);
+          let templateHtml = template.html_template;
+          
+          // Apply diagnostic mode modifications if requested
+          if (diagnostic) {
+            console.log('Applying diagnostic mode modifications');
+            
+            // Add diagnostic CSS
+            const diagnosticCSS = `
+              <style>
+                body, .label, .content { background:#fff !important; }
+                * { color:#000 !important; }
+                .label { border:0.4mm solid #000 !important; }
+                .label.debug * { outline: 0.2mm dashed rgba(0,0,0,.25) !important; }
+              </style>
+            `;
+            
+            // Inject diagnostic styles before closing head tag
+            if (templateHtml.includes('</head>')) {
+              templateHtml = templateHtml.replace('</head>', `${diagnosticCSS}</head>`);
+            }
+            
+            // Add debug class to label
+            templateHtml = templateHtml.replace(
+              'class="label"',
+              'class="label debug"'
+            );
+          }
+          
+          html = renderHtmlTemplate(templateHtml, product);
         } else if (template.layout) {
           console.log('Using JSON template for rendering');
           html = renderJsonTemplate(template.layout, product);
