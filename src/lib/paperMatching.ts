@@ -69,19 +69,55 @@ export function validateBrotherProfile(widthMm: number, heightMm: number): {
   isValid: boolean;
   matchedPreset?: typeof BROTHER_DK_PRESETS[number];
   warning?: string;
+  isContinuous?: boolean;
 } {
+  // Check for exact preset match
   const preset = BROTHER_DK_PRESETS.find(
     p => Math.abs(p.width_mm - widthMm) <= 0.5 && 
          (p.height_mm === 0 || Math.abs(p.height_mm - heightMm) <= 0.5)
   );
 
   if (preset) {
-    return { isValid: true, matchedPreset: preset };
+    return { 
+      isValid: true, 
+      matchedPreset: preset,
+      isContinuous: preset.height_mm === 0 
+    };
+  }
+
+  // Check for continuous roll compatibility (width-only match)
+  const continuousPreset = BROTHER_DK_PRESETS.find(
+    p => p.height_mm === 0 && Math.abs(p.width_mm - widthMm) <= 1.0
+  );
+
+  if (continuousPreset) {
+    return {
+      isValid: true,
+      matchedPreset: continuousPreset,
+      isContinuous: true,
+      warning: `Using ${continuousPreset.name} (${continuousPreset.width_mm}mm) for ${widthMm}×${heightMm}mm labels`
+    };
+  }
+
+  // Check for close die-cut matches (allow for common variations)
+  const closePreset = BROTHER_DK_PRESETS.find(
+    p => p.height_mm > 0 && 
+         Math.abs(p.width_mm - widthMm) <= 1.0 && 
+         Math.abs(p.height_mm - heightMm) <= 1.0
+  );
+
+  if (closePreset) {
+    return {
+      isValid: true,
+      matchedPreset: closePreset,
+      isContinuous: false,
+      warning: `Close match: ${closePreset.name} (${closePreset.width_mm}×${closePreset.height_mm}mm) for ${widthMm}×${heightMm}mm labels`
+    };
   }
 
   return {
     isValid: false,
-    warning: `${widthMm}×${heightMm}mm doesn't match standard Brother DK rolls. Consider using a preset size.`
+    warning: `${widthMm}×${heightMm}mm doesn't match standard Brother DK rolls. Ensure correct media is loaded.`
   };
 }
 

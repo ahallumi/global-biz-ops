@@ -170,7 +170,21 @@ export default function LabelPrintPage() {
                 {printers?.find(p => p.id === selectedPrinterId)?.name || 'None'}
               </div>
               <p className="text-xs text-muted-foreground">
-                {printers?.length || 0} printers available
+                {(() => {
+                  const printer = printers?.find(p => p.id === selectedPrinterId);
+                  if (!printer || !activeProfile) return `${printers?.length || 0} printers available`;
+                  
+                  const capabilities = printer.capabilities;
+                  if (capabilities?.papers) {
+                    const { findPaperMatch } = require('@/lib/paperMatching');
+                    const match = findPaperMatch(capabilities.papers, activeProfile.width_mm, activeProfile.height_mm);
+                    if (match) {
+                      return match.rotate > 0 ? `${match.name} (rotated ${match.rotate}°)` : match.name;
+                    }
+                  }
+                  
+                  return `${activeProfile.width_mm}×${activeProfile.height_mm}mm (custom)`;
+                })()}
               </p>
             </CardContent>
           </Card>

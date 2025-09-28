@@ -174,10 +174,6 @@ export function useLabelPrint(stationId?: string) {
       
       // Validate Brother profile and generate print options
       const validation = validateBrotherProfile(activeProfile.width_mm, activeProfile.height_mm);
-      if (!validation.isValid && validation.warning) {
-        console.warn('Brother profile validation:', validation.warning);
-      }
-
       const { options: printOptions, warnings } = generatePrintOptions(
         selectedPrinter?.capabilities,
         activeProfile.width_mm,
@@ -185,10 +181,17 @@ export function useLabelPrint(stationId?: string) {
         activeProfile.dpi
       );
 
-      // Show warnings to user
-      warnings.forEach(warning => {
-        toast.warning(warning, { duration: 5000 });
-      });
+      // Show Brother validation info if relevant
+      if (validation.warning && selectedPrinter?.make_and_model?.toLowerCase().includes('brother')) {
+        console.log('Brother media:', validation.warning);
+      }
+
+      // Show print warnings to user (but filter out verbose ones)
+      warnings
+        .filter(warning => !warning.includes('Printer capabilities not available'))
+        .forEach(warning => {
+          toast.info(warning, { duration: 4000 });
+        });
 
       // Print label
       const { data: printData, error: printError } = await supabase.functions.invoke('printnode-print', {
@@ -206,12 +209,27 @@ export function useLabelPrint(stationId?: string) {
       // Store last printer for future use
       localStorage.setItem('last-printer-id', targetPrinterId);
       
-      return { ...printData, printer_id: targetPrinterId };
+      // Add paper info to response for user feedback
+      const paperUsed = printOptions.paper || `${activeProfile.width_mm}×${activeProfile.height_mm}mm`;
+      
+      return { 
+        ...printData, 
+        printer_id: targetPrinterId,
+        paper_used: paperUsed,
+        rotation: printOptions.rotate || 0
+      };
     },
     onSuccess: (data, variables) => {
-      const printerName = printers?.printers?.find(p => p.id === data.printer_id)?.name || 'Unknown Printer';
+      const printer = printers?.printers?.find(p => p.id === data.printer_id);
+      const printerName = printer?.name || 'Unknown Printer';
       
-      toast.success(`Printed "${variables.product.name}" on ${printerName} (Job #${data.job_id})`);
+      // Show success with print details
+      const paperInfo = data.paper_used || '';
+      const successMessage = paperInfo 
+        ? `Printed on ${printerName} using ${paperInfo} (Job #${data.job_id})`
+        : `Printed on ${printerName} (Job #${data.job_id})`;
+      
+      toast.success(successMessage, { duration: 6000 });
 
       // Beep if enabled
       if (config?.beep_on_success) {

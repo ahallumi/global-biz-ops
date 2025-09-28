@@ -53,17 +53,24 @@ export function PrinterCapabilitiesDisplay({
             {paperMatch ? (
               <>
                 <CheckCircle className="h-4 w-4 text-green-600" />
-                <span className="text-sm">
-                  Compatible: {paperMatch.name}
-                  {paperMatch.rotate !== 0 && ` (rotated ${paperMatch.rotate}°)`}
-                </span>
+                <div className="text-sm">
+                  <span className="font-medium">Compatible: {paperMatch.name}</span>
+                  {paperMatch.rotate !== 0 && (
+                    <div className="text-xs text-muted-foreground">
+                      Label will be rotated {paperMatch.rotate}° for proper orientation
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <>
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
-                <span className="text-sm">
-                  No exact match found for {profileWidth}×{profileHeight}mm
-                </span>
+                <div className="text-sm">
+                  <span className="font-medium">Custom size: {profileWidth}×{profileHeight}mm</span>
+                  <div className="text-xs text-muted-foreground">
+                    Ensure printer supports custom paper sizes
+                  </div>
+                </div>
               </>
             )}
           </div>
