@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-// Removed browser-side PDF generation - now using server-side rendering
+import { htmlToPdfBase64 } from "@/lib/htmlToPdf";
 import { generatePrintOptions, validateBrotherProfile } from "@/lib/paperMatching";
 
 interface Product {
@@ -117,10 +117,10 @@ export function useLabelPrint(stationId?: string) {
 
       if (labelError) throw labelError;
 
-      // Generate PDF from HTML using server-side rendering (rollback from browser jsPDF)
+      // Generate PDF from HTML using browser-side rendering with forced zero margins
       let pdfBase64 = labelData.pdf_base64;
       if (!pdfBase64 && labelData.html) {
-        console.log('Generating PDF server-side with profile:', {
+        console.log('Generating PDF browser-side with profile:', {
           width_mm: activeProfile.width_mm,
           height_mm: activeProfile.height_mm,
           dpi: activeProfile.dpi,
@@ -128,18 +128,12 @@ export function useLabelPrint(stationId?: string) {
           html_length: labelData.html.length
         });
 
-        const { data: renderData, error: renderError } = await supabase.functions.invoke('render-label-html', {
-          body: {
-            html: labelData.html,
-            width_mm: activeProfile.width_mm,
-            height_mm: activeProfile.height_mm,
-            dpi: activeProfile.dpi,
-            margin_mm: 0 // Force zero margins to eliminate browser jsPDF issues
-          }
+        pdfBase64 = await htmlToPdfBase64(labelData.html, {
+          width_mm: activeProfile.width_mm,
+          height_mm: activeProfile.height_mm,
+          margin_mm: 0, // Force zero margins to eliminate Brother driver issues
+          dpi: activeProfile.dpi
         });
-
-        if (renderError) throw renderError;
-        pdfBase64 = renderData.pdf_base64;
       }
 
       if (!pdfBase64) {
