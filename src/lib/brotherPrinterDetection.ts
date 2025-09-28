@@ -25,27 +25,27 @@ const BROTHER_QL_MODELS = [
 
 // Media type detection based on label dimensions
 export function detectMediaType(width_mm: number, height_mm: number): string {
-  // Snap dimensions to common Brother media sizes
-  if (Math.abs(width_mm - 29) < 3 && Math.abs(height_mm - 90) < 10) {
+  // Check for exact die-cut matches first (both dimensions must match)
+  if (Math.abs(width_mm - 29) < 2 && Math.abs(height_mm - 90) < 5) {
     return 'DK-1201'; // 29x90mm die-cut labels
   }
-  if (Math.abs(width_mm - 62) < 3 && Math.abs(height_mm - 100) < 10) {
+  if (Math.abs(width_mm - 62) < 2 && Math.abs(height_mm - 100) < 5) {
     return 'DK-1202'; // 62x100mm die-cut labels  
   }
-  if (Math.abs(width_mm - 29) < 3 && Math.abs(height_mm - 90) < 10) {
-    return 'DK-1209'; // 29x90mm address labels
+  if (Math.abs(width_mm - 29) < 2 && Math.abs(height_mm - 90) < 5) {
+    return 'DK-1209'; // 29x90mm address labels (same as DK-1201)
   }
-  // 62mm continuous roll (for custom heights like 28.9mm)
-  if (Math.abs(width_mm - 62) < 3) {
+  
+  // For continuous rolls, only width matters (height can be custom)
+  if (Math.abs(width_mm - 62) < 2) {
     return 'DK-22205'; // 62mm continuous white paper roll
   }
-  // 29mm continuous roll
-  if (Math.abs(width_mm - 29) < 3) {
+  if (Math.abs(width_mm - 29) < 2) {
     return 'DK-22210'; // 29mm continuous white paper roll
   }
   
   // Default based on width - use continuous roll for custom sizes
-  if (width_mm >= 50) {
+  if (width_mm >= 45) {
     return 'DK-22205'; // 62mm continuous
   }
   return 'DK-22210'; // 29mm continuous
@@ -79,22 +79,22 @@ export function getBrotherPrintWarnings(
   
   const mediaType = detectMediaType(width_mm, height_mm);
   
-  // Check for die-cut label mismatches
-  if (mediaType === 'DK-1201' && (Math.abs(width_mm - 29) > 2 || Math.abs(height_mm - 90) > 5)) {
-    warnings.push(`Label dimensions ${width_mm}×${height_mm}mm don't match DK-1201 roll (29×90mm). Please verify media is loaded correctly.`);
+  // Only warn for die-cut labels if dimensions don't match exactly
+  if (mediaType === 'DK-1201' && (Math.abs(width_mm - 29) > 1 || Math.abs(height_mm - 90) > 3)) {
+    warnings.push(`Label dimensions ${width_mm}×${height_mm}mm don't match DK-1201 die-cut labels (29×90mm). Please verify correct media is loaded.`);
   }
   
-  if (mediaType === 'DK-1202' && (Math.abs(width_mm - 62) > 2 || Math.abs(height_mm - 100) > 5)) {
-    warnings.push(`Label dimensions ${width_mm}×${height_mm}mm don't match DK-1202 roll (62×100mm). Please verify media is loaded correctly.`);
+  if (mediaType === 'DK-1202' && (Math.abs(width_mm - 62) > 1 || Math.abs(height_mm - 100) > 3)) {
+    warnings.push(`Label dimensions ${width_mm}×${height_mm}mm don't match DK-1202 die-cut labels (62×100mm). Please verify correct media is loaded.`);
   }
   
-  // Continuous roll warnings (only check width)
-  if (mediaType === 'DK-22205' && Math.abs(width_mm - 62) > 3) {
-    warnings.push(`Label width ${width_mm}mm doesn't match 62mm continuous roll. Please verify media is loaded correctly.`);
+  // For continuous rolls, only warn if width is significantly off
+  if (mediaType === 'DK-22205' && Math.abs(width_mm - 62) > 2) {
+    warnings.push(`Label width ${width_mm}mm doesn't match 62mm continuous roll. Expected width: 62mm.`);
   }
   
-  if (mediaType === 'DK-22210' && Math.abs(width_mm - 29) > 3) {
-    warnings.push(`Label width ${width_mm}mm doesn't match 29mm continuous roll. Please verify media is loaded correctly.`);
+  if (mediaType === 'DK-22210' && Math.abs(width_mm - 29) > 2) {
+    warnings.push(`Label width ${width_mm}mm doesn't match 29mm continuous roll. Expected width: 29mm.`);
   }
   
   return warnings;

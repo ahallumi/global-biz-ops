@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { htmlToPdfBase64 } from '@/lib/htmlToPdf';
 import { generatePrintOptions, validateBrotherProfile } from "@/lib/paperMatching";
-import { getOptimalPrintMode, validateBrotherPrinting, detectMediaType } from "@/lib/brotherPrinterDetection";
+import { getOptimalPrintMode, validateBrotherPrinting, detectMediaType, isBrotherQLPrinter } from "@/lib/brotherPrinterDetection";
 
 interface Product {
   id: string;
@@ -195,10 +195,23 @@ export function useLabelPrint(stationId?: string) {
           activeProfile.height_mm
         );
 
-        // Show Brother-specific warnings
-        brotherValidation.warnings.forEach(warning => {
-          toast.warning(warning, { duration: 7000 });
-        });
+        // Show Brother-specific warnings (but suppress for continuous rolls with correct width)
+        if (brotherValidation.warnings.length > 0) {
+          console.log(`Brother media detection: ${brotherValidation.mediaType} for ${activeProfile.width_mm}×${activeProfile.height_mm}mm`);
+          brotherValidation.warnings.forEach(warning => {
+            toast.warning(warning, { duration: 7000 });
+          });
+        } else {
+          // Show successful media detection
+          const mediaNames = {
+            'DK-22205': '62mm continuous roll',
+            'DK-22210': '29mm continuous roll', 
+            'DK-1201': '29×90mm die-cut labels',
+            'DK-1202': '62×100mm die-cut labels'
+          };
+          const mediaName = mediaNames[brotherValidation.mediaType as keyof typeof mediaNames] || brotherValidation.mediaType;
+          console.log(`✓ Brother QL detected media: ${mediaName}`);
+        }
 
         // Generate RAW raster data
         const { data: rasterData, error: rasterError } = await supabase.functions.invoke('brother-raster-encoder', {
@@ -218,15 +231,20 @@ export function useLabelPrint(stationId?: string) {
 
         if (rasterError) {
           console.error('RAW raster generation failed, falling back to PDF mode:', rasterError);
-          toast.warning('RAW printing failed, using PDF mode as fallback');
+          toast.warning(`Brother RAW mode failed (${rasterError.message}), using PDF fallback`);
+          // Force fallback to PDF mode
+          contentType = 'pdf_base64';
+          printBase64 = labelData.pdf_base64;
         } else {
           printBase64 = rasterData.raw_base64;
           contentType = 'raw_base64';
           printOptions = {}; // No options for RAW mode
-          console.log('Generated RAW raster data:', {
-            bitmap_size: `${rasterData.bitmap_width}x${rasterData.bitmap_height}`,
-            command_size: rasterData.command_size
+          console.log('✓ Brother RAW raster generated:', {
+            media_type: brotherValidation.mediaType,
+            bitmap_size: `${rasterData.bitmap_width}×${rasterData.bitmap_height} dots`,
+            command_size: `${rasterData.command_size} bytes`
           });
+          toast.success(`Brother RAW mode active (${brotherValidation.mediaType})`, { duration: 3000 });
         }
       }
 
@@ -274,8 +292,10 @@ export function useLabelPrint(stationId?: string) {
     },
     onSuccess: (data, variables) => {
       const printerName = printers?.printers?.find(p => p.id === data.printer_id)?.name || 'Unknown Printer';
+      const printer = printers?.printers?.find(p => p.id === data.printer_id);
+      const printMode = printer && isBrotherQLPrinter(printer) ? 'RAW' : 'PDF';
       
-      toast.success(`Printed "${variables.product.name}" on ${printerName} (Job #${data.job_id})`);
+      toast.success(`✓ ${printMode} printed "${variables.product.name}" on ${printerName} (Job #${data.job_id})`);
 
       // Beep if enabled
       if (config?.beep_on_success) {

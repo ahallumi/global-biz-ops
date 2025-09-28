@@ -20,11 +20,11 @@ interface RasterRequest {
 
 // Brother QL media size definitions
 const MEDIA_TYPES = {
-  'DK-1201': { width_mm: 29, height_mm: 90, code: [0x0C] }, // 29x90 die-cut
-  'DK-1202': { width_mm: 62, height_mm: 100, code: [0x17] }, // 62x100 die-cut
-  'DK-1209': { width_mm: 29, height_mm: 90, code: [0x0C] }, // 29x90 address labels
-  'DK-22205': { width_mm: 62, height_mm: 0, code: [0x3E] }, // 62mm continuous white paper
-  'DK-22210': { width_mm: 29, height_mm: 0, code: [0x04] }, // 29mm continuous white paper
+  'DK-1201': { width_mm: 29, height_mm: 90, code: [0x0C], continuous: false }, // 29x90 die-cut
+  'DK-1202': { width_mm: 62, height_mm: 100, code: [0x17], continuous: false }, // 62x100 die-cut
+  'DK-1209': { width_mm: 29, height_mm: 90, code: [0x0C], continuous: false }, // 29x90 address labels
+  'DK-22205': { width_mm: 62, height_mm: 0, code: [0x3E], continuous: true }, // 62mm continuous white paper
+  'DK-22210': { width_mm: 29, height_mm: 0, code: [0x04], continuous: true }, // 29mm continuous white paper
 };
 
 // Convert mm to dots at 300 DPI
@@ -38,57 +38,64 @@ function snapMm(mm: number): number {
   return dots * 25.4 / 300;
 }
 
-// Generate Brother QL raster command sequence
+// Generate Brother QL raster commands
 function generateBrotherRasterCommands(
-  bitmapData: Uint8Array, 
-  width_dots: number, 
+  bitmap: Uint8Array,
+  width_dots: number,
   height_dots: number,
   media_type: string
 ): Uint8Array {
+  const media = MEDIA_TYPES[media_type as keyof typeof MEDIA_TYPES];
+  if (!media) {
+    throw new Error(`Unsupported media type: ${media_type}`);
+  }
+
   const commands: number[] = [];
   
   // 1. Initialize printer
-  commands.push(0x1B, 0x40); // ESC @ - Initialize
+  commands.push(0x00); // Initialize
   
   // 2. Switch to raster mode
-  commands.push(0x1B, 0x69, 0x61, 0x01); // ESC i a 1 - Raster mode
+  commands.push(0x1B, 0x69, 0x61, 0x01); // ESC i a - raster mode
   
-  // 3. Print information command - set media size
-  const mediaInfo = MEDIA_TYPES[media_type as keyof typeof MEDIA_TYPES];
-  if (mediaInfo) {
-    commands.push(
-      0x1B, 0x69, 0x7A, // ESC i z - Print information command
-      mediaInfo.code[0], // Media type code
-      0x0A, // Media length (auto)
-      0x00, 0x00, 0x00, 0x00, // Raster number (4 bytes, little endian)
-      0x00, // Starting page
-      0x00 // Number of pages (0 = auto)
-    );
+  // 3. Set media type and print information command
+  if (media.continuous) {
+    // For continuous media, specify width and auto-length
+    commands.push(0x1B, 0x69, 0x7A, 0x8A, 0x0A, ...media.code, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00);
+  } else {
+    // For die-cut media, use standard info command
+    commands.push(0x1B, 0x69, 0x7A, 0x84, 0x00, ...media.code, 0x00, 0x00, 0x00, 0x00, 0x00);
   }
   
-  // 4. Set margins to 0
-  commands.push(0x1B, 0x69, 0x64, 0x00, 0x00); // ESC i d - Set margins
+  // 4. Set margins to 0 for precise positioning
+  commands.push(0x1B, 0x69, 0x64, 0x00, 0x00); // ESC i d - margin amount (0mm)
   
-  // 5. Set compression mode (no compression for simplicity)
-  commands.push(0x4D, 0x00); // M 0 - No compression
+  // 5. Various mode settings for quality
+  commands.push(0x1B, 0x69, 0x4D, 0x40); // ESC i M - various mode settings
   
-  // 6. Raster data transfer
+  // 6. Advanced settings for Brother QL-800 series
+  commands.push(0x1B, 0x69, 0x4B, 0x08); // ESC i K - cut settings (auto-cut on)
+  
+  // 7. Send raster data line by line
   const bytesPerLine = Math.ceil(width_dots / 8);
   
   for (let y = 0; y < height_dots; y++) {
-    // Raster graphics transfer command
-    commands.push(0x67, 0x00, bytesPerLine); // g 00 n - Graphics data
-    
-    // Get line data from bitmap
+    // Get line data
     const lineStart = y * bytesPerLine;
-    for (let x = 0; x < bytesPerLine; x++) {
-      const byteIndex = lineStart + x;
-      commands.push(byteIndex < bitmapData.length ? bitmapData[byteIndex] : 0x00);
-    }
+    const lineData = bitmap.slice(lineStart, lineStart + bytesPerLine);
+    
+    // Transfer raster graphics data command
+    commands.push(0x67, 0x00, bytesPerLine); // 'g' 0x00 nn - transfer raster data
+    commands.push(...Array.from(lineData));
   }
   
-  // 7. Print and cut
-  commands.push(0x1A); // Print with feed and cut
+  // 8. Print and feed command
+  if (media.continuous) {
+    commands.push(0x1B, 0x69, 0x41, height_dots & 0xFF, (height_dots >> 8) & 0xFF); // ESC i A - feed amount for continuous
+  }
+  
+  // 9. Print and cut
+  commands.push(0x1A); // Print and cut
   
   return new Uint8Array(commands);
 }
