@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { htmlToPdfBase64 } from '@/lib/htmlToPdf';
 import { generatePrintOptions, validateBrotherProfile } from "@/lib/paperMatching";
+import { getOptimalPrintMode, validateBrotherPrinting, detectMediaType } from "@/lib/brotherPrinterDetection";
 
 interface Product {
   id: string;
@@ -125,6 +126,7 @@ export function useLabelPrint(stationId?: string) {
         margin_mm: activeProfile.margin_mm,
         dpi: activeProfile.dpi
       };
+      let stationCalibration: any = null;
 
       if (stationId) {
         try {
@@ -136,6 +138,7 @@ export function useLabelPrint(stationId?: string) {
             .single();
 
           if (calibration) {
+            stationCalibration = calibration;
             // Apply calibration scaling to dimensions
             calibrationOptions = {
               ...calibrationOptions,
@@ -172,31 +175,92 @@ export function useLabelPrint(stationId?: string) {
       // Get selected printer capabilities
       const selectedPrinter = printers?.printers?.find(p => p.id === targetPrinterId);
       
-      // Validate Brother profile and generate print options
-      const validation = validateBrotherProfile(activeProfile.width_mm, activeProfile.height_mm);
-      if (!validation.isValid && validation.warning) {
-        console.warn('Brother profile validation:', validation.warning);
+      if (!selectedPrinter) {
+        throw new Error('Selected printer not found');
       }
 
-      const { options: printOptions, warnings } = generatePrintOptions(
-        selectedPrinter?.capabilities,
-        activeProfile.width_mm,
-        activeProfile.height_mm,
-        activeProfile.dpi
-      );
+      // Determine optimal print mode (RAW for Brother QL, PDF for others)
+      const printMode = getOptimalPrintMode(selectedPrinter);
+      console.log(`Using ${printMode} mode for printer:`, selectedPrinter.name);
 
-      // Show warnings to user
-      warnings.forEach(warning => {
-        toast.warning(warning, { duration: 5000 });
-      });
+      let printBase64 = pdfBase64;
+      let contentType: 'pdf_base64' | 'raw_base64' = 'pdf_base64';
+      let printOptions = {};
+
+      if (printMode === 'raw_raster') {
+        // Use Brother RAW raster mode
+        const brotherValidation = validateBrotherPrinting(
+          selectedPrinter, 
+          activeProfile.width_mm, 
+          activeProfile.height_mm
+        );
+
+        // Show Brother-specific warnings
+        brotherValidation.warnings.forEach(warning => {
+          toast.warning(warning, { duration: 7000 });
+        });
+
+        // Generate RAW raster data
+        const { data: rasterData, error: rasterError } = await supabase.functions.invoke('brother-raster-encoder', {
+          body: {
+            html: labelData.html,
+            width_mm: calibrationOptions.width_mm,
+            height_mm: calibrationOptions.height_mm,
+            media_type: brotherValidation.mediaType,
+            calibration: stationId ? {
+              scale_x: stationCalibration?.scale_x,
+              scale_y: stationCalibration?.scale_y,
+              offset_x_mm: stationCalibration?.offset_x_mm,
+              offset_y_mm: stationCalibration?.offset_y_mm
+            } : undefined
+          }
+        });
+
+        if (rasterError) {
+          console.error('RAW raster generation failed, falling back to PDF mode:', rasterError);
+          toast.warning('RAW printing failed, using PDF mode as fallback');
+        } else {
+          printBase64 = rasterData.raw_base64;
+          contentType = 'raw_base64';
+          printOptions = {}; // No options for RAW mode
+          console.log('Generated RAW raster data:', {
+            bitmap_size: `${rasterData.bitmap_width}x${rasterData.bitmap_height}`,
+            command_size: rasterData.command_size
+          });
+        }
+      }
+
+      // Fallback to PDF mode if RAW failed or not Brother printer
+      if (contentType === 'pdf_base64') {
+        // Validate Brother profile and generate print options  
+        const validation = validateBrotherProfile(activeProfile.width_mm, activeProfile.height_mm);
+        if (!validation.isValid && validation.warning) {
+          console.warn('Brother profile validation:', validation.warning);
+        }
+
+        const { options: pdfPrintOptions, warnings } = generatePrintOptions(
+          selectedPrinter.capabilities,
+          activeProfile.width_mm,
+          activeProfile.height_mm,
+          activeProfile.dpi
+        );
+
+        printOptions = pdfPrintOptions;
+
+        // Show warnings to user
+        warnings.forEach(warning => {
+          toast.warning(warning, { duration: 5000 });
+        });
+      }
 
       // Print label
       const { data: printData, error: printError } = await supabase.functions.invoke('printnode-print', {
         body: {
           printer_id: targetPrinterId,
           title: `Label: ${product.name}`,
-          base64: pdfBase64,
+          base64: printBase64,
           source: 'label-print',
+          content_type: contentType,
           options: printOptions
         }
       });
