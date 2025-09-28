@@ -317,11 +317,7 @@ export type Database = {
           created_at: string | null
           default_printer_id: string | null
           id: string
-          offset_x_mm: number | null
-          offset_y_mm: number | null
           profile_id: string
-          scale_x: number | null
-          scale_y: number | null
           station_id: string | null
           updated_at: string | null
         }
@@ -329,11 +325,7 @@ export type Database = {
           created_at?: string | null
           default_printer_id?: string | null
           id?: string
-          offset_x_mm?: number | null
-          offset_y_mm?: number | null
           profile_id: string
-          scale_x?: number | null
-          scale_y?: number | null
           station_id?: string | null
           updated_at?: string | null
         }
@@ -341,11 +333,7 @@ export type Database = {
           created_at?: string | null
           default_printer_id?: string | null
           id?: string
-          offset_x_mm?: number | null
-          offset_y_mm?: number | null
           profile_id?: string
-          scale_x?: number | null
-          scale_y?: number | null
           station_id?: string | null
           updated_at?: string | null
         }

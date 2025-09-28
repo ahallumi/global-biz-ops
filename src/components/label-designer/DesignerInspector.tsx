@@ -4,18 +4,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { Badge } from '@/components/ui/badge';
 import { TemplateElement } from './LabelDesigner';
-import { validateElementConstraints } from '@/lib/layoutEngine';
-import { snapMm, snapSizeMm, mmToDots, DOT_MM, minimumBarcodeHeightMm, moduleMmFromDesired, quietZoneMmFromDesired } from '@/lib/dotGrid';
 
 interface DesignerInspectorProps {
   element?: TemplateElement;
   onElementUpdate: (updates: Partial<TemplateElement>) => void;
-  canvasSize?: { width_mm: number; height_mm: number };
 }
 
-export function DesignerInspector({ element, onElementUpdate, canvasSize }: DesignerInspectorProps) {
+export function DesignerInspector({ element, onElementUpdate }: DesignerInspectorProps) {
   if (!element) {
     return (
       <Card>
@@ -30,42 +26,6 @@ export function DesignerInspector({ element, onElementUpdate, canvasSize }: Desi
       </Card>
     );
   }
-
-  // Validate element constraints
-  const warnings = canvasSize ? validateElementConstraints(element, canvasSize) : [];
-  
-  // Add precision warnings for dot-grid alignment
-  const precisionWarnings: string[] = [];
-  
-  if (element.type === 'barcode') {
-    const minHeight = minimumBarcodeHeightMm(element.symbology || 'code128');
-    if (element.h_mm < minHeight) {
-      precisionWarnings.push(`Barcode height (${element.h_mm.toFixed(2)}mm) is below minimum for reliable scanning (${minHeight.toFixed(2)}mm)`);
-    }
-    
-    const moduleWidth = element.barcode?.module_width_mm || 0.33;
-    const optimalModule = moduleMmFromDesired(moduleWidth);
-    if (Math.abs(moduleWidth - optimalModule) > 0.001) {
-      precisionWarnings.push(`Module width should be ${optimalModule.toFixed(3)}mm for precise dot alignment`);
-    }
-  }
-  
-  // Show snapped dimensions
-  const snappedX = snapMm(element.x_mm);
-  const snappedY = snapMm(element.y_mm);
-  const snappedW = snapSizeMm(element.w_mm);
-  const snappedH = snapSizeMm(element.h_mm);
-  
-  const isSnapped = Math.abs(element.x_mm - snappedX) < 0.001 && 
-                    Math.abs(element.y_mm - snappedY) < 0.001 &&
-                    Math.abs(element.w_mm - snappedW) < 0.001 &&
-                    Math.abs(element.h_mm - snappedH) < 0.001;
-  
-  if (!isSnapped) {
-    precisionWarnings.push('Element is not aligned to dot grid for precise printing');
-  }
-
-  const allWarnings = [...warnings, ...precisionWarnings];
 
   const handlePositionChange = (key: string, value: string) => {
     const numValue = parseFloat(value) || 0;
@@ -95,64 +55,6 @@ export function DesignerInspector({ element, onElementUpdate, canvasSize }: Desi
         <CardTitle className="text-sm">Properties - {element.type}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Validation warnings */}
-        {allWarnings.length > 0 && (
-          <div className="space-y-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-            <h4 className="text-sm font-medium text-destructive">⚠️ Validation Issues</h4>
-            {allWarnings.map((warning, index) => (
-              <p key={index} className="text-xs text-destructive/80">
-                {warning}
-              </p>
-            ))}
-          </div>
-        )}
-
-        {/* Precision Information */}
-        <div className="space-y-2 p-3 bg-muted/50 rounded-md">
-          <h4 className="text-sm font-medium">Precision Dimensions</h4>
-          <div className="grid grid-cols-4 gap-2 text-xs font-mono">
-            <div>
-              <label className="text-muted-foreground">X (mm)</label>
-              <div>{element.x_mm.toFixed(3)}</div>
-            </div>
-            <div>
-              <label className="text-muted-foreground">Y (mm)</label>
-              <div>{element.y_mm.toFixed(3)}</div>
-            </div>
-            <div>
-              <label className="text-muted-foreground">W (mm)</label>
-              <div>{element.w_mm.toFixed(3)}</div>
-            </div>
-            <div>
-              <label className="text-muted-foreground">H (mm)</label>
-              <div>{element.h_mm.toFixed(3)}</div>
-            </div>
-          </div>
-          <div className="grid grid-cols-4 gap-2 text-xs font-mono text-muted-foreground">
-            <div>
-              <label>Dots</label>
-              <div>{mmToDots(element.x_mm)}</div>
-            </div>
-            <div>
-              <label>Dots</label>
-              <div>{mmToDots(element.y_mm)}</div>
-            </div>
-            <div>
-              <label>Dots</label>
-              <div>{mmToDots(element.w_mm)}</div>
-            </div>
-            <div>
-              <label>Dots</label>
-              <div>{mmToDots(element.h_mm)}</div>
-            </div>
-          </div>
-          {!isSnapped && (
-            <div className="text-xs text-amber-600 mt-2">
-              💡 Tip: Enable snap-to-grid for precise dot alignment
-            </div>
-          )}
-        </div>
-
         {/* Data Binding */}
         <div className="space-y-2">
           <Label>Data Binding</Label>
@@ -380,23 +282,20 @@ export function DesignerInspector({ element, onElementUpdate, canvasSize }: Desi
               <Label>Module Width (mm)</Label>
               <Input
                 type="number"
-                value={element.barcode?.module_width_mm || 0.33}
+                value={element.barcode?.module_width_mm || 0.25}
                 onChange={(e) => onElementUpdate({ 
                   barcode: { 
                     ...element.barcode,
-                    module_width_mm: parseFloat(e.target.value) || 0.33 
+                    module_width_mm: parseFloat(e.target.value) || 0.25 
                   } 
                 })}
-                step="0.01"
+                step="0.05"
                 min="0.1"
                 max="1"
               />
-              <div className="text-xs text-muted-foreground">
-                {mmToDots(element.barcode?.module_width_mm || 0.33)} dots
-                {(element.barcode?.module_width_mm || 0.33) < 0.169 && (
-                  <Badge variant="destructive" className="ml-2 text-xs">⚠ Too small</Badge>
-                )}
-              </div>
+              {(element.barcode?.module_width_mm || 0.25) < 0.25 && (
+                <p className="text-xs text-destructive">⚠ Module width too small for reliable scanning</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -414,23 +313,9 @@ export function DesignerInspector({ element, onElementUpdate, canvasSize }: Desi
                 min="0.5"
                 max="5"
               />
-              <div className="text-xs text-muted-foreground">
-                {mmToDots(element.barcode?.quiet_zone_mm || 1)} dots
-                {(element.barcode?.quiet_zone_mm || 1) < 1 && (
-                  <Badge variant="destructive" className="ml-2 text-xs">⚠ Too small</Badge>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Height Validation</Label>
-              <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
-                Current: {element.h_mm.toFixed(1)}mm ({mmToDots(element.h_mm)} dots)<br/>
-                Minimum: {minimumBarcodeHeightMm(element.symbology || 'code128').toFixed(1)}mm for reliable scanning
-                {element.h_mm < minimumBarcodeHeightMm(element.symbology || 'code128') && (
-                  <Badge variant="destructive" className="ml-2">⚠ Too short</Badge>
-                )}
-              </div>
+              {(element.barcode?.quiet_zone_mm || 1) < 1 && (
+                <p className="text-xs text-destructive">⚠ Quiet zone too small for reliable scanning</p>
+              )}
             </div>
           </>
         )}

@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { htmlToPdfBase64 } from '@/lib/htmlToPdf';
-import { generatePrintOptions, validateBrotherProfile, generateCalibrationGrid } from "@/lib/paperMatching";
+import { generatePrintOptions, validateBrotherProfile } from "@/lib/paperMatching";
 
 interface Product {
   id: string;
@@ -117,24 +117,15 @@ export function useLabelPrint(stationId?: string) {
 
       if (labelError) throw labelError;
 
-      // Generate PDF from HTML with basic profile dimensions
-      console.log(`Generating PDF: ${activeProfile.width_mm}x${activeProfile.height_mm}mm, DPI: ${activeProfile.dpi}`);
-      
+      // Generate PDF from HTML if not provided
       let pdfBase64 = labelData.pdf_base64;
       if (!pdfBase64 && labelData.html) {
-        try {
-          pdfBase64 = await htmlToPdfBase64(labelData.html, {
-            width_mm: activeProfile.width_mm,
-            height_mm: activeProfile.height_mm,
-            margin_mm: activeProfile.margin_mm || 0,
-            dpi: activeProfile.dpi,
-            scale: 3
-          });
-          console.log(`PDF generated successfully (${pdfBase64.length} characters)`);
-        } catch (pdfError) {
-          console.error('PDF generation error:', pdfError);
-          throw new Error(`PDF conversion failed: ${pdfError.message}`);
-        }
+        pdfBase64 = await htmlToPdfBase64(labelData.html, {
+          width_mm: activeProfile.width_mm,
+          height_mm: activeProfile.height_mm,
+          margin_mm: activeProfile.margin_mm,
+          dpi: activeProfile.dpi
+        });
       }
 
       if (!pdfBase64) {
@@ -150,19 +141,26 @@ export function useLabelPrint(stationId?: string) {
         throw new Error('No printer selected. Please select a printer first.');
       }
 
-      // Get selected printer capabilities and generate basic print options
+      // Get selected printer capabilities
       const selectedPrinter = printers?.printers?.find(p => p.id === targetPrinterId);
       
-      const { options: printOptions } = generatePrintOptions(
+      // Validate Brother profile and generate print options
+      const validation = validateBrotherProfile(activeProfile.width_mm, activeProfile.height_mm);
+      if (!validation.isValid && validation.warning) {
+        console.warn('Brother profile validation:', validation.warning);
+      }
+
+      const { options: printOptions, warnings } = generatePrintOptions(
         selectedPrinter?.capabilities,
         activeProfile.width_mm,
         activeProfile.height_mm,
-        activeProfile.dpi,
-        selectedPrinter?.make_and_model
+        activeProfile.dpi
       );
 
-      console.log('Print options:', printOptions);
-      console.log('Selected printer:', selectedPrinter?.name);
+      // Show warnings to user
+      warnings.forEach(warning => {
+        toast.warning(warning, { duration: 5000 });
+      });
 
       // Print label
       const { data: printData, error: printError } = await supabase.functions.invoke('printnode-print', {
@@ -180,26 +178,12 @@ export function useLabelPrint(stationId?: string) {
       // Store last printer for future use
       localStorage.setItem('last-printer-id', targetPrinterId);
       
-      // Add paper info to response for user feedback
-      const paperUsed = printOptions.paper || `${activeProfile.width_mm}×${activeProfile.height_mm}mm`;
-      
-      return { 
-        ...printData, 
-        printer_id: targetPrinterId,
-        paper_used: paperUsed
-      };
+      return { ...printData, printer_id: targetPrinterId };
     },
     onSuccess: (data, variables) => {
-      const printer = printers?.printers?.find(p => p.id === data.printer_id);
-      const printerName = printer?.name || 'Unknown Printer';
+      const printerName = printers?.printers?.find(p => p.id === data.printer_id)?.name || 'Unknown Printer';
       
-      // Show success with print details
-      const paperInfo = data.paper_used || '';
-      const successMessage = paperInfo 
-        ? `Printed on ${printerName} using ${paperInfo} (Job #${data.job_id})`
-        : `Printed on ${printerName} (Job #${data.job_id})`;
-      
-      toast.success(successMessage, { duration: 6000 });
+      toast.success(`Printed "${variables.product.name}" on ${printerName} (Job #${data.job_id})`);
 
       // Beep if enabled
       if (config?.beep_on_success) {
@@ -228,7 +212,6 @@ export function useLabelPrint(stationId?: string) {
       setQuery('');
     },
     onError: (error: any) => {
-      console.error('Print error:', error);
       toast.error(error.message || 'Failed to print label');
     }
   });
@@ -252,57 +235,6 @@ export function useLabelPrint(stationId?: string) {
     }
   }, [config, printLabel]);
 
-  // Print calibration grid for Brother printers
-  const printCalibrationGrid = useMutation({
-    mutationFn: async (printerId: string) => {
-      if (!config) throw new Error('Configuration not loaded');
-      
-      const activeProfile = config.profiles.find(p => p.id === config.active_profile_id);
-      if (!activeProfile) throw new Error('Active profile not found');
-
-      // Generate calibration grid HTML
-      const gridHtml = generateCalibrationGrid(activeProfile.width_mm, activeProfile.height_mm);
-      
-      // Convert to PDF
-      const pdfBase64 = await htmlToPdfBase64(gridHtml, {
-        width_mm: activeProfile.width_mm,
-        height_mm: activeProfile.height_mm,
-        dpi: activeProfile.dpi,
-        margin_mm: 0
-      });
-
-      // Get printer capabilities for options
-      const selectedPrinter = printers?.printers?.find(p => p.id === printerId);
-      const { options: printOptions } = generatePrintOptions(
-        selectedPrinter?.capabilities,
-        activeProfile.width_mm,
-        activeProfile.height_mm,
-        activeProfile.dpi,
-        selectedPrinter?.make_and_model
-      );
-
-      // Print the grid
-      const { data: printData, error: printError } = await supabase.functions.invoke('printnode-print', {
-        body: {
-          printer_id: printerId,
-          title: `Calibration Grid ${activeProfile.width_mm}×${activeProfile.height_mm}mm`,
-          base64: pdfBase64,
-          source: 'calibration-test',
-          options: printOptions
-        }
-      });
-
-      if (printError) throw printError;
-      return printData;
-    },
-    onSuccess: () => {
-      toast.success('Calibration grid printed. Measure 10mm squares to verify scale accuracy.');
-    },
-    onError: (error: any) => {
-      toast.error(`Failed to print calibration grid: ${error.message}`);
-    }
-  });
-
   return {
     // State
     query,
@@ -324,11 +256,7 @@ export function useLabelPrint(stationId?: string) {
     handleSearch,
     handleQuickPrint,
     printLabel: printLabel.mutate,
-    printCalibrationGrid: printCalibrationGrid.mutate,
     setSelectedProduct,
-    
-    // Loading states
-    calibrationLoading: printCalibrationGrid.isPending,
     
     // Utils
     getLastPrinterId: () => localStorage.getItem('last-printer-id'),

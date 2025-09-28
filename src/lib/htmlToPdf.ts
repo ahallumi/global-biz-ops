@@ -1,6 +1,5 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { snapMm, snapSizeMm } from './dotGrid';
 
 interface PDFOptions {
   width_mm: number;
@@ -11,42 +10,35 @@ interface PDFOptions {
 }
 
 export async function htmlToPdfBase64(html: string, options: PDFOptions): Promise<string> {
-  const { width_mm, height_mm, margin_mm, dpi = 300, scale = 4 } = options;
-  
-  // Snap dimensions to dot grid for precision
-  const snappedWidth = snapSizeMm(width_mm);
-  const snappedHeight = snapSizeMm(height_mm);
-  const snappedMargin = snapMm(margin_mm);
+  const { width_mm, height_mm, margin_mm, scale = 4 } = options;
   
   // Validate input parameters
-  if (!snappedWidth || snappedWidth <= 0 || !snappedHeight || snappedHeight <= 0) {
-    throw new Error(`Invalid label dimensions: ${snappedWidth}mm x ${snappedHeight}mm`);
+  if (!width_mm || width_mm <= 0 || !height_mm || height_mm <= 0) {
+    throw new Error(`Invalid label dimensions: ${width_mm}mm x ${height_mm}mm`);
   }
   
-  if (snappedMargin < 0) {
-    throw new Error(`Invalid margin: ${snappedMargin}mm`);
+  if (margin_mm < 0) {
+    throw new Error(`Invalid margin: ${margin_mm}mm`);
   }
   
   // Ensure margins don't exceed half the dimensions to prevent negative content size
-  const maxMargin = Math.min(snappedWidth, snappedHeight) / 2;
-  const safeMargin = Math.min(snappedMargin, maxMargin);
+  const maxMargin = Math.min(width_mm, height_mm) / 2;
+  const safeMargin = Math.min(margin_mm, maxMargin);
   
-  if (safeMargin !== snappedMargin) {
-    console.warn(`Margin reduced from ${snappedMargin}mm to ${safeMargin}mm to fit label dimensions`);
+  if (safeMargin !== margin_mm) {
+    console.warn(`Margin reduced from ${margin_mm}mm to ${safeMargin}mm to fit label dimensions`);
   }
   
-  // Create a hidden container for rendering with precise dimensions
+  // Create a hidden container for rendering
   const container = document.createElement('div');
   container.style.position = 'absolute';
   container.style.left = '-9999px';
   container.style.top = '-9999px';
-  container.style.width = `${snappedWidth}mm`;
-  container.style.height = `${snappedHeight}mm`;
+  container.style.width = `${width_mm}mm`;
+  container.style.height = `${height_mm}mm`;
   container.style.padding = '0';
   container.style.margin = '0';
   container.style.backgroundColor = 'white';
-  container.style.fontKerning = 'normal';
-  container.style.letterSpacing = '0';
   container.innerHTML = html;
   
   document.body.appendChild(container);
@@ -63,20 +55,20 @@ export async function htmlToPdfBase64(html: string, options: PDFOptions): Promis
       height: container.offsetHeight
     });
     
-    // Create PDF with exact snapped dimensions
+    // Create PDF with exact dimensions
     const pdf = new jsPDF({
       unit: 'mm',
-      format: [snappedWidth, snappedHeight],
-      orientation: snappedWidth > snappedHeight ? 'landscape' : 'portrait'
+      format: [width_mm, height_mm],
+      orientation: width_mm > height_mm ? 'landscape' : 'portrait'
     });
     
     // Calculate content dimensions using safe margins
-    const contentWidth = snappedWidth - (2 * safeMargin);
-    const contentHeight = snappedHeight - (2 * safeMargin);
+    const contentWidth = width_mm - (2 * safeMargin);
+    const contentHeight = height_mm - (2 * safeMargin);
     
     // Ensure content dimensions are positive
     if (contentWidth <= 0 || contentHeight <= 0) {
-      throw new Error(`Content dimensions too small: ${contentWidth}mm x ${contentHeight}mm. Label: ${snappedWidth}mm x ${snappedHeight}mm, Margin: ${safeMargin}mm`);
+      throw new Error(`Content dimensions too small: ${contentWidth}mm x ${contentHeight}mm. Label: ${width_mm}mm x ${height_mm}mm, Margin: ${safeMargin}mm`);
     }
     
     try {

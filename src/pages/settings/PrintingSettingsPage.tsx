@@ -275,14 +275,6 @@ export default function PrintingSettingsPage() {
                 <TestTube className="h-4 w-4" />
                 {calibrationLoading ? 'Generating...' : 'Test Calibration'}
               </Button>
-              <Button
-                onClick={() => navigate('/settings/printing/calibration')}
-                variant="outline"
-                className="flex items-center gap-2"
-              >
-                <Settings className="h-4 w-4" />
-                Station Calibration
-              </Button>
             </div>
           </CardContent>
         </Card>

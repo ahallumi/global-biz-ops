@@ -2,8 +2,7 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { TemplateElement, TemplateLayout } from './LabelDesigner';
 import { ResizeHandle, ResizeHandlePosition } from './ResizeHandle';
 import { useDesignerStore } from '@/stores/designerStore';
-import { fitTextToBox } from '@/lib/layoutEngine';
-import { snapMm, snapSizeMm, DOT_MM, mmToDots } from '@/lib/dotGrid';
+import { fitTextToBox, mmToPx, getUnitSuffix } from '@/lib/textAutofit';
 import { formatCurrency } from '@/lib/utils';
 
 interface DesignerCanvasProps {
@@ -32,7 +31,7 @@ export function DesignerCanvas({ layout, sampleProduct, onElementUpdate, onEleme
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, w: 0, h: 0 });
   
   const DRAG_THRESHOLD = 3; // pixels
-  const SNAP_GRID = DOT_MM; // Snap to dot grid for precision
+  const SNAP_GRID = 1; // mm
   
   const selectedElement = layout.elements.find(el => el.id === selectedElementId);
 
@@ -51,15 +50,15 @@ export function DesignerCanvas({ layout, sampleProduct, onElementUpdate, onEleme
     return mm * finalScale;
   }, [finalScale]);
 
-  // Convert pixels to mm with precision snapping
+  // Convert pixels to mm with snapping
   const pxToMm = useCallback((px: number): number => {
     const mm = px / finalScale;
-    return snapEnabled ? snapMm(mm) : mm;
+    return snapEnabled ? Math.round(mm / SNAP_GRID) * SNAP_GRID : mm;
   }, [finalScale, snapEnabled]);
 
-  // Snap to dot grid helper
+  // Snap to grid helper
   const snapToGrid = useCallback((value: number): number => {
-    return snapEnabled ? snapMm(value) : value;
+    return snapEnabled ? Math.round(value / SNAP_GRID) * SNAP_GRID : value;
   }, [snapEnabled]);
 
   // Enhanced binding evaluation with unit suffix support
@@ -101,17 +100,6 @@ export function DesignerCanvas({ layout, sampleProduct, onElementUpdate, onEleme
       return bind;
     }
   }, []);
-
-  // Helper function for unit suffix
-  const getUnitSuffix = (unit?: string): string => {
-    if (!unit) return '';
-    const lowerUnit = unit.toLowerCase();
-    if (lowerUnit.includes('lb') || lowerUnit.includes('pound')) return '/lb';
-    if (lowerUnit.includes('kg') || lowerUnit.includes('kilogram')) return '/kg';
-    if (lowerUnit.includes('oz') || lowerUnit.includes('ounce')) return '/oz';
-    if (lowerUnit.includes('g') && !lowerUnit.includes('kg')) return '/g';
-    return `/${unit}`;
-  };
 
   // Element interaction handlers
   const handleElementMouseDown = useCallback((element: TemplateElement, e: React.MouseEvent) => {
@@ -206,9 +194,8 @@ export function DesignerCanvas({ layout, sampleProduct, onElementUpdate, onEleme
           break;
       }
       
-      // Enforce minimum sizes in dots
-      const minDots = selectedElement.type === 'barcode' ? 5 : 2;
-      const minSize = minDots * DOT_MM;
+      // Enforce minimum sizes
+      const minSize = selectedElement.type === 'barcode' ? 5 : 2;
       newW = Math.max(minSize, newW);
       newH = Math.max(minSize, newH);
       
@@ -278,18 +265,12 @@ export function DesignerCanvas({ layout, sampleProduct, onElementUpdate, onEleme
       if (!text) return;
       
       const boxPx = {
-        width: (element.w_mm / 25.4) * layout.meta.dpi,
-        height: (element.h_mm / 25.4) * layout.meta.dpi
+        width: mmToPx(element.w_mm, layout.meta.dpi),
+        height: mmToPx(element.h_mm, layout.meta.dpi)
       };
       
       try {
-        const result = await fitTextToBox(
-          text, 
-          boxPx, 
-          element.style, 
-          element.overflow,
-          false // isServer
-        );
+        const result = await fitTextToBox(text, boxPx, element.style, element.overflow);
         
         if (Math.abs(result.fontSize - element.style.font_size_pt) > 0.1) {
           onElementUpdate(element.id, {
@@ -491,11 +472,6 @@ export function DesignerCanvas({ layout, sampleProduct, onElementUpdate, onEleme
               style={{
                 width: mmToPxCanvas(labelWidth),
                 height: mmToPxCanvas(labelHeight),
-                // Dot grid overlay when enabled
-                backgroundImage: gridEnabled ? `
-                  radial-gradient(circle at 1px 1px, rgba(0,0,0,0.2) 1px, transparent 0)
-                ` : 'none',
-                backgroundSize: gridEnabled ? `${mmToPxCanvas(DOT_MM)}px ${mmToPxCanvas(DOT_MM)}px` : 'auto',
                 minWidth: mmToPxCanvas(labelWidth),
                 minHeight: mmToPxCanvas(labelHeight)
               }}
@@ -504,22 +480,18 @@ export function DesignerCanvas({ layout, sampleProduct, onElementUpdate, onEleme
               onMouseLeave={handleMouseUp}
               onClick={handleCanvasClick}
             >
-              {/* Precision dot grid overlay */}
+              {/* Grid overlay */}
               {gridEnabled && (
                 <div 
                   className="absolute inset-0 pointer-events-none"
                   style={{
                     backgroundImage: `
-                      linear-gradient(to right, hsl(var(--primary) / 0.2) 1px, transparent 1px),
-                      linear-gradient(to bottom, hsl(var(--primary) / 0.2) 1px, transparent 1px)
+                      linear-gradient(to right, hsl(var(--muted-foreground) / 0.1) 1px, transparent 1px),
+                      linear-gradient(to bottom, hsl(var(--muted-foreground) / 0.1) 1px, transparent 1px)
                     `,
-                    backgroundSize: `${mmToPxCanvas(DOT_MM)}px ${mmToPxCanvas(DOT_MM)}px`
+                    backgroundSize: `${mmToPxCanvas(SNAP_GRID)}px ${mmToPxCanvas(SNAP_GRID)}px`
                   }}
-                >
-                  <div className="absolute top-2 left-2 bg-primary/10 text-primary px-2 py-1 rounded text-xs font-mono">
-                    Dot Grid: {DOT_MM.toFixed(3)}mm ({mmToDots(1)}dots/mm)
-                  </div>
-                </div>
+                />
               )}
               
               {/* Elements */}
