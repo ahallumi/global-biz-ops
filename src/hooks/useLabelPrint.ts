@@ -117,43 +117,24 @@ export function useLabelPrint(stationId?: string) {
 
       if (labelError) throw labelError;
 
-      // Apply station calibration before PDF generation
-      const stationId = localStorage.getItem('station-id');
-      let calibrationOptions = {
-        width_mm: activeProfile.width_mm,
-        height_mm: activeProfile.height_mm,
-        margin_mm: activeProfile.margin_mm,
-        dpi: activeProfile.dpi
-      };
-
-      if (stationId) {
-        try {
-          const { data: calibration } = await supabase
-            .from('label_print_overrides')
-            .select('scale_x, scale_y, offset_x_mm, offset_y_mm')
-            .eq('station_id', stationId)
-            .eq('profile_id', activeProfile.id)
-            .single();
-
-          if (calibration) {
-            // Apply calibration scaling to dimensions
-            calibrationOptions = {
-              ...calibrationOptions,
-              width_mm: calibrationOptions.width_mm * (calibration.scale_x || 1.0),
-              height_mm: calibrationOptions.height_mm * (calibration.scale_y || 1.0),
-            };
-            
-            console.log('Applied station calibration:', calibration);
-          }
-        } catch (error) {
-          console.log('No calibration found for station:', stationId);
-        }
-      }
-
-      // Generate PDF from HTML if not provided
+      // Generate PDF from HTML with basic profile dimensions
+      console.log(`Generating PDF: ${activeProfile.width_mm}x${activeProfile.height_mm}mm, DPI: ${activeProfile.dpi}`);
+      
       let pdfBase64 = labelData.pdf_base64;
       if (!pdfBase64 && labelData.html) {
-        pdfBase64 = await htmlToPdfBase64(labelData.html, calibrationOptions);
+        try {
+          pdfBase64 = await htmlToPdfBase64(labelData.html, {
+            width_mm: activeProfile.width_mm,
+            height_mm: activeProfile.height_mm,
+            margin_mm: activeProfile.margin_mm || 0,
+            dpi: activeProfile.dpi,
+            scale: 3
+          });
+          console.log(`PDF generated successfully (${pdfBase64.length} characters)`);
+        } catch (pdfError) {
+          console.error('PDF generation error:', pdfError);
+          throw new Error(`PDF conversion failed: ${pdfError.message}`);
+        }
       }
 
       if (!pdfBase64) {
