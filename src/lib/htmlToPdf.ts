@@ -28,31 +28,95 @@ export async function htmlToPdfBase64(html: string, options: PDFOptions): Promis
   if (safeMargin !== margin_mm) {
     console.warn(`Margin reduced from ${margin_mm}mm to ${safeMargin}mm to fit label dimensions`);
   }
+
+  // Debug: Log HTML content for diagnostic
+  console.log('PDF_DEBUG: HTML snippet:', html.slice(0, 400));
+  console.log('PDF_DEBUG: HTML length:', html.length);
+  console.log('PDF_DEBUG: Contains placeholders:', /\{\{[^}]+\}\}/.test(html));
   
-  // Create a hidden container for rendering
-  const container = document.createElement('div');
-  container.style.position = 'absolute';
-  container.style.left = '-9999px';
-  container.style.top = '-9999px';
-  container.style.width = `${width_mm}mm`;
-  container.style.height = `${height_mm}mm`;
-  container.style.padding = '0';
-  container.style.margin = '0';
-  container.style.backgroundColor = 'white';
-  container.innerHTML = html;
+  // Inject page size CSS if missing
+  let processedHtml = html;
+  if (!html.includes('@page')) {
+    const pageCSS = `
+      <style>
+        @page { size: ${width_mm}mm ${height_mm}mm; margin: 0; }
+        html, body { width: ${width_mm}mm; height: ${height_mm}mm; margin: 0; padding: 0; background: #fff; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      </style>
+    `;
+    
+    if (html.includes('<head>')) {
+      processedHtml = html.replace('<head>', `<head>${pageCSS}`);
+    } else if (html.includes('<html>')) {
+      processedHtml = html.replace('<html>', `<html><head>${pageCSS}</head>`);
+    } else {
+      processedHtml = `<!DOCTYPE html><html><head>${pageCSS}</head><body>${html}</body></html>`;
+    }
+  }
+
+  // Create sandboxed iframe for proper rendering
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'absolute';
+  iframe.style.left = '-9999px';
+  iframe.style.top = '-9999px';
+  iframe.style.width = `${width_mm}mm`;
+  iframe.style.height = `${height_mm}mm`;
+  iframe.style.border = 'none';
+  iframe.style.backgroundColor = 'white';
   
-  document.body.appendChild(container);
+  document.body.appendChild(iframe);
   
   try {
-    // Use html2canvas to render the HTML at high resolution
-    const canvas = await html2canvas(container, {
+    // Wait for iframe to load and render content
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!iframeDoc) {
+      throw new Error('Cannot access iframe document');
+    }
+
+    // Write HTML and wait for load
+    iframeDoc.open();
+    iframeDoc.write(processedHtml);
+    iframeDoc.close();
+
+    // Wait for fonts and scripts to load
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Iframe load timeout')), 5000);
+      
+      iframe.onload = async () => {
+        try {
+          clearTimeout(timeout);
+          // Wait for fonts to be ready
+          const iframeWindow = iframe.contentWindow;
+          if (iframeWindow?.document?.fonts) {
+            await iframeWindow.document.fonts.ready;
+          }
+          // Small delay for final render
+          setTimeout(resolve, 100);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      // Trigger load if already loaded
+      if (iframe.contentDocument?.readyState === 'complete') {
+        iframe.onload?.(new Event('load') as any);
+      }
+    });
+
+    const iframeBody = iframeDoc.body;
+    if (!iframeBody) {
+      throw new Error('Iframe body not found');
+    }
+
+    // Use html2canvas to render the iframe content at high resolution
+    const canvas = await html2canvas(iframeBody, {
       scale: scale,
       useCORS: true,
       allowTaint: true,
       backgroundColor: 'white',
       logging: false,
-      width: container.offsetWidth,
-      height: container.offsetHeight
+      width: iframeBody.offsetWidth,
+      height: iframeBody.offsetHeight
     });
     
     // Create PDF with exact dimensions
@@ -102,11 +166,20 @@ export async function htmlToPdfBase64(html: string, options: PDFOptions): Promis
     
     // Return base64 PDF (without data URI prefix)
     const pdfBase64 = pdf.output('datauristring').split(',')[1];
+    
+    // Debug: Log PDF validation
+    console.log('PDF_DEBUG: Generated PDF:', {
+      header: pdfBase64.slice(0, 8),
+      length: pdfBase64.length,
+      valid: pdfBase64.startsWith('JVBERi0'),
+      canvas_size: { width: canvas.width, height: canvas.height }
+    });
+    
     return pdfBase64;
     
   } finally {
     // Clean up
-    document.body.removeChild(container);
+    document.body.removeChild(iframe);
   }
 }
 

@@ -117,10 +117,30 @@ export function useLabelPrint(stationId?: string) {
 
       if (labelError) throw labelError;
 
+      // Debug: Log active profile and HTML content
+      console.log('LABEL_DEBUG: Active profile:', {
+        profile_id: activeProfile.id,
+        template_id: activeProfile.template_id,
+        dimensions: `${activeProfile.width_mm}x${activeProfile.height_mm}mm`,
+        product: {
+          name: product.name,
+          sku: product.sku,
+          barcode: product.barcode,
+          upc: product.upc
+        }
+      });
+
+      console.log('LABEL_DEBUG: Label HTML preview:', {
+        html_snippet: labelData.html?.slice(0, 500) || 'No HTML returned',
+        html_length: labelData.html?.length || 0,
+        has_placeholders: labelData.html ? /\{\{[^}]+\}\}/.test(labelData.html) : false,
+        placeholder_matches: labelData.html?.match(/\{\{[^}]+\}\}/g) || []
+      });
+
       // Generate PDF from HTML using browser-side rendering with forced zero margins
       let pdfBase64 = labelData.pdf_base64;
       if (!pdfBase64 && labelData.html) {
-        console.log('Generating PDF browser-side with profile:', {
+        console.log('LABEL_DEBUG: Generating PDF browser-side with profile:', {
           width_mm: activeProfile.width_mm,
           height_mm: activeProfile.height_mm,
           dpi: activeProfile.dpi,
@@ -141,10 +161,11 @@ export function useLabelPrint(stationId?: string) {
       }
 
       // Log PDF validation
-      console.log('PDF validation:', {
+      console.log('LABEL_DEBUG: PDF validation:', {
         base64_length: pdfBase64.length,
         pdf_header: pdfBase64.substring(0, 8),
-        is_valid_pdf: pdfBase64.startsWith('JVBERi0')
+        is_valid_pdf: pdfBase64.startsWith('JVBERi0'),
+        likely_empty: pdfBase64.length < 10000 // PDFs under 10KB are usually empty/broken
       });
 
       // Determine printer ID
