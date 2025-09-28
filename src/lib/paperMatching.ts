@@ -250,7 +250,7 @@ export function generateCalibrationGrid(widthMm: number, heightMm: number): stri
   `;
 }
 
-// Generate print options for PrintNode with Brother enhancements
+// Generate basic print options for PrintNode - simplified for reliability
 export function generatePrintOptions(
   capabilities: PrinterCapabilities | undefined,
   widthMm: number,
@@ -272,63 +272,17 @@ export function generatePrintOptions(
     dpi: `${dpi}x${dpi}`
   };
 
-  let brotherInfo;
-
-  if (!capabilities?.papers) {
-    warnings.push('Printer capabilities not available. Using default settings.');
-    return { options, warnings };
-  }
-
-  const paperMatch = findPaperMatch(capabilities.papers, widthMm, heightMm);
-  const validation = validateBrotherProfile(widthMm, heightMm);
-  
-  // Check if this is a Brother printer
-  const isBrother = printerModel?.toLowerCase().includes('brother') || 
-                   printerModel?.toLowerCase().includes('ql-');
-
-  if (paperMatch) {
-    options.paper = paperMatch.name;
-    options.rotate = paperMatch.rotate;
-    
-    console.log(`Using paper: ${paperMatch.name} (rotate: ${paperMatch.rotate}°)`);
-    
-    if (paperMatch.rotate !== 0) {
-      warnings.push(`Label rotated ${paperMatch.rotate}° for paper alignment`);
-    }
-
-    // Brother-specific feedback
-    if (isBrother && validation.matchedPreset) {
-      brotherInfo = {
-        detectedRoll: validation.matchedPreset.name,
-        setupRequired: false
-      };
-    }
-  } else {
-    warnings.push(
-      `No matching paper found for ${widthMm}×${heightMm}mm. Check printer setup.`
-    );
-    
-    if (isBrother) {
-      const setupInstructions = [
-        'Run "Check Media" in Brother P-touch Editor',
-        `Set paper to ${widthMm}×${heightMm}mm in Printing Preferences`,
-        'Ensure PrintNode client uses Engine6 backend'
-      ];
-      
-      brotherInfo = {
-        setupRequired: true,
-        setupInstructions
-      };
-      
-      if (validation.matchedPreset) {
-        warnings.push(`Load ${validation.matchedPreset.name} roll and run "Check Media"`);
+  // Try to find matching paper if capabilities are available
+  if (capabilities?.papers) {
+    const paperMatch = findPaperMatch(capabilities.papers, widthMm, heightMm);
+    if (paperMatch) {
+      options.paper = paperMatch.name;
+      if (paperMatch.rotate !== 0) {
+        options.rotate = paperMatch.rotate;
       }
-    }
-    
-    if (!capabilities.supports_custom_paper_size) {
-      warnings.push('Printer does not support custom paper sizes');
+      console.log(`Using paper: ${paperMatch.name} (rotate: ${paperMatch.rotate || 0}°)`);
     }
   }
 
-  return { options, warnings, brotherInfo };
+  return { options, warnings };
 }

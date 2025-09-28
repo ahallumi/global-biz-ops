@@ -169,12 +169,10 @@ export function useLabelPrint(stationId?: string) {
         throw new Error('No printer selected. Please select a printer first.');
       }
 
-      // Get selected printer capabilities
+      // Get selected printer capabilities and generate basic print options
       const selectedPrinter = printers?.printers?.find(p => p.id === targetPrinterId);
       
-      // Validate Brother profile and generate print options
-      const validation = validateBrotherProfile(activeProfile.width_mm, activeProfile.height_mm);
-      const { options: printOptions, warnings, brotherInfo } = generatePrintOptions(
+      const { options: printOptions } = generatePrintOptions(
         selectedPrinter?.capabilities,
         activeProfile.width_mm,
         activeProfile.height_mm,
@@ -182,17 +180,8 @@ export function useLabelPrint(stationId?: string) {
         selectedPrinter?.make_and_model
       );
 
-      // Show Brother validation info if relevant
-      if (validation.warning && selectedPrinter?.make_and_model?.toLowerCase().includes('brother')) {
-        console.log('Brother media:', validation.warning);
-      }
-
-      // Show print warnings to user (but filter out verbose ones)
-      warnings
-        .filter(warning => !warning.includes('Printer capabilities not available'))
-        .forEach(warning => {
-          toast.info(warning, { duration: 4000 });
-        });
+      console.log('Print options:', printOptions);
+      console.log('Selected printer:', selectedPrinter?.name);
 
       // Print label
       const { data: printData, error: printError } = await supabase.functions.invoke('printnode-print', {
@@ -216,9 +205,7 @@ export function useLabelPrint(stationId?: string) {
       return { 
         ...printData, 
         printer_id: targetPrinterId,
-        paper_used: paperUsed,
-        rotation: printOptions.rotate || 0,
-        brother_info: brotherInfo
+        paper_used: paperUsed
       };
     },
     onSuccess: (data, variables) => {
@@ -260,6 +247,7 @@ export function useLabelPrint(stationId?: string) {
       setQuery('');
     },
     onError: (error: any) => {
+      console.error('Print error:', error);
       toast.error(error.message || 'Failed to print label');
     }
   });

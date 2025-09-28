@@ -8,9 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useLabelPrint } from '@/hooks/useLabelPrint';
-import { findPaperMatch, validateBrotherProfile, generatePrintOptions } from '@/lib/paperMatching';
-import { BrotherSetupGuide } from '@/components/printing/BrotherSetupGuide';
-import { Printer, Search, Zap, Package, Tag, Barcode, ArrowLeft, Settings, AlertTriangle, CheckCircle, TestTube } from 'lucide-react';
+import { findPaperMatch, generatePrintOptions } from '@/lib/paperMatching';
+import { Printer, Search, Zap, Package, Tag, Barcode, ArrowLeft, Settings, CheckCircle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface Product {
@@ -28,7 +27,6 @@ export default function LabelPrintPage() {
   const navigate = useNavigate();
   const [selectedPrinterId, setSelectedPrinterId] = useState<string>('');
   const [showResults, setShowResults] = useState(false);
-  const [showBrotherGuide, setShowBrotherGuide] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   
   const {
@@ -45,7 +43,6 @@ export default function LabelPrintPage() {
     searchResults,
     handleSearch,
     handleQuickPrint,
-    printCalibrationGrid,
     setSelectedProduct
   } = useLabelPrint();
 
@@ -54,32 +51,9 @@ export default function LabelPrintPage() {
     searchInputRef.current?.focus();
   }, []);
 
-  // Get printer status and compatibility info
+  // Get basic printer info
   const selectedPrinter = printers.find(p => p.id === selectedPrinterId);
   const activeProfile = config?.profiles?.find(p => p.id === config.active_profile_id);
-  
-  let printerStatus = null;
-  if (activeProfile && selectedPrinter) {
-    const validation = validateBrotherProfile(activeProfile.width_mm, activeProfile.height_mm);
-    const { brotherInfo } = generatePrintOptions(
-      selectedPrinter.capabilities,
-      activeProfile.width_mm,
-      activeProfile.height_mm,
-      activeProfile.dpi,
-      selectedPrinter.make_and_model
-    );
-    
-    const isBrother = selectedPrinter.make_and_model?.toLowerCase().includes('brother') || 
-                     selectedPrinter.make_and_model?.toLowerCase().includes('ql-');
-    
-    printerStatus = {
-      validation,
-      brotherInfo,
-      isBrother,
-      paperMatch: selectedPrinter.capabilities?.papers ? 
-        findPaperMatch(selectedPrinter.capabilities.papers, activeProfile.width_mm, activeProfile.height_mm) : null
-    };
-  }
 
   // Load last printer from localStorage
   useEffect(() => {
@@ -261,96 +235,30 @@ export default function LabelPrintPage() {
             </CardContent>
           </Card>
 
-          {/* Printer Status & Compatibility */}
+          {/* Printer Status - Simplified */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                {printerStatus?.paperMatch ? (
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                ) : printerStatus?.isBrother ? (
-                  <AlertTriangle className="h-5 w-5 text-amber-600" />
-                ) : (
-                  <Settings className="h-5 w-5" />
-                )}
+                <Settings className="h-5 w-5" />
                 Printer Status
               </CardTitle>
-              <CardDescription>Compatibility & setup</CardDescription>
+              <CardDescription>Ready to print</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent>
               {!selectedPrinterId ? (
                 <p className="text-sm text-muted-foreground">Select a printer first</p>
               ) : !activeProfile ? (
                 <p className="text-sm text-muted-foreground">No active profile</p>
-              ) : printerStatus ? (
-                <>
-                  {/* Paper Compatibility */}
-                  <div className="flex items-start gap-2">
-                    {printerStatus.paperMatch ? (
-                      <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
-                    ) : (
-                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5" />
-                    )}
-                    <div className="text-sm">
-                      {printerStatus.paperMatch ? (
-                        <div>
-                          <span className="font-medium">Compatible: {printerStatus.paperMatch.name}</span>
-                          {printerStatus.paperMatch.rotate > 0 && (
-                            <div className="text-xs text-muted-foreground">
-                              Rotated {printerStatus.paperMatch.rotate}°
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div>
-                          <span className="font-medium">Setup required</span>
-                          <div className="text-xs text-muted-foreground">
-                            {activeProfile.width_mm}×{activeProfile.height_mm}mm not detected
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Brother-specific info */}
-                  {printerStatus.isBrother && (
-                    <div className="space-y-2">
-                      {printerStatus.validation.matchedPreset && (
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">
-                            {printerStatus.validation.matchedPreset.name}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {printerStatus.validation.isContinuous ? 'Continuous' : 'Die-cut'}
-                          </span>
-                        </div>
-                      )}
-                      
-                      <div className="space-y-1">
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => setShowBrotherGuide(true)}
-                          className="w-full text-xs"
-                        >
-                          <Settings className="h-3 w-3 mr-1" />
-                          Brother Setup Guide
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => printCalibrationGrid(selectedPrinterId)}
-                          disabled={calibrationLoading}
-                          className="w-full text-xs"
-                        >
-                          <TestTube className="h-3 w-3 mr-1" />
-                          Print Test Grid
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </>
               ) : (
-                <p className="text-sm text-muted-foreground">Checking compatibility...</p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <span className="text-sm font-medium">Ready to print</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {activeProfile.width_mm}×{activeProfile.height_mm}mm at {activeProfile.dpi}dpi
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>
