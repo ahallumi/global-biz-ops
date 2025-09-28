@@ -27,7 +27,7 @@ export function findPaperMatch(
   papers: Papers,
   widthMm: number,
   heightMm: number,
-  tolerance: number = 5 // ±0.5mm in tenths
+  tolerance: number = 10 // ±1.0mm in tenths (widened from ±0.5mm)
 ): PaperMatch | null {
   const targetW = mmToTenths(widthMm);
   const targetH = mmToTenths(heightMm);

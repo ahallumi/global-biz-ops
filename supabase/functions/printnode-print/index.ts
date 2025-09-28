@@ -47,7 +47,15 @@ serve(async (req) => {
       });
     }
 
-    console.log('Submitting print job:', { printer_id, title, source, options });
+    console.log('Submitting print job:', { 
+      printer_id, 
+      title, 
+      source, 
+      options,
+      pdf_base64_length: base64.length,
+      pdf_header: base64.substring(0, 8),
+      is_valid_pdf: base64.startsWith('JVBERi0')
+    });
 
     const printJob: any = {
       printerId: parseInt(printer_id),

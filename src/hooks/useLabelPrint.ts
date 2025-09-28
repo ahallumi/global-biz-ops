@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { htmlToPdfBase64 } from '@/lib/htmlToPdf';
+// Removed browser-side PDF generation - now using server-side rendering
 import { generatePrintOptions, validateBrotherProfile } from "@/lib/paperMatching";
 
 interface Product {
@@ -117,20 +117,41 @@ export function useLabelPrint(stationId?: string) {
 
       if (labelError) throw labelError;
 
-      // Generate PDF from HTML if not provided
+      // Generate PDF from HTML using server-side rendering (rollback from browser jsPDF)
       let pdfBase64 = labelData.pdf_base64;
       if (!pdfBase64 && labelData.html) {
-        pdfBase64 = await htmlToPdfBase64(labelData.html, {
+        console.log('Generating PDF server-side with profile:', {
           width_mm: activeProfile.width_mm,
           height_mm: activeProfile.height_mm,
-          margin_mm: activeProfile.margin_mm,
-          dpi: activeProfile.dpi
+          dpi: activeProfile.dpi,
+          margin_mm: 0, // Force zero margins for exact size
+          html_length: labelData.html.length
         });
+
+        const { data: renderData, error: renderError } = await supabase.functions.invoke('render-label-html', {
+          body: {
+            html: labelData.html,
+            width_mm: activeProfile.width_mm,
+            height_mm: activeProfile.height_mm,
+            dpi: activeProfile.dpi,
+            margin_mm: 0 // Force zero margins to eliminate browser jsPDF issues
+          }
+        });
+
+        if (renderError) throw renderError;
+        pdfBase64 = renderData.pdf_base64;
       }
 
       if (!pdfBase64) {
         throw new Error('Failed to generate PDF for printing');
       }
+
+      // Log PDF validation
+      console.log('PDF validation:', {
+        base64_length: pdfBase64.length,
+        pdf_header: pdfBase64.substring(0, 8),
+        is_valid_pdf: pdfBase64.startsWith('JVBERi0')
+      });
 
       // Determine printer ID
       const targetPrinterId = printerId || 
@@ -144,18 +165,44 @@ export function useLabelPrint(stationId?: string) {
       // Get selected printer capabilities
       const selectedPrinter = printers?.printers?.find(p => p.id === targetPrinterId);
       
+      console.log('Selected printer capabilities:', {
+        printer_id: targetPrinterId,
+        printer_name: selectedPrinter?.name,
+        has_capabilities: !!selectedPrinter?.capabilities,
+        papers_count: selectedPrinter?.capabilities?.papers ? Object.keys(selectedPrinter.capabilities.papers).length : 0
+      });
+      
       // Validate Brother profile and generate print options
       const validation = validateBrotherProfile(activeProfile.width_mm, activeProfile.height_mm);
       if (!validation.isValid && validation.warning) {
         console.warn('Brother profile validation:', validation.warning);
       }
 
-      const { options: printOptions, warnings } = generatePrintOptions(
+      // ROLLBACK: Force known-good PrintNode options temporarily
+      const forcedOptions = {
+        paper: "29 x 90 mm", // Known-good paper name for DK-1201
+        dpi: "300x300",
+        fit_to_page: false,
+        rotate: 0
+      };
+
+      // Try capabilities matching but fall back to forced options
+      const { options: matchedOptions, warnings } = generatePrintOptions(
         selectedPrinter?.capabilities,
         activeProfile.width_mm,
         activeProfile.height_mm,
         activeProfile.dpi
       );
+
+      // Use matched options if available, otherwise use forced options
+      const printOptions = selectedPrinter?.capabilities?.papers ? matchedOptions : forcedOptions;
+      
+      console.log('Print options determined:', {
+        using_forced: !selectedPrinter?.capabilities?.papers,
+        final_options: printOptions,
+        matched_options: matchedOptions,
+        warnings_count: warnings.length
+      });
 
       // Show warnings to user
       warnings.forEach(warning => {
