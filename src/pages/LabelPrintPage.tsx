@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useLabelPrint } from '@/hooks/useLabelPrint';
+import { findPaperMatch } from '@/lib/paperMatching';
 import { Printer, Search, Zap, Package, Tag, Barcode, ArrowLeft } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -176,7 +177,6 @@ export default function LabelPrintPage() {
                   
                   const capabilities = printer.capabilities;
                   if (capabilities?.papers) {
-                    const { findPaperMatch } = require('@/lib/paperMatching');
                     const match = findPaperMatch(capabilities.papers, activeProfile.width_mm, activeProfile.height_mm);
                     if (match) {
                       return match.rotate > 0 ? `${match.name} (rotated ${match.rotate}°)` : match.name;
