@@ -80,7 +80,7 @@ function renderHtmlTemplate(template: string, product: any): string {
   const price = resolvePrice(product);
   
   // Format UPC for barcode fonts (ensure 12 digits for UPC-A)
-  const upcRaw = product.upc || '';
+  const upcRaw = product.barcode || '';
   const upcFormatted = upcRaw.padStart(12, '0').slice(0, 12);
   
   const substitutions = {
