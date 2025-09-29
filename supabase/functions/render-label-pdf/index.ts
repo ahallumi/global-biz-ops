@@ -17,7 +17,7 @@ serve(async (req) => {
       throw new Error('HTML content is required');
     }
 
-    console.log('Browserless PDF render request:', {
+    console.log('Gotenberg PDF render request:', {
       width_mm,
       height_mm,
       dpi,
@@ -26,10 +26,10 @@ serve(async (req) => {
       html_length: html.length
     });
 
-    // Get Browserless token from secrets
-    const browserlessToken = Deno.env.get('BROWSERLESS_TOKEN');
-    if (!browserlessToken) {
-      throw new Error('Browserless token not configured');
+    // Get Gotenberg URL from secrets
+    const gotenbergUrl = Deno.env.get('GOTENBERG_URL');
+    if (!gotenbergUrl) {
+      throw new Error('GOTENBERG_URL not configured');
     }
 
     // Prepare HTML with diagnostic CSS if requested
@@ -47,52 +47,35 @@ serve(async (req) => {
       finalHtml = finalHtml.replace('class="label"', 'class="label debug"');
     }
 
-    // Call Browserless Cloud API for PDF generation
-    const browserlessUrl = `https://production-sfo.browserless.io/pdf?token=${browserlessToken}`;
-    
-    const pdfOptions = {
-      html: finalHtml,
-      options: {
-        printBackground: true,
-        preferCSSPageSize: true,
-        displayHeaderFooter: false,
-        scale: 1,
-        margin: {
-          top: `${margin_mm}mm`,
-          right: `${margin_mm}mm`, 
-          bottom: `${margin_mm}mm`,
-          left: `${margin_mm}mm`
-        }
-      },
-      gotoOptions: {
-        waitUntil: 'networkidle2',
-        timeout: 30000
-      }
-    };
+    // Build FormData for Gotenberg API
+    const formData = new FormData();
+    formData.append('files', new Blob([finalHtml], { type: 'text/html' }), 'index.html');
+    formData.append('printBackground', 'true');
+    formData.append('preferCssPageSize', 'true');
+    formData.append('scale', '1');
+    formData.append('emulatedMediaType', 'print');
+    formData.append('waitDelay', '150ms'); // Allow time for webfonts to load
 
-    console.log('Calling Browserless with options:', {
-      scale: pdfOptions.options.scale,
-      preferCSSPageSize: pdfOptions.options.preferCSSPageSize,
-      margin: pdfOptions.options.margin
+    console.log('Calling Gotenberg:', {
+      endpoint: `${gotenbergUrl}/forms/chromium/convert/html`,
+      printBackground: true,
+      preferCssPageSize: true,
+      scale: 1
     });
 
-    const response = await fetch(browserlessUrl, {
+    const response = await fetch(`${gotenbergUrl}/forms/chromium/convert/html`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache'
-      },
-      body: JSON.stringify(pdfOptions)
+      body: formData
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Browserless error:', {
+      console.error('Gotenberg error:', {
         status: response.status,
         statusText: response.statusText,
         error: errorText
       });
-      throw new Error(`Browserless API error: ${response.status} ${response.statusText} - ${errorText}`);
+      throw new Error(`Gotenberg API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     // Get PDF as array buffer and convert to base64
@@ -110,7 +93,7 @@ serve(async (req) => {
       JSON.stringify({ 
         pdf_base64: pdfBase64,
         server_optimized: true,
-        browserless: true,
+        gotenberg: true,
         size_bytes: pdfBuffer.byteLength
       }),
       {
@@ -119,11 +102,11 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error in Browserless PDF render:', error);
+    console.error('Error in Gotenberg PDF render:', error);
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'PDF rendering failed',
-        browserless_error: true 
+        gotenberg_error: true 
       }),
       {
         status: 500,
