@@ -22,15 +22,23 @@ export function tenthsToMm(tenths: number): number {
   return tenths / 10;
 }
 
-// Find matching paper name in printer capabilities
+// Smart paper matching with exact Brother QL paper names
 export function findPaperMatch(
   papers: Papers,
   widthMm: number,
   heightMm: number,
-  tolerance: number = 10 // ±1.0mm in tenths (widened from ±0.5mm)
+  tolerance: number = 10 // ±1.0mm in tenths
 ): PaperMatch | null {
   const targetW = mmToTenths(widthMm);
   const targetH = mmToTenths(heightMm);
+  
+  console.log('Finding paper match:', {
+    targetW_tenths: targetW,
+    targetH_tenths: targetH,
+    target_mm: `${widthMm}x${heightMm}mm`,
+    available_papers: Object.keys(papers),
+    tolerance_tenths: tolerance
+  });
   
   const isMatch = (paperW: number | null, paperH: number | null, targetW: number, targetH: number): boolean => {
     return paperW !== null && paperH !== null && 
@@ -38,17 +46,39 @@ export function findPaperMatch(
            Math.abs(paperH - targetH) <= tolerance;
   };
 
+  // Try exact matches first (both orientations)
   for (const [paperName, [paperW, paperH]] of Object.entries(papers)) {
     // Check normal orientation
     if (isMatch(paperW, paperH, targetW, targetH)) {
+      console.log('Found exact paper match:', { name: paperName, rotate: 0, paperW, paperH });
       return { name: paperName, rotate: 0 };
     }
     // Check rotated orientation (90 degrees)
     if (isMatch(paperW, paperH, targetH, targetW)) {
+      console.log('Found rotated paper match:', { name: paperName, rotate: 90, paperW, paperH });
       return { name: paperName, rotate: 90 };
     }
   }
 
+  // For Brother QL-800, try common aliases for 62x28.9mm (DK-1209)
+  if (Math.abs(widthMm - 62) <= 1 && Math.abs(heightMm - 28.9) <= 1) {
+    const brotherAliases = [
+      '2.4" x 1.1"',
+      '"2.4" x 1.1""',
+      'DK-1209',
+      '62 x 29 mm',
+      '62x29mm'
+    ];
+    
+    for (const alias of brotherAliases) {
+      if (papers[alias]) {
+        console.log('Found Brother DK-1209 alias match:', { name: alias, rotate: 0 });
+        return { name: alias, rotate: 0 };
+      }
+    }
+  }
+
+  console.log('No paper match found for', `${widthMm}x${heightMm}mm`);
   return null;
 }
 

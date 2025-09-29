@@ -207,30 +207,24 @@ export function useLabelPrint(stationId?: string) {
         console.warn('Brother profile validation:', validation.warning);
       }
 
-      // Force correct PrintNode options for 62x28.9mm DK-1209 labels
-      const forcedOptions = {
-        paper: "2.4\" x 1.1\"", // Correct paper name for DK-1209 (62x28.9mm)
-        dpi: "300x300",
-        fit_to_page: false,
-        rotate: 0
-      };
-
-      // Try capabilities matching but fall back to forced options
-      const { options: matchedOptions, warnings } = generatePrintOptions(
+      // Smart paper matching with capability detection
+      const { options: printOptions, warnings } = generatePrintOptions(
         selectedPrinter?.capabilities,
         activeProfile.width_mm,
         activeProfile.height_mm,
         activeProfile.dpi
       );
 
-      // Use matched options if available, otherwise use forced options
-      const printOptions = selectedPrinter?.capabilities?.papers ? matchedOptions : forcedOptions;
+      // Block printing if no paper match found
+      if (!printOptions.paper) {
+        throw new Error(`No matching paper size found for ${activeProfile.width_mm}×${activeProfile.height_mm}mm. Please configure printer with compatible paper sizes.`);
+      }
       
       console.log('Print options determined:', {
-        using_forced: !selectedPrinter?.capabilities?.papers,
         final_options: printOptions,
-        matched_options: matchedOptions,
-        warnings_count: warnings.length
+        warnings_count: warnings.length,
+        has_paper_match: !!printOptions.paper,
+        rotation: printOptions.rotate || 0
       });
 
       // Show warnings to user

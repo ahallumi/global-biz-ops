@@ -45,37 +45,61 @@ function generateCode128Pattern(data: string): number[] {
 }
 
 /**
- * Generate precision SVG barcode with integer-dot modules
+ * Generate precision SVG barcode with perfect integer-dot modules for 300 DPI
  */
 export function generatePrecisionBarcode(
   data: string,
   options: BarcodeOptions
 ): BarcodeResult {
   const warnings: string[] = [];
+  const DOT_MM = 25.4 / 300; // 0.084667mm per dot at 300 DPI
   
-  // Snap dimensions to dot grid
-  const actualModuleWidth = moduleMmFromDesired(options.module_width_mm);
+  // Calculate available space for barcode content
+  const quietMm = Math.max(1.0, options.quiet_zone_mm); // Minimum 1mm quiet zones
+  const availableWidth = options.width_mm - (2 * quietMm);
+  const maxDots = Math.floor(availableWidth / DOT_MM);
+  
+  // Estimate modules needed for the code (simplified)
+  let estimatedModules = data.length * 8; // Rough estimate for Code128
+  switch (options.symbology.toLowerCase()) {
+    case 'ean13':
+      estimatedModules = 95; // EAN-13 is always 95 modules
+      break;
+    case 'upca':
+      estimatedModules = 95; // UPC-A is also 95 modules
+      break;
+    default:
+      estimatedModules = Math.max(40, data.length * 8 + 20); // Code128 with start/stop
+  }
+  
+  // Calculate optimal module width in dots (integer)
+  const moduleDots = Math.max(1, Math.floor(maxDots / estimatedModules));
+  const actualModuleWidth = moduleDots * DOT_MM;
+  
+  // Calculate actual dimensions
   const actualQuietZone = quietZoneMmFromDesired(options.quiet_zone_mm);
   const minHeight = minimumBarcodeHeightMm(options.symbology);
   const actualHeight = Math.max(minHeight, options.height_mm);
   
+  // Log dot-grid calculations
+  console.log('Barcode dot-grid calculation:', {
+    available_width_mm: availableWidth,
+    max_dots: maxDots,
+    estimated_modules: estimatedModules,
+    module_dots: moduleDots,
+    module_width_mm: actualModuleWidth.toFixed(4),
+    dot_size_mm: DOT_MM.toFixed(6)
+  });
+  
   // Add warnings for adjustments
-  if (actualModuleWidth !== options.module_width_mm) {
-    warnings.push(`Module width adjusted to ${actualModuleWidth.toFixed(3)}mm (${mmToDots(actualModuleWidth)} dots)`);
+  if (Math.abs(actualModuleWidth - options.module_width_mm) > 0.01) {
+    warnings.push(`Module width optimized to ${actualModuleWidth.toFixed(3)}mm (${moduleDots} dots) for perfect printing`);
   }
   if (actualQuietZone !== options.quiet_zone_mm) {
     warnings.push(`Quiet zone adjusted to ${actualQuietZone.toFixed(3)}mm (${mmToDots(actualQuietZone)} dots)`);
   }
   if (actualHeight !== options.height_mm) {
     warnings.push(`Height increased to ${actualHeight.toFixed(3)}mm for reliable scanning`);
-  }
-  
-  // Validate minimum requirements
-  if (actualModuleWidth < 0.169) { // < 2 dots at 300 DPI
-    warnings.push('⚠ Module width may be too small for reliable scanning');
-  }
-  if (actualQuietZone < 1.0) {
-    warnings.push('⚠ Quiet zone may be too small for reliable scanning');
   }
   
   // Generate barcode pattern
@@ -93,29 +117,28 @@ export function generatePrecisionBarcode(
       pattern = generateCode128Pattern(data);
   }
   
-  // Calculate total width
-  const patternWidth = pattern.reduce((sum, width) => sum + width, 0) * actualModuleWidth;
-  const totalWidth = patternWidth + (2 * actualQuietZone);
+  // Calculate precise positioning
+  const contentWidth = pattern.reduce((sum, width) => sum + width, 0) * actualModuleWidth;
+  const startX = (options.width_mm - contentWidth) / 2; // Center the barcode
   
-  // Generate SVG bars
-  let x = actualQuietZone;
+  // Generate SVG bars with precise positioning
+  let x = startX;
   const bars: string[] = [];
   
   for (let i = 0; i < pattern.length; i++) {
     const barWidth = pattern[i] * actualModuleWidth;
     
     if (i % 2 === 0) { // Even indices are bars (black)
-      bars.push(`<rect x="${x}" y="0" width="${barWidth}" height="${actualHeight}" fill="black"/>`);
+      bars.push(`<rect x="${x.toFixed(4)}" y="0" width="${barWidth.toFixed(4)}" height="${actualHeight}" fill="black" shape-rendering="crispEdges"/>`);
     }
     
     x += barWidth;
   }
   
-  // Generate SVG
-  const svg = `<svg width="${totalWidth}mm" height="${actualHeight}mm" viewBox="0 0 ${totalWidth} ${actualHeight}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+  // Generate SVG with precise dimensions and crisp edges
+  const svg = `<svg width="${options.width_mm}mm" height="${actualHeight}mm" viewBox="0 0 ${options.width_mm} ${actualHeight}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
   <rect width="100%" height="100%" fill="white"/>
   ${bars.join('\n  ')}
-  <text x="${totalWidth / 2}" y="${actualHeight + 2}" text-anchor="middle" font-family="Arial, sans-serif" font-size="2mm" fill="black">${data}</text>
 </svg>`;
   
   return {

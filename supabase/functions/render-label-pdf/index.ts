@@ -53,18 +53,16 @@ serve(async (req) => {
     const pdfOptions = {
       html: finalHtml,
       options: {
-        width: `${width_mm}mm`,
-        height: `${height_mm}mm`,
         printBackground: true,
         preferCSSPageSize: true,
+        displayHeaderFooter: false,
+        scale: 1,
         margin: {
           top: `${margin_mm}mm`,
           right: `${margin_mm}mm`, 
           bottom: `${margin_mm}mm`,
           left: `${margin_mm}mm`
-        },
-        displayHeaderFooter: false,
-        format: 'A4' // Will be overridden by width/height
+        }
       },
       gotoOptions: {
         waitUntil: 'networkidle2',
@@ -73,8 +71,8 @@ serve(async (req) => {
     };
 
     console.log('Calling Browserless with options:', {
-      width: pdfOptions.options.width,
-      height: pdfOptions.options.height,
+      scale: pdfOptions.options.scale,
+      preferCSSPageSize: pdfOptions.options.preferCSSPageSize,
       margin: pdfOptions.options.margin
     });
 

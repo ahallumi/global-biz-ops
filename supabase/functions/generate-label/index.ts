@@ -551,23 +551,45 @@ function generateLabelHTML(template_id: string, data: LabelData, options: LabelO
     <style>
       @page { 
         size: ${width_mm}mm ${height_mm}mm; 
-        margin: ${margin_mm}mm; 
+        margin: 0; 
       }
       html, body { 
         width: ${width_mm}mm; 
         height: ${height_mm}mm; 
         margin: 0; 
-        padding: 2mm;
+        padding: 0;
         font-family: Arial, sans-serif;
-        box-sizing: border-box;
+        background: #fff;
+      }
+      * { 
+        box-sizing: border-box; 
+        -webkit-print-color-adjust: exact; 
+        print-color-adjust: exact; 
+      }
+      .label { 
+        position: relative; 
+        width: ${width_mm}mm; 
+        height: ${height_mm}mm; 
+      }
+      .content { 
+        position: absolute; 
+        left: 1mm; 
+        top: 1mm; 
+        width: ${width_mm - 2}mm; 
+        height: ${height_mm - 2}mm; 
+        overflow: hidden; 
       }
     </style>
   </head>
   <body>
-    <div style="text-align: center; padding: 10mm;">
-      <h3>${data.name}</h3>
-      <p>${price}</p>
-      <div>${barcodeSVG}</div>
+    <div class="label">
+      <div class="content">
+        <div style="text-align: center; padding: 2mm;">
+          <h3 style="margin: 0 0 2mm 0; font-size: 8pt;">${data.name}</h3>
+          <p style="margin: 0 0 2mm 0; font-size: 7pt;">${price}</p>
+          <div>${barcodeSVG}</div>
+        </div>
+      </div>
     </div>
   </body>
   </html>`;
