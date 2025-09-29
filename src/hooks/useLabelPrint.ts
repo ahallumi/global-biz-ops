@@ -137,10 +137,10 @@ export function useLabelPrint(stationId?: string) {
         placeholder_matches: labelData.html?.match(/\{\{[^}]+\}\}/g) || []
       });
 
-      // Generate PDF using server-side optimized rendering for preview=print parity
+      // Generate PDF using server-side Browserless rendering
       let pdfBase64 = labelData.pdf_base64;
       if (!pdfBase64 && labelData.html) {
-        console.log('LABEL_DEBUG: Generating PDF server-side optimized with profile:', {
+        console.log('LABEL_DEBUG: Generating PDF with Browserless server-side rendering:', {
           width_mm: activeProfile.width_mm,
           height_mm: activeProfile.height_mm,
           dpi: activeProfile.dpi,
@@ -148,43 +148,26 @@ export function useLabelPrint(stationId?: string) {
           html_length: labelData.html.length
         });
 
-        // Try server-side PDF rendering first (with Puppeteer-like optimizations)
-        try {
-          const { data: renderData, error: renderError } = await supabase.functions.invoke('render-label-pdf', {
-            body: {
-              html: labelData.html,
-              width_mm: activeProfile.width_mm,
-              height_mm: activeProfile.height_mm,
-              dpi: activeProfile.dpi,
-              margin_mm: 0
-            }
-          });
-
-          if (!renderError && renderData?.pdf_base64) {
-            pdfBase64 = renderData.pdf_base64;
-            console.log('LABEL_DEBUG: Used server-side PDF generation');
-          } else if (!renderError && renderData?.html) {
-            // Server returned optimized HTML, use client-side generation with server HTML
-            console.log('LABEL_DEBUG: Using server-optimized HTML for client PDF generation');
-            pdfBase64 = await htmlToPdfBase64(renderData.html, {
-              width_mm: activeProfile.width_mm,
-              height_mm: activeProfile.height_mm,
-              margin_mm: 0,
-              dpi: activeProfile.dpi
-            });
-          } else {
-            throw new Error('Server PDF generation failed');
-          }
-        } catch (serverError) {
-          // Fallback to client-side generation
-          console.warn('Server PDF failed, falling back to client-side:', serverError);
-          pdfBase64 = await htmlToPdfBase64(labelData.html, {
+        const { data: renderData, error: renderError } = await supabase.functions.invoke('render-label-pdf', {
+          body: {
+            html: labelData.html,
             width_mm: activeProfile.width_mm,
             height_mm: activeProfile.height_mm,
-            margin_mm: 0,
-            dpi: activeProfile.dpi
-          });
+            dpi: activeProfile.dpi,
+            margin_mm: 0
+          }
+        });
+
+        if (renderError) {
+          throw new Error(`Server PDF generation failed: ${renderError.message}`);
         }
+
+        if (!renderData?.pdf_base64) {
+          throw new Error('Server did not return a PDF');
+        }
+
+        pdfBase64 = renderData.pdf_base64;
+        console.log('LABEL_DEBUG: Successfully used Browserless server-side PDF generation');
       }
 
       if (!pdfBase64) {

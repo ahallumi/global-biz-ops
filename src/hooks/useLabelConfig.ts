@@ -185,16 +185,31 @@ export function useLabelConfig(stationId?: string) {
       if (error) throw error;
       return data;
     },
-    onSuccess: async (data) => {
-      // Generate PDF from HTML if not provided
+    onSuccess: async (data, variables) => {
+      // Generate PDF using server-side Browserless rendering
       let pdfBase64 = data.pdf_base64;
       if (!pdfBase64 && data.html) {
-        pdfBase64 = await htmlToPdfBase64(data.html, {
-          width_mm: data.width_mm,
-          height_mm: data.height_mm,
-          margin_mm: data.margin_mm,
-          dpi: data.dpi
+        if (!config) throw new Error('Configuration not loaded');
+        
+        const profile = config.profiles.find(p => p.id === variables);
+        if (!profile) throw new Error('Profile not found');
+
+        const { data: renderData, error: renderError } = await supabase.functions.invoke('render-label-pdf', {
+          body: {
+            html: data.html,
+            width_mm: profile.width_mm,
+            height_mm: profile.height_mm,
+            dpi: profile.dpi,
+            margin_mm: profile.margin_mm,
+            diagnostic: true // Enable diagnostic mode for calibration
+          }
         });
+
+        if (renderError || !renderData?.pdf_base64) {
+          throw new Error('Failed to generate calibration PDF');
+        }
+
+        pdfBase64 = renderData.pdf_base64;
       }
 
       if (pdfBase64) {

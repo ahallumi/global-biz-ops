@@ -1,14 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-// Note: In production, you'd use Puppeteer. For this POC, we'll enhance the HTML
-// to be more PDF-rendering friendly and return it for now, but the structure
-// is ready for Puppeteer integration.
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -22,7 +17,7 @@ serve(async (req) => {
       throw new Error('HTML content is required');
     }
 
-    console.log('Server PDF render request:', {
+    console.log('Browserless PDF render request:', {
       width_mm,
       height_mm,
       dpi,
@@ -31,50 +26,14 @@ serve(async (req) => {
       html_length: html.length
     });
 
-    // For now, we'll optimize the HTML for better PDF rendering
-    // and return a base64 PDF placeholder. In production, this would use Puppeteer:
-    //
-    // const browser = await puppeteer.launch();
-    // const page = await browser.newPage();
-    // await page.setContent(html, { waitUntil: 'load' });
-    // await page.evaluate(() => (document as any).fonts?.ready);
-    // await page.waitForTimeout(50);
-    // const pdf = await page.pdf({
-    //   width: `${width_mm}mm`,
-    //   height: `${height_mm}mm`,
-    //   printBackground: true,
-    //   preferCSSPageSize: true,
-    //   margin: { top:'0', right:'0', bottom:'0', left:'0' }
-    // });
-    // const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdf)));
+    // Get Browserless token from secrets
+    const browserlessToken = Deno.env.get('BROWSERLESS_TOKEN');
+    if (!browserlessToken) {
+      throw new Error('Browserless token not configured');
+    }
 
-    // For this implementation, we'll simulate server-side rendering by 
-    // creating a more robust PDF using a different approach
-    let enhancedHtml = html;
-    
-    // Add server-side rendering optimizations
-    const serverOptimizations = `
-      <script>
-        // Force font loading and wait for completion
-        if (document.fonts && document.fonts.ready) {
-          document.fonts.ready.then(() => {
-            console.log('Server fonts loaded');
-          });
-        }
-        
-        // Ensure all elements are properly sized before PDF generation
-        window.addEventListener('load', () => {
-          setTimeout(() => {
-            console.log('Server DOM ready for PDF');
-          }, 100);
-        });
-      </script>
-    `;
-
-    // Inject optimization scripts before closing body tag
-    enhancedHtml = enhancedHtml.replace('</body>', `${serverOptimizations}</body>`);
-
-    // Add diagnostic mode if requested
+    // Prepare HTML with diagnostic CSS if requested
+    let finalHtml = html;
     if (diagnostic) {
       const diagnosticCSS = `
         <style>
@@ -84,28 +43,77 @@ serve(async (req) => {
           .content { background: rgba(255,255,0,0.1) !important; }
         </style>
       `;
-      enhancedHtml = enhancedHtml.replace('</head>', `${diagnosticCSS}</head>`);
-      enhancedHtml = enhancedHtml.replace('class="label"', 'class="label debug"');
+      finalHtml = finalHtml.replace('</head>', `${diagnosticCSS}</head>`);
+      finalHtml = finalHtml.replace('class="label"', 'class="label debug"');
     }
 
-    // For this POC, we'll return the enhanced HTML and let the client handle PDF generation
-    // but with server-side optimized content. In production, this would be Puppeteer-generated PDF.
+    // Call Browserless Cloud API for PDF generation
+    const browserlessUrl = `https://chrome.browserless.io/pdf?token=${browserlessToken}`;
     
-    // Create a minimal PDF base64 as a placeholder
-    // In reality, this would be the Puppeteer-generated PDF
-    const pdfContent = enhancedHtml;
-    
-    // For the immediate fix, we need to actually generate a PDF.
-    // Since we don't have Puppeteer available in this environment,
-    // we'll use a different approach - return the optimized HTML
-    // and signal that it needs client-side PDF generation with server optimizations
-    
+    const pdfOptions = {
+      html: finalHtml,
+      options: {
+        width: `${width_mm}mm`,
+        height: `${height_mm}mm`,
+        printBackground: true,
+        preferCSSPageSize: true,
+        margin: {
+          top: `${margin_mm}mm`,
+          right: `${margin_mm}mm`, 
+          bottom: `${margin_mm}mm`,
+          left: `${margin_mm}mm`
+        },
+        displayHeaderFooter: false,
+        format: 'A4' // Will be overridden by width/height
+      },
+      gotoOptions: {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      }
+    };
+
+    console.log('Calling Browserless with options:', {
+      width: pdfOptions.options.width,
+      height: pdfOptions.options.height,
+      margin: pdfOptions.options.margin
+    });
+
+    const response = await fetch(browserlessUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      },
+      body: JSON.stringify(pdfOptions)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Browserless error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
+      throw new Error(`Browserless API error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    // Get PDF as array buffer and convert to base64
+    const pdfBuffer = await response.arrayBuffer();
+    const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfBuffer)));
+
+    console.log('PDF generated successfully:', {
+      pdf_size_bytes: pdfBuffer.byteLength,
+      pdf_size_kb: Math.round(pdfBuffer.byteLength / 1024),
+      pdf_header: pdfBase64.substring(0, 8),
+      is_valid_pdf: pdfBase64.startsWith('JVBERi0')
+    });
+
     return new Response(
       JSON.stringify({ 
-        html: enhancedHtml,
-        pdf_base64: null, // Will be null to trigger client-side generation with server HTML
+        pdf_base64: pdfBase64,
         server_optimized: true,
-        message: "HTML optimized for server-side characteristics, but PDF generation still client-side pending Puppeteer setup"
+        browserless: true,
+        size_bytes: pdfBuffer.byteLength
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -113,9 +121,12 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error in server PDF render:', error);
+    console.error('Error in Browserless PDF render:', error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'PDF rendering failed' }),
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'PDF rendering failed',
+        browserless_error: true 
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
