@@ -15,6 +15,8 @@ interface ProductResult {
   price: number | null;
   size: string | null;
   unit: string;
+  retail_price_cents: number | null;
+  default_cost_cents: number | null;
 }
 
 serve(async (req) => {
@@ -41,7 +43,7 @@ serve(async (req) => {
     // Search products with prioritized exact matches
     const { data: products, error } = await supabaseClient
       .from('products')
-      .select('id, name, sku, upc, barcode, retail_price_cents, size, unit_of_sale')
+      .select('id, name, sku, upc, barcode, retail_price_cents, default_cost_cents, size, unit_of_sale')
       .or(`name.ilike.%${query}%,sku.ilike.%${query}%,upc.eq.${query},barcode.eq.${query}`)
       .eq('catalog_status', 'ACTIVE')
       .limit(20);
@@ -63,7 +65,9 @@ serve(async (req) => {
       barcode: product.barcode,
       price: product.retail_price_cents ? product.retail_price_cents / 100 : null,
       size: product.size,
-      unit: product.unit_of_sale || 'EACH'
+      unit: product.unit_of_sale || 'EACH',
+      retail_price_cents: product.retail_price_cents,
+      default_cost_cents: product.default_cost_cents
     }));
 
     // Sort by relevance: exact barcode/UPC matches first, then name matches
