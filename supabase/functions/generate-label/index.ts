@@ -79,6 +79,10 @@ function renderHtmlTemplate(template: string, product: any): string {
   const barcodeValue = product.barcode || product.sku || product.id?.slice(-8) || '';
   const price = resolvePrice(product);
   
+  // Format UPC for barcode fonts (ensure 12 digits for UPC-A)
+  const upcRaw = product.upc || '';
+  const upcFormatted = upcRaw.padStart(12, '0').slice(0, 12);
+  
   const substitutions = {
     '{{product.name}}': escapeHtml(product.name || ''),
     '{{product.sku}}': escapeHtml(product.sku || ''),
@@ -87,6 +91,8 @@ function renderHtmlTemplate(template: string, product: any): string {
     '{{product.size}}': escapeHtml(product.size || ''),
     '{{product.unit}}': escapeHtml(product.unit || 'EA'),
     '{{product.barcode}}': escapeHtml(barcodeValue),
+    '{{product.upc}}': escapeHtml(upcRaw),
+    '{{upc_formatted}}': escapeHtml(upcFormatted),
     '{{product.retail_price_cents}}': product.retail_price_cents 
       ? escapeHtml(currencyUSD(product.retail_price_cents / 100)) 
       : '',
