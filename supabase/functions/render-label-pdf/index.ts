@@ -86,7 +86,10 @@ serve(async (req) => {
       pdf_size_bytes: pdfBuffer.byteLength,
       pdf_size_kb: Math.round(pdfBuffer.byteLength / 1024),
       pdf_header: pdfBase64.substring(0, 8),
-      is_valid_pdf: pdfBase64.startsWith('JVBERi0')
+      is_valid_pdf: pdfBase64.startsWith('JVBERi0'),
+      requested_dimensions: `${width_mm}mm x ${height_mm}mm`,
+      requested_dpi: dpi,
+      margin_mm: margin_mm
     });
 
     return new Response(

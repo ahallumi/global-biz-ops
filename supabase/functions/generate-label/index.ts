@@ -83,6 +83,19 @@ function renderHtmlTemplate(template: string, product: any): string {
     '{{product.name}}': escapeHtml(product.name || ''),
     '{{product.sku}}': escapeHtml(product.sku || ''),
     '{{product.id}}': escapeHtml(product.id || ''),
+    '{{product.brand}}': escapeHtml(product.brand || ''),
+    '{{product.size}}': escapeHtml(product.size || ''),
+    '{{product.unit}}': escapeHtml(product.unit || 'EA'),
+    '{{product.barcode}}': escapeHtml(barcodeValue),
+    '{{product.retail_price_cents}}': product.retail_price_cents 
+      ? escapeHtml(currencyUSD(product.retail_price_cents / 100)) 
+      : '',
+    '{{product.default_cost_cents}}': product.default_cost_cents 
+      ? escapeHtml(currencyUSD(product.default_cost_cents / 100)) 
+      : '',
+    '{{product.cost_formatted}}': product.default_cost_cents 
+      ? escapeHtml(currencyUSD(product.default_cost_cents / 100)) 
+      : '',
     '{{price_formatted}}': escapeHtml(currencyUSD(price)),
     '{{unit_suffix}}': escapeHtml(product.unit ? `/${product.unit}` : ''),
     '{{barcode_svg}}': barcodeValue ? 
