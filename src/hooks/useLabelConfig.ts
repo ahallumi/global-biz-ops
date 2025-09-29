@@ -186,7 +186,7 @@ export function useLabelConfig(stationId?: string) {
       return data;
     },
     onSuccess: async (data, variables) => {
-      // Generate PDF using server-side Browserless rendering
+      // Generate PDF using server-side Gotenberg rendering
       let pdfBase64 = data.pdf_base64;
       if (!pdfBase64 && data.html) {
         if (!config) throw new Error('Configuration not loaded');

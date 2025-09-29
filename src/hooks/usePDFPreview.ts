@@ -62,7 +62,7 @@ export function usePDFPreview({ activeProfile, diagnostic = false }: UsePDFPrevi
       if (labelError) throw labelError;
       if (!labelData.html) throw new Error('No HTML generated');
 
-      // Generate PDF using server-side Browserless rendering
+      // Generate PDF using server-side Gotenberg rendering
       const { data: renderData, error: renderError } = await supabase.functions.invoke('render-label-pdf', {
         body: {
           html: labelData.html,

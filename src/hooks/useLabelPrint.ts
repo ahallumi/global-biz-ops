@@ -137,10 +137,10 @@ export function useLabelPrint(stationId?: string) {
         placeholder_matches: labelData.html?.match(/\{\{[^}]+\}\}/g) || []
       });
 
-      // Generate PDF using server-side Browserless rendering
+      // Generate PDF using server-side Gotenberg rendering
       let pdfBase64 = labelData.pdf_base64;
       if (!pdfBase64 && labelData.html) {
-        console.log('LABEL_DEBUG: Generating PDF with Browserless server-side rendering:', {
+        console.log('LABEL_DEBUG: Generating PDF with Gotenberg server-side rendering:', {
           width_mm: activeProfile.width_mm,
           height_mm: activeProfile.height_mm,
           dpi: activeProfile.dpi,
@@ -167,7 +167,7 @@ export function useLabelPrint(stationId?: string) {
         }
 
         pdfBase64 = renderData.pdf_base64;
-        console.log('LABEL_DEBUG: Successfully used Browserless server-side PDF generation');
+        console.log('LABEL_DEBUG: Successfully used Gotenberg server-side PDF generation');
       }
 
       if (!pdfBase64) {
