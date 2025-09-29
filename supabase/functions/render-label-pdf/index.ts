@@ -48,7 +48,7 @@ serve(async (req) => {
     }
 
     // Call Browserless Cloud API for PDF generation
-    const browserlessUrl = `https://chrome.browserless.io/pdf?token=${browserlessToken}`;
+    const browserlessUrl = `https://production-sfo.browserless.io/pdf?token=${browserlessToken}`;
     
     const pdfOptions = {
       html: finalHtml,
