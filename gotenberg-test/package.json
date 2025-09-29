@@ -1,0 +1,13 @@
+{
+  "name": "gotenberg-test",
+  "version": "1.0.0", 
+  "description": "Local testing for Gotenberg PDF generation",
+  "main": "test-gotenberg.js",
+  "scripts": {
+    "test": "node test-gotenberg.js",
+    "start": "npm test"
+  },
+  "dependencies": {
+    "form-data": "^4.0.0"
+  }
+}

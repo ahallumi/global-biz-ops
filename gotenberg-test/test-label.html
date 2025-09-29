@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page { 
+      size: 62mm 28.9mm; 
+      margin: 0mm; 
+    }
+    html, body { 
+      width: 62mm; 
+      height: 28.9mm; 
+      margin: 0; 
+      padding: 2mm;
+      font-family: Arial, sans-serif;
+      box-sizing: border-box;
+    }
+    .label {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border: 0.4mm solid #000; /* Diagnostic border */
+    }
+    .product-name {
+      font-size: 8px;
+      font-weight: bold;
+      line-height: 1.1;
+      text-align: center;
+      margin-bottom: 2mm;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .price {
+      font-size: 10px;
+      font-weight: bold;
+      text-align: right;
+      margin-bottom: 1mm;
+    }
+    .barcode {
+      text-align: center;
+      margin: 1mm 0;
+    }
+    .sku {
+      font-size: 6px;
+      text-align: center;
+      color: #666;
+    }
+    .timestamp {
+      font-size: 5px;
+      position: absolute;
+      bottom: 1mm;
+      right: 1mm;
+      color: #999;
+    }
+    /* Diagnostic mode styles */
+    .label.debug * { 
+      outline: 0.2mm dashed rgba(0,0,0,.25) !important; 
+    }
+    .label { 
+      background: #fff !important; 
+    }
+  </style>
+</head>
+<body>
+  <div class="label debug">
+    <div class="product-name">Test Product Label for Gotenberg</div>
+    <div class="price">$12.99</div>
+    <div class="barcode">
+      <svg width="40mm" height="8mm" viewBox="0 0 120 24" xmlns="http://www.w3.org/2000/svg" style="shape-rendering:crispEdges;">
+        <rect width="100%" height="100%" fill="white"/>
+        <rect x="5" y="0" width="2" height="18" fill="black"/>
+        <rect x="9" y="0" width="1" height="18" fill="black"/>
+        <rect x="12" y="0" width="3" height="18" fill="black"/>
+        <rect x="17" y="0" width="1" height="18" fill="black"/>
+        <rect x="20" y="0" width="2" height="18" fill="black"/>
+        <rect x="24" y="0" width="1" height="18" fill="black"/>
+        <rect x="27" y="0" width="2" height="18" fill="black"/>
+        <rect x="31" y="0" width="3" height="18" fill="black"/>
+        <text x="60" y="22" text-anchor="middle" font-family="Arial, sans-serif" font-size="6px" fill="black">123456789</text>
+      </svg>
+    </div>
+    <div class="sku">SKU: TEST-001</div>
+    <div class="timestamp">12/29/24</div>
+  </div>
+</body>
+</html>
