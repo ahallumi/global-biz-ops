@@ -172,6 +172,7 @@ export function useLabelConfig(stationId?: string) {
       const { data, error } = await supabase.functions.invoke('generate-label', {
         body: {
           template_id: 'calibration-grid',
+          profile_id: profile.id,
           data: calibrationData,
           options: {
             width_mm: profile.width_mm,

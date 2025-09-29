@@ -601,10 +601,26 @@ serve(async (req) => {
   }
 
   try {
-    const { template_id, product, profile_id, use_json_template, diagnostic } = await req.json();
-    console.log('Generating label:', { template_id, product: product?.name || 'Unknown', use_json_template, diagnostic });
+    const { template_id, product, profile_id, use_json_template, diagnostic, options } = await req.json();
+    console.log('Generating label:', { 
+      template_id, 
+      product: product?.name || 'Unknown', 
+      use_json_template, 
+      diagnostic,
+      options 
+    });
 
     let html = '';
+    
+    // Extract dimensions from options or use defaults
+    const labelOptions: LabelOptions = {
+      width_mm: options?.width_mm || 62,
+      height_mm: options?.height_mm || 29,
+      dpi: options?.dpi || 300,
+      margin_mm: options?.margin_mm !== undefined ? options.margin_mm : 2
+    };
+    
+    console.log('Label options:', labelOptions);
     
     // Check if we should use JSON template
     if (use_json_template || profile_id) {
@@ -630,6 +646,58 @@ serve(async (req) => {
         if (template.template_type === 'html' && template.html_template) {
           console.log('Using HTML template for rendering');
           let templateHtml = template.html_template;
+          
+          // Validate and wrap HTML if needed
+          const needsWrapping = 
+            templateHtml.length < 100 || 
+            !templateHtml.includes('@page') || 
+            !templateHtml.includes('<!DOCTYPE');
+          
+          if (needsWrapping) {
+            console.warn('HTML template is minimal or missing structure - auto-wrapping with proper sizing');
+            
+            // Wrap minimal content in proper HTML skeleton with correct dimensions
+            const wrappedHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        @page { 
+          size: ${labelOptions.width_mm}mm ${labelOptions.height_mm}mm; 
+          margin: ${labelOptions.margin_mm}mm; 
+        }
+        html, body { 
+          width: ${labelOptions.width_mm}mm; 
+          height: ${labelOptions.height_mm}mm; 
+          margin: 0; 
+          padding: ${labelOptions.margin_mm}mm;
+          font-family: Arial, sans-serif;
+          box-sizing: border-box;
+        }
+        .label {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        * { 
+          box-sizing: border-box; 
+          -webkit-print-color-adjust: exact; 
+          print-color-adjust: exact; 
+        }
+      </style>
+    </head>
+    <body>
+      <div class="label">
+        ${templateHtml}
+      </div>
+    </body>
+    </html>`;
+            
+            templateHtml = wrappedHtml;
+          }
           
           // Apply diagnostic mode modifications if requested
           if (diagnostic) {
@@ -666,7 +734,7 @@ serve(async (req) => {
         }
       } else {
         console.log('No JSON template found, falling back to legacy templates');
-        // Fall back to legacy templates
+        // Fall back to legacy templates with client options
         const data = {
           id: product.id || 'unknown',
           name: product.name || 'Unknown Product',
@@ -676,17 +744,16 @@ serve(async (req) => {
           size: product.size || null,
           unit: product.unit || 'ea'
         };
-        const options = { width_mm: 62, height_mm: 29, dpi: 300, margin_mm: 2 };
         
-      if (template_id === 'custom-62x29-landscape') {
-        html = generateLabelHTML('brother-29x90-product', data, options);
-      } else if (template_id === 'custom-29x62-portrait') {
-        html = generateLabelHTML('brother-62x100-shelf', data, options);
-      } else if (template_id === 'calibration-grid') {
-        html = generateLabelHTML('calibration-grid', data, options);
-      } else {
-        throw new Error(`Unknown template: ${template_id}`);
-      }
+        if (template_id === 'custom-62x29-landscape') {
+          html = generateLabelHTML('brother-29x90-product', data, labelOptions);
+        } else if (template_id === 'custom-29x62-portrait') {
+          html = generateLabelHTML('brother-62x100-shelf', data, labelOptions);
+        } else if (template_id === 'calibration-grid') {
+          html = generateLabelHTML('calibration-grid', data, labelOptions);
+        } else {
+          throw new Error(`Unknown template: ${template_id}`);
+        }
       }
     } else {
       // Legacy template generation - convert product to expected format
@@ -699,14 +766,13 @@ serve(async (req) => {
         size: product.size || null,
         unit: product.unit || 'ea'
       };
-      const options = { width_mm: 62, height_mm: 29, dpi: 300, margin_mm: 2 };
       
       if (template_id === 'custom-62x29-landscape') {
-        html = generateLabelHTML('brother-29x90-product', data, options);
+        html = generateLabelHTML('brother-29x90-product', data, labelOptions);
       } else if (template_id === 'custom-29x62-portrait') {
-        html = generateLabelHTML('brother-62x100-shelf', data, options);
+        html = generateLabelHTML('brother-62x100-shelf', data, labelOptions);
       } else if (template_id === 'calibration-grid') {
-        html = generateLabelHTML('calibration-grid', data, options);
+        html = generateLabelHTML('calibration-grid', data, labelOptions);
       } else {
         throw new Error(`Unknown template: ${template_id}`);
       }

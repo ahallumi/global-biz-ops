@@ -105,6 +105,7 @@ export function useLabelPrint(stationId?: string) {
       const { data: labelData, error: labelError } = await supabase.functions.invoke('generate-label', {
         body: {
           template_id: activeProfile.template_id,
+          profile_id: activeProfile.id,
           product: product,
           options: {
             width_mm: activeProfile.width_mm,
